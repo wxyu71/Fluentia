@@ -1,5 +1,7 @@
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -15,7 +17,10 @@ public partial class MainWindow : Window
 {
     private readonly RoomManager _roomManager;
     private TaskbarIcon? _trayIcon;
-    private DispatcherTimer? _focusTracker;
+    private System.Drawing.Icon? _appIcon; // prevent GC of the icon handle
+
+    [DllImport("user32.dll")]
+    private static extern bool DestroyIcon(IntPtr handle);
 
     public MainWindow()
     {
@@ -24,42 +29,58 @@ public partial class MainWindow : Window
         SetupRoomManagerEvents();
         SetupTrayIcon();
         Closing += MainWindow_Closing;
-        // Register our HWND and start tracking the foreground window
-        Loaded += (_, _) =>
-        {
-            var hwnd = new WindowInteropHelper(this).Handle;
-            TextInjector.SetFluentiaHwnd(hwnd);
-            _focusTracker = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
-            _focusTracker.Tick += (_, _) => TextInjector.RecordForegroundWindow();
-            _focusTracker.Start();
-        };
+
+        // Wire diagnostic logging from TextInjector → our log pane
+        TextInjector.DiagnosticLog = (msg) => Dispatcher.BeginInvoke(() => AppendLog(msg));
     }
 
     private void SetupTrayIcon()
     {
-        _trayIcon = (TaskbarIcon)FindResource("TrayIcon");
-
-        // Create a 16x16 icon using GDI+
-        // System.Drawing.Icon requires ICO format; use GetHicon() on a Bitmap instead
-        using var bmp = new System.Drawing.Bitmap(16, 16, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+        // Build a 32×32 icon in memory → save as ICO → reload as proper Icon
+        using var bmp = new System.Drawing.Bitmap(32, 32, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
         using (var g = System.Drawing.Graphics.FromImage(bmp))
         {
             g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
             g.Clear(System.Drawing.Color.Transparent);
-            // Purple circle
             g.FillEllipse(
                 new System.Drawing.SolidBrush(System.Drawing.Color.FromArgb(99, 102, 241)),
-                0, 0, 15, 15);
-            // "F" letter
+                0, 0, 31, 31);
             g.DrawString("F",
-                new System.Drawing.Font("Segoe UI", 8f, System.Drawing.FontStyle.Bold),
+                new System.Drawing.Font("Segoe UI", 16f, System.Drawing.FontStyle.Bold),
                 System.Drawing.Brushes.White,
-                new System.Drawing.PointF(1.5f, 1f));
+                new System.Drawing.PointF(6f, 2f));
         }
-
-        // GetHicon() returns an unmanaged icon handle; wrap it for proper disposal
         var hIcon = bmp.GetHicon();
-        _trayIcon.Icon = System.Drawing.Icon.FromHandle(hIcon);
+        var tempIcon = System.Drawing.Icon.FromHandle(hIcon);
+        using var ms = new MemoryStream();
+        tempIcon.Save(ms);
+        ms.Position = 0;
+        _appIcon = new System.Drawing.Icon(ms);
+        DestroyIcon(hIcon);
+
+        // Create TaskbarIcon entirely in code (XAML resource approach doesn't
+        // reliably register with the shell notification area on all Windows versions).
+        _trayIcon = new TaskbarIcon
+        {
+            Icon = _appIcon,
+            ToolTipText = "Fluentia - Voice Input Relay",
+        };
+        _trayIcon.TrayLeftMouseDown += TrayIcon_TrayLeftMouseDown;
+
+        var menu = new ContextMenu();
+        var showItem = new MenuItem { Header = "Show" };
+        showItem.Click += ShowWindow_Click;
+        var refreshItem = new MenuItem { Header = "Refresh Room" };
+        refreshItem.Click += Refresh_Click;
+        var exitItem = new MenuItem { Header = "Exit" };
+        exitItem.Click += Exit_Click;
+        menu.Items.Add(showItem);
+        menu.Items.Add(refreshItem);
+        menu.Items.Add(new Separator());
+        menu.Items.Add(exitItem);
+        _trayIcon.ContextMenu = menu;
+
+        _trayIcon.ForceCreate();
     }
 
     private void SetupRoomManagerEvents()
@@ -86,7 +107,9 @@ public partial class MainWindow : Window
         _roomManager.OnEncryptionReady += () => Dispatcher.Invoke(() =>
         {
             SetStatus("E2E encrypted 🔒", true);
-            AppendLog("End-to-end encryption established");
+            AppendLog("End-to-end encryption established — hiding to tray");
+            // Auto-hide so Fluentia never holds focus during input relay
+            Hide();
         });
 
         // Text injection must NOT run on the UI thread — we need the target
@@ -228,11 +251,6 @@ public partial class MainWindow : Window
         Show();
         WindowState = WindowState.Normal;
         Activate();
-    }
-
-    private void TrayIcon_TrayRightMouseDown(object sender, RoutedEventArgs e)
-    {
-        // Context menu shows automatically
     }
 
     private void ShowWindow_Click(object sender, RoutedEventArgs e)
