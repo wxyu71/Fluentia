@@ -7,7 +7,7 @@
         MinWidth="360" MinHeight="480"
         WindowStartupLocation="CenterScreen"
         Background="{StaticResource BgDarkBrush}"
-        ResizeMode="CanMinimize">
+        ResizeMode="CanResize">
 
     <Window.Resources>
         <!-- Tray Icon -->

@@ -27,35 +27,27 @@ public partial class MainWindow : Window
     {
         _trayIcon = (TaskbarIcon)FindResource("TrayIcon");
 
-        // Generate a simple icon programmatically
-        var visual = new DrawingVisual();
-        using (var ctx = visual.RenderOpen())
+        // Create a 16x16 icon using GDI+
+        // System.Drawing.Icon requires ICO format; use GetHicon() on a Bitmap instead
+        using var bmp = new System.Drawing.Bitmap(16, 16, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+        using (var g = System.Drawing.Graphics.FromImage(bmp))
         {
-            ctx.DrawEllipse(
-                new SolidColorBrush(Color.FromRgb(99, 102, 241)),
-                null,
-                new System.Windows.Point(8, 8), 8, 8);
-            ctx.DrawText(
-                new FormattedText("F",
-                    System.Globalization.CultureInfo.InvariantCulture,
-                    FlowDirection.LeftToRight,
-                    new Typeface("Segoe UI"),
-                    10, Brushes.White,
-                    VisualTreeHelper.GetDpi(visual).PixelsPerDip),
-                new System.Windows.Point(4, 1));
+            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            g.Clear(System.Drawing.Color.Transparent);
+            // Purple circle
+            g.FillEllipse(
+                new System.Drawing.SolidBrush(System.Drawing.Color.FromArgb(99, 102, 241)),
+                0, 0, 15, 15);
+            // "F" letter
+            g.DrawString("F",
+                new System.Drawing.Font("Segoe UI", 8f, System.Drawing.FontStyle.Bold),
+                System.Drawing.Brushes.White,
+                new System.Drawing.PointF(1.5f, 1f));
         }
 
-        var bmp = new RenderTargetBitmap(16, 16, 96, 96, PixelFormats.Pbgra32);
-        bmp.Render(visual);
-
-        using var ms = new MemoryStream();
-        var encoder = new PngBitmapEncoder();
-        encoder.Frames.Add(BitmapFrame.Create(bmp));
-        encoder.Save(ms);
-        ms.Seek(0, SeekOrigin.Begin);
-
-        var icon = new System.Drawing.Icon(ms);
-        _trayIcon.Icon = icon;
+        // GetHicon() returns an unmanaged icon handle; wrap it for proper disposal
+        var hIcon = bmp.GetHicon();
+        _trayIcon.Icon = System.Drawing.Icon.FromHandle(hIcon);
     }
 
     private void SetupRoomManagerEvents()
@@ -140,7 +132,7 @@ public partial class MainWindow : Window
         using var qrGenerator = new QRCodeGenerator();
         using var qrCodeData = qrGenerator.CreateQrCode(qrData, QRCodeGenerator.ECCLevel.M);
         using var qrCode = new BitmapByteQRCode(qrCodeData);
-        var qrBytes = qrCode.GetGraphic(10, "#FFFFFF", "#12121F");
+        var qrBytes = qrCode.GetGraphic(10, "#000000", "#FFFFFF");
 
         using var ms = new MemoryStream(qrBytes);
         var bitmap = new BitmapImage();

@@ -118,12 +118,17 @@ dotnet run --project Fluentia
 
 ### 使用流程
 
-1. **启动服务端** — 确保 Go 服务运行在可访问的地址
-2. **启动 Windows 客户端** — 输入服务端 WebSocket 地址（如 `ws://192.168.1.100:8080/ws`），点击 "Connect & Create Room"
-3. **手机打开 Mobile Web** — 切换到 Scan 标签，扫描 PC 显示的 QR 码
-4. **开始输入** — 在手机上打字或使用语音输入，文字实时出现在电脑光标处
+1. **启动 Windows 客户端** — 双击 `Fluentia.exe`，主窗口弹出
+   - 输入服务端 WebSocket 地址：`wss://f.106918.xyz/ws`（已部署的公网服务器）
+   - 或局域网自建：`ws://192.168.x.x:8080/ws`
+   - 点击 **Connect & Create Room**，等待 QR 码出现
+2. **关闭窗口后最小化到托盘** — 右下角系统托盘会出现紫色圆形 **F** 图标，左键点击召回窗口
+3. **手机打开 Mobile Web** — 访问 `https://f.106918.xyz/`，切换到 **Scan** 标签，扫描 PC 上显示的 QR 码
+4. **开始输入** — 切换到 **Input** 标签，在任意 PC 应用中定位光标，手机端打字或使用语音输入，文字实时注入到当前光标处
 
-> ⚠️ **注意**: 手机摄像头扫码需要 HTTPS 或 localhost。局域网部署时需配置 SSL 证书，或使用反向代理。
+> **QR 码扫描说明**: 扫码需要摄像头权限，且页面必须在 HTTPS 或 localhost 下运行。已部署的 `https://f.106918.xyz` 已满足此条件。
+
+> ⚠️ **局域网自建 TLS**: `wss://` 要求服务端有 TLS 证书；局域网可通过 Nginx 反向代理 + Let's Encrypt，或使用 `ws://` 搭配本地 HTTP 页面（手机需关闭"安全 WebSocket"限制）。
 
 ## 通信协议
 

@@ -109,6 +109,8 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
     switch (msg.type) {
       case 'joined':
         setConnectionState('connected');
+        // PC created the room so it's already present — mark peer as connected
+        setPeerConnected(true);
         // Send our public key to the PC
         if (wsRef.current?.readyState === WebSocket.OPEN) {
           const keyMsg: WsMessage = {
