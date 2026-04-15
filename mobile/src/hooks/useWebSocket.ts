@@ -27,6 +27,7 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
   const reconnectAttemptRef = useRef(0);
   const reconnectTimerRef = useRef<number | null>(null);
   const intentionalCloseRef = useRef(false);
+  const connectionStateRef = useRef<ConnectionState>('disconnected');
 
   const cleanup = useCallback(() => {
     if (reconnectTimerRef.current !== null) {
@@ -52,6 +53,7 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
     cryptoRef.current.setPeerPublicKey(info.k);
 
     setConnectionState('connecting');
+    connectionStateRef.current = 'connecting';
     setLastError(null);
 
     const ws = new WebSocket(info.s);
@@ -80,16 +82,18 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
     ws.onclose = () => {
       if (intentionalCloseRef.current) {
         setConnectionState('disconnected');
+        connectionStateRef.current = 'disconnected';
         return;
       }
-      // Auto-reconnect
+      // Auto-reconnect — use ref to avoid stale closure over connectionState
       if (
         connInfoRef.current &&
-        connectionState !== 'preempted' &&
+        connectionStateRef.current !== 'preempted' &&
         reconnectAttemptRef.current < MAX_RECONNECT_ATTEMPTS
       ) {
         reconnectAttemptRef.current++;
         setConnectionState('connecting');
+        connectionStateRef.current = 'connecting';
         reconnectTimerRef.current = window.setTimeout(() => {
           if (connInfoRef.current) {
             connectWs(connInfoRef.current);
@@ -97,18 +101,20 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
         }, RECONNECT_DELAY);
       } else {
         setConnectionState('disconnected');
+        connectionStateRef.current = 'disconnected';
       }
     };
 
     ws.onerror = () => {
       setLastError('Connection error');
     };
-  }, [deviceId, cleanup, connectionState]);
+  }, [deviceId, cleanup]);
 
   const handleMessage = useCallback((msg: WsMessage) => {
     switch (msg.type) {
       case 'joined':
         setConnectionState('connected');
+        connectionStateRef.current = 'connected';
         // PC created the room so it's already present — mark peer as connected
         setPeerConnected(true);
         // Send our public key to the PC
@@ -141,6 +147,7 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
 
       case 'preempted':
         setConnectionState('preempted');
+        connectionStateRef.current = 'preempted';
         setLastError(msg.error || 'Another device connected');
         intentionalCloseRef.current = true;
         break;
@@ -156,6 +163,7 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
     cleanup();
     connInfoRef.current = null;
     setConnectionState('disconnected');
+    connectionStateRef.current = 'disconnected';
     setLastError(null);
   }, [cleanup]);
 

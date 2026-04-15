@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Threading;
 
 namespace Fluentia.Services;
 
@@ -6,6 +7,61 @@ public static class TextInjector
 {
     [DllImport("user32.dll", SetLastError = true)]
     private static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    // The HWND of Fluentia's own main window — set on startup
+    private static IntPtr _fluentiaHwnd = IntPtr.Zero;
+    // Last known non-Fluentia foreground window
+    private static IntPtr _targetHwnd = IntPtr.Zero;
+
+    public static void SetFluentiaHwnd(IntPtr hwnd) => _fluentiaHwnd = hwnd;
+
+    /// <summary>
+    /// Call this whenever any window gets focus; we remember the last non-Fluentia one.
+    /// </summary>
+    public static void RecordForegroundWindow()
+    {
+        var fg = GetForegroundWindow();
+        if (fg != IntPtr.Zero && fg != _fluentiaHwnd)
+            _targetHwnd = fg;
+    }
+
+    /// <summary>
+    /// Sends keyboard inputs to the currently focused window.
+    /// If Fluentia itself has focus (shouldn't happen in tray mode), attempt to
+    /// restore the last known target window before injecting.
+    /// </summary>
+    private static void RestoreFocusAndInject(INPUT[] inputs)
+    {
+        if (inputs.Length == 0) return;
+
+        var fg = GetForegroundWindow();
+
+        // Normal case: some other app has focus → just inject directly
+        if (fg != _fluentiaHwnd || _targetHwnd == IntPtr.Zero)
+        {
+            SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<INPUT>());
+            return;
+        }
+
+        // Edge case: Fluentia somehow has focus → try to restore the real target
+        // Minimise our own window first to help SetForegroundWindow succeed
+        ShowWindow(_fluentiaHwnd, SW_MINIMIZE);
+        Thread.Sleep(50);
+        SetForegroundWindow(_targetHwnd);
+        Thread.Sleep(50);
+
+        SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<INPUT>());
+    }
+
+    [DllImport("user32.dll")]
+    private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+    private const int SW_MINIMIZE = 6;
 
     [StructLayout(LayoutKind.Sequential)]
     private struct INPUT
@@ -38,36 +94,41 @@ public static class TextInjector
 
     /// <summary>
     /// Types a Unicode string by simulating keyboard input at the current cursor position.
+    /// Restores focus to the last known target window before sending.
     /// </summary>
     public static void TypeText(string text)
     {
         if (string.IsNullOrEmpty(text)) return;
 
-        // For surrogate pairs, we need to handle them carefully
+        var list = new List<INPUT>();
+        int size = Marshal.SizeOf<INPUT>();
+
         foreach (var c in text)
         {
             if (c == '\n')
             {
-                // Send Enter key
-                SendKey(0x0D, false);
+                // VK_RETURN key down + up
+                list.Add(MakeVkInput(0x0D, false));
+                list.Add(MakeVkInput(0x0D, true));
                 continue;
             }
 
-            var inputs = new INPUT[2];
-            int size = Marshal.SizeOf<INPUT>();
-
-            // Key down
-            inputs[0].Type = INPUT_KEYBOARD;
-            inputs[0].U.ki.wScan = (ushort)c;
-            inputs[0].U.ki.dwFlags = KEYEVENTF_UNICODE;
-
-            // Key up
-            inputs[1].Type = INPUT_KEYBOARD;
-            inputs[1].U.ki.wScan = (ushort)c;
-            inputs[1].U.ki.dwFlags = KEYEVENTF_UNICODE | KEYEVENTF_KEYUP;
-
-            SendInput(2, inputs, size);
+            // Unicode key down
+            list.Add(new INPUT
+            {
+                Type = INPUT_KEYBOARD,
+                U = { ki = new KEYBDINPUT { wScan = (ushort)c, dwFlags = KEYEVENTF_UNICODE } }
+            });
+            // Unicode key up
+            list.Add(new INPUT
+            {
+                Type = INPUT_KEYBOARD,
+                U = { ki = new KEYBDINPUT { wScan = (ushort)c, dwFlags = KEYEVENTF_UNICODE | KEYEVENTF_KEYUP } }
+            });
         }
+
+        if (list.Count > 0)
+            RestoreFocusAndInject(list.ToArray());
     }
 
     /// <summary>
@@ -77,24 +138,22 @@ public static class TextInjector
     {
         if (count <= 0) return;
 
+        var list = new List<INPUT>(count * 2);
         for (int i = 0; i < count; i++)
         {
-            SendKey(VK_BACK, false);
+            list.Add(MakeVkInput(VK_BACK, false));
+            list.Add(MakeVkInput(VK_BACK, true));
         }
+
+        RestoreFocusAndInject(list.ToArray());
     }
 
-    private static void SendKey(ushort vk, bool extended)
+    private static INPUT MakeVkInput(ushort vk, bool keyUp)
     {
-        var inputs = new INPUT[2];
-        int size = Marshal.SizeOf<INPUT>();
-
-        inputs[0].Type = INPUT_KEYBOARD;
-        inputs[0].U.ki.wVk = vk;
-
-        inputs[1].Type = INPUT_KEYBOARD;
-        inputs[1].U.ki.wVk = vk;
-        inputs[1].U.ki.dwFlags = KEYEVENTF_KEYUP;
-
-        SendInput(2, inputs, size);
+        return new INPUT
+        {
+            Type = INPUT_KEYBOARD,
+            U = { ki = new KEYBDINPUT { wVk = vk, dwFlags = keyUp ? KEYEVENTF_KEYUP : 0u } }
+        };
     }
 }

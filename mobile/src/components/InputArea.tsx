@@ -30,10 +30,12 @@ export const InputArea: React.FC<InputAreaProps> = ({ encryptionReady, onSendCom
   const handleInput = useCallback((e: React.FormEvent<HTMLTextAreaElement>) => {
     const newText = e.currentTarget.value;
     setText(newText);
-    if (!isComposing && encryptionReady) {
+    // Always send diffs — including during composition (voice input / IME).
+    // This enables real-time streaming of every character change.
+    if (encryptionReady) {
       sendDiff(newText);
     }
-  }, [isComposing, encryptionReady, sendDiff]);
+  }, [encryptionReady, sendDiff]);
 
   const handleCompositionStart = useCallback(() => {
     setIsComposing(true);

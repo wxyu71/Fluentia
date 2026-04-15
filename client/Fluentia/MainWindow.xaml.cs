@@ -1,7 +1,9 @@
 using System.IO;
 using System.Windows;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 using Fluentia.Models;
 using Fluentia.Services;
 using H.NotifyIcon;
@@ -13,6 +15,7 @@ public partial class MainWindow : Window
 {
     private readonly RoomManager _roomManager;
     private TaskbarIcon? _trayIcon;
+    private DispatcherTimer? _focusTracker;
 
     public MainWindow()
     {
@@ -21,6 +24,15 @@ public partial class MainWindow : Window
         SetupRoomManagerEvents();
         SetupTrayIcon();
         Closing += MainWindow_Closing;
+        // Register our HWND and start tracking the foreground window
+        Loaded += (_, _) =>
+        {
+            var hwnd = new WindowInteropHelper(this).Handle;
+            TextInjector.SetFluentiaHwnd(hwnd);
+            _focusTracker = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
+            _focusTracker.Tick += (_, _) => TextInjector.RecordForegroundWindow();
+            _focusTracker.Start();
+        };
     }
 
     private void SetupTrayIcon()
@@ -77,10 +89,9 @@ public partial class MainWindow : Window
             AppendLog("End-to-end encryption established");
         });
 
-        _roomManager.OnInputCommand += (cmd) => Dispatcher.Invoke(() =>
-        {
-            HandleInputCommand(cmd);
-        });
+        // Text injection must NOT run on the UI thread — we need the target
+        // app's window to hold focus, not Fluentia. Run on a thread-pool thread.
+        _roomManager.OnInputCommand += (cmd) => Task.Run(() => HandleInputCommand(cmd));
 
         _roomManager.OnStatusChanged += (status) => Dispatcher.Invoke(() =>
         {
@@ -94,6 +105,7 @@ public partial class MainWindow : Window
         });
     }
 
+    // Called from a thread-pool thread — do NOT touch UI controls directly here
     private void HandleInputCommand(InputCommand cmd)
     {
         switch (cmd.Type)
@@ -102,7 +114,8 @@ public partial class MainWindow : Window
                 if (!string.IsNullOrEmpty(cmd.Text))
                 {
                     TextInjector.TypeText(cmd.Text);
-                    AppendLog($"→ \"{Truncate(cmd.Text, 40)}\"");
+                    var preview = Truncate(cmd.Text, 40);
+                    Dispatcher.BeginInvoke(() => AppendLog($"→ \"{preview}\""));
                 }
                 break;
 
@@ -110,12 +123,13 @@ public partial class MainWindow : Window
                 if (cmd.Count > 0)
                 {
                     TextInjector.SendBackspace(cmd.Count);
-                    AppendLog($"← Backspace x{cmd.Count}");
+                    var n = cmd.Count;
+                    Dispatcher.BeginInvoke(() => AppendLog($"← Backspace x{n}"));
                 }
                 break;
 
             case "clear":
-                AppendLog("○ Clear signal received");
+                Dispatcher.BeginInvoke(() => AppendLog("○ Clear signal received"));
                 break;
         }
     }
