@@ -1,0 +1,34 @@
+node_modules/
+dist/
+build/
+coverage/
+.DS_Store
+.env
+.vscode/
+.idea/
+*.log
+*.tmp
+*.bak
+*.swp
+*.swo
+*.zip
+*.tar.gz
+*.tgz
+*.7z
+
+# Go
+server/fluentia-server
+server/fluentia-server.exe
+
+# C# / .NET
+client/Fluentia/bin/
+client/Fluentia/obj/
+*.user
+*.suo
+
+# OS
+*.pyc
+*.pyo
+*.class
+*.jar
+*.war

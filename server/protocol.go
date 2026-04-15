@@ -1,0 +1,29 @@
+package main
+
+// Message type constants
+const (
+	MsgCreateRoom  = "create_room"
+	MsgRoomCreated = "room_created"
+	MsgJoinRoom    = "join_room"
+	MsgJoined      = "joined"
+	MsgPeerJoined  = "peer_joined"
+	MsgPeerLeft    = "peer_left"
+	MsgPreempted   = "preempted"
+	MsgKeyExchange = "key_exchange"
+	MsgEncrypted   = "encrypted"
+	MsgPing        = "ping"
+	MsgPong        = "pong"
+	MsgError       = "error"
+)
+
+// Message is the universal message envelope for all WebSocket communication.
+type Message struct {
+	Type      string `json:"type"`
+	Token     string `json:"token,omitempty"`
+	DeviceID  string `json:"deviceId,omitempty"`
+	Role      string `json:"role,omitempty"`
+	PublicKey string `json:"publicKey,omitempty"`
+	Payload   string `json:"payload,omitempty"`
+	Nonce     string `json:"nonce,omitempty"`
+	Error     string `json:"error,omitempty"`
+}

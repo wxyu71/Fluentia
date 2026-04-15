@@ -1,0 +1,78 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
+namespace Fluentia.Models;
+
+public class WsMessage
+{
+    [JsonPropertyName("type")]
+    public string Type { get; set; } = "";
+
+    [JsonPropertyName("token")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Token { get; set; }
+
+    [JsonPropertyName("deviceId")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? DeviceId { get; set; }
+
+    [JsonPropertyName("role")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Role { get; set; }
+
+    [JsonPropertyName("publicKey")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? PublicKey { get; set; }
+
+    [JsonPropertyName("payload")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Payload { get; set; }
+
+    [JsonPropertyName("nonce")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Nonce { get; set; }
+
+    [JsonPropertyName("error")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Error { get; set; }
+
+    public string Serialize() => JsonSerializer.Serialize(this);
+
+    public static WsMessage? Deserialize(string json) =>
+        JsonSerializer.Deserialize<WsMessage>(json);
+}
+
+public class InputCommand
+{
+    [JsonPropertyName("type")]
+    public string Type { get; set; } = "";
+
+    [JsonPropertyName("text")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Text { get; set; }
+
+    [JsonPropertyName("count")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public int Count { get; set; }
+
+    public string Serialize() => JsonSerializer.Serialize(this);
+
+    public static InputCommand? Deserialize(string json) =>
+        JsonSerializer.Deserialize<InputCommand>(json);
+}
+
+public static class MsgTypes
+{
+    public const string CreateRoom = "create_room";
+    public const string RoomCreated = "room_created";
+    public const string JoinRoom = "join_room";
+    public const string Joined = "joined";
+    public const string PeerJoined = "peer_joined";
+    public const string PeerLeft = "peer_left";
+    public const string Preempted = "preempted";
+    public const string KeyExchange = "key_exchange";
+    public const string Encrypted = "encrypted";
+    public const string Ping = "ping";
+    public const string Pong = "pong";
+    public const string Error = "error";
+}
