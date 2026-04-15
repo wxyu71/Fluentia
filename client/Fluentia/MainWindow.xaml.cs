@@ -18,6 +18,7 @@ public partial class MainWindow : Window
     private readonly RoomManager _roomManager;
     private TaskbarIcon? _trayIcon;
     private System.Drawing.Icon? _appIcon; // prevent GC of the icon handle
+    private readonly object _injectLock = new(); // serialize all injection ops
 
     [DllImport("user32.dll")]
     private static extern bool DestroyIcon(IntPtr handle);
@@ -128,32 +129,45 @@ public partial class MainWindow : Window
         });
     }
 
-    // Called from a thread-pool thread — do NOT touch UI controls directly here
+    // Called from a thread-pool thread — do NOT touch UI controls directly here.
+    // Uses lock to serialize commands so rapid diffs don't interleave.
     private void HandleInputCommand(InputCommand cmd)
     {
-        switch (cmd.Type)
+        lock (_injectLock)
         {
-            case "text_commit":
-                if (!string.IsNullOrEmpty(cmd.Text))
-                {
-                    TextInjector.TypeText(cmd.Text);
-                    var preview = Truncate(cmd.Text, 40);
-                    Dispatcher.BeginInvoke(() => AppendLog($"→ \"{preview}\""));
-                }
-                break;
+            switch (cmd.Type)
+            {
+                case "diff":
+                    // Atomic diff: backspace + insert in one SendInput call
+                    TextInjector.ApplyDiff(cmd.Count, cmd.Text ?? "");
+                    var bs = cmd.Count;
+                    var ins = cmd.Text ?? "";
+                    var preview = Truncate(ins, 30);
+                    Dispatcher.BeginInvoke(() => AppendLog($"⇄ diff bs={bs} ins=\"{preview}\""));
+                    break;
 
-            case "backspace":
-                if (cmd.Count > 0)
-                {
-                    TextInjector.SendBackspace(cmd.Count);
-                    var n = cmd.Count;
-                    Dispatcher.BeginInvoke(() => AppendLog($"← Backspace x{n}"));
-                }
-                break;
+                case "text_commit":
+                    if (!string.IsNullOrEmpty(cmd.Text))
+                    {
+                        TextInjector.TypeText(cmd.Text);
+                        var p = Truncate(cmd.Text, 40);
+                        Dispatcher.BeginInvoke(() => AppendLog($"→ \"{p}\""));
+                    }
+                    break;
 
-            case "clear":
-                Dispatcher.BeginInvoke(() => AppendLog("○ Clear signal received"));
-                break;
+                case "backspace":
+                    if (cmd.Count > 0)
+                    {
+                        TextInjector.SendBackspace(cmd.Count);
+                        var n = cmd.Count;
+                        Dispatcher.BeginInvoke(() => AppendLog($"← Backspace x{n}"));
+                    }
+                    break;
+
+                case "clear":
+                    Dispatcher.BeginInvoke(() => AppendLog("○ Clear signal received"));
+                    break;
+            }
         }
     }
 

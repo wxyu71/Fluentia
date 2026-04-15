@@ -17,11 +17,10 @@ export const InputArea: React.FC<InputAreaProps> = ({ encryptionReady, onSendCom
 
   const sendDiff = useCallback((newText: string) => {
     const diff = computeDiff(lastSentRef.current, newText);
-    if (diff.backspace > 0) {
-      onSendCommand({ type: 'backspace', count: diff.backspace });
-    }
-    if (diff.insert) {
-      onSendCommand({ type: 'text_commit', text: diff.insert });
+    // Send as a single atomic 'diff' command so the PC can apply
+    // backspace + insert in one SendInput call — prevents race conditions.
+    if (diff.backspace > 0 || diff.insert) {
+      onSendCommand({ type: 'diff', count: diff.backspace, text: diff.insert || '' });
     }
     lastSentRef.current = newText;
     setCharCount((prev) => prev + (diff.insert?.length || 0));

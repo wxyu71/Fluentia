@@ -25,7 +25,7 @@ export interface TextDiff {
 
 // Encrypted inner message (after decryption)
 export interface InputCommand {
-  type: 'text_commit' | 'composition_update' | 'composition_end' | 'backspace' | 'clear';
+  type: 'diff' | 'text_commit' | 'backspace' | 'clear';
   text?: string;
   count?: number;
 }

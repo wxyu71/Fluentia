@@ -100,6 +100,51 @@ public static class TextInjector
         Inject(list.ToArray());
     }
 
+    /// <summary>
+    /// Atomically apply a diff: send N backspaces followed by unicode text
+    /// in a single SendInput call so they cannot be interleaved with other events.
+    /// </summary>
+    public static void ApplyDiff(int backspace, string text)
+    {
+        var list = new List<INPUT>();
+
+        for (int i = 0; i < backspace; i++)
+        {
+            list.Add(MakeVkInput(VK_BACK, false));
+            list.Add(MakeVkInput(VK_BACK, true));
+        }
+
+        if (!string.IsNullOrEmpty(text))
+        {
+            foreach (char c in text)
+            {
+                if (c == '\n')
+                {
+                    list.Add(MakeVkInput(0x0D, false));
+                    list.Add(MakeVkInput(0x0D, true));
+                    continue;
+                }
+
+                list.Add(new INPUT
+                {
+                    Type = INPUT_KEYBOARD,
+                    ki = new KEYBDINPUT { wScan = (ushort)c, dwFlags = KEYEVENTF_UNICODE }
+                });
+                list.Add(new INPUT
+                {
+                    Type = INPUT_KEYBOARD,
+                    ki = new KEYBDINPUT { wScan = (ushort)c, dwFlags = KEYEVENTF_UNICODE | KEYEVENTF_KEYUP }
+                });
+            }
+        }
+
+        if (list.Count > 0)
+        {
+            DiagnosticLog?.Invoke($"[ApplyDiff] bs={backspace} insert={text?.Length ?? 0} chars, events={list.Count}");
+            Inject(list.ToArray());
+        }
+    }
+
     private static INPUT MakeVkInput(ushort vk, bool keyUp)
     {
         return new INPUT
