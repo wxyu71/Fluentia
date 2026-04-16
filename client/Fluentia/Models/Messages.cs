@@ -84,6 +84,35 @@ public class InputCommand
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Seed { get; set; }
 
+    // File transfer fields
+    [JsonPropertyName("transferId")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? TransferId { get; set; }
+
+    [JsonPropertyName("fileName")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? FileName { get; set; }
+
+    [JsonPropertyName("fileSize")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public long FileSize { get; set; }
+
+    [JsonPropertyName("mimeType")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? MimeType { get; set; }
+
+    [JsonPropertyName("chunkIndex")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public int ChunkIndex { get; set; }
+
+    [JsonPropertyName("chunkData")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ChunkData { get; set; }  // base64-encoded chunk bytes
+
+    [JsonPropertyName("isLast")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool IsLast { get; set; }
+
     public string Serialize() => JsonSerializer.Serialize(this);
 
     public static InputCommand? Deserialize(string json) =>

@@ -55,11 +55,13 @@ export const App: React.FC = () => {
   const [scannerOverlay, setScannerOverlay] = useState(false);
   const inputAreaRef = useRef<InputAreaHandle>(null);
 
-  // Handle PC → mobile commands (e.g. focus_change → reset diff state)
+  // Handle PC → mobile commands (focus_change = pause, focus_regained = resume)
   useEffect(() => {
     onPcCommand.current = (cmd) => {
       if (cmd.type === 'focus_change') {
-        inputAreaRef.current?.resetDiffState();
+        inputAreaRef.current?.pauseSync();
+      } else if (cmd.type === 'focus_regained') {
+        inputAreaRef.current?.resumeSync();
       }
     };
     return () => { onPcCommand.current = null; };

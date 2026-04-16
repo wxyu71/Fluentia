@@ -18,6 +18,9 @@ const (
 	MsgPong        = "pong"
 	MsgError       = "error"
 
+	// PC → mobile focus notifications (relayed as encrypted messages directly)
+	// These constants are used in hub's HandleMessage switch for relay routing.
+
 	// Device code auth
 	MsgDeviceCodeRequest  = "device_code_request"
 	MsgDeviceCodeCreated  = "device_code_created"

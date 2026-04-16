@@ -9,6 +9,7 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>Fluentia</AssemblyName>
     <RootNamespace>Fluentia</RootNamespace>
+    <ApplicationIcon>fluentia.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>

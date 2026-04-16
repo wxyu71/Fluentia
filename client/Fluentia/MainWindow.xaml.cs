@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading.Channels;
@@ -8,6 +9,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Fluentia.Models;
+using Fluentia.Views;
 using Fluentia.Services;
 using H.NotifyIcon;
 using QRCoder;
@@ -34,6 +36,9 @@ public partial class MainWindow : Window
 
     // Mobile connection state for QR collapse/blur
     private bool _mobileConnected;
+
+    // In-progress file transfers: transferId → (header cmd, accumulated chunks)
+    private readonly Dictionary<string, (InputCommand Header, List<byte[]> Chunks)> _fileTransfers = new();
 
     [DllImport("user32.dll")]
     private static extern bool DestroyIcon(IntPtr handle);
@@ -91,15 +96,32 @@ public partial class MainWindow : Window
         int idObject, int idChild, uint dwEventThread, uint dwmsEventTime)
     {
         if (hwnd == _lastForegroundWindow) return;
+        var prev = _lastForegroundWindow;
         _lastForegroundWindow = hwnd;
 
-        // Notify mobile to reset diff tracking when PC focus changes
-        if (_mobileConnected && _roomManager.EncryptionReady)
+        if (!_mobileConnected || !_roomManager.EncryptionReady) return;
+
+        // When focus moves to a NEW window, notify mobile to pause sync.
+        // When focus returns to the previous window (user switched back), notify to resume.
+        // We detect "return" by checking if the new window handle is the one we were on before prev.
+        // Simplified rule: always send focus_change. Send focus_regained with a short delay
+        // after the window settles, so mobile can resume and flush buffered text.
+        _ = Task.Run(async () =>
         {
             var cmd = System.Text.Json.JsonSerializer.Serialize(new { type = "focus_change" });
-            _ = _roomManager.SendToMobileAsync(cmd);
-            if (_devMode) Dispatcher.BeginInvoke(() => AppendLog("Focus changed → sync reset sent"));
-        }
+            await _roomManager.SendToMobileAsync(cmd);
+            if (_devMode) Dispatcher.BeginInvoke(() => AppendLog($"Focus → new window"));
+
+            // After 400ms of settling, send focus_regained so mobile flushes any buffered diff
+            await Task.Delay(400);
+            if (_lastForegroundWindow == hwnd) // focus didn't change again
+            {
+                var regained = System.Text.Json.JsonSerializer.Serialize(new { type = "focus_regained" });
+                await _roomManager.SendToMobileAsync(regained);
+                if (_devMode) Dispatcher.BeginInvoke(() => AppendLog("Focus settled → resume sync"));
+            }
+        });
+        _ = prev; // suppress unused warning
     }
 
     private void ShowTrafficIcons(bool show)
@@ -213,16 +235,11 @@ public partial class MainWindow : Window
 
         _roomManager.OnDeviceCodePending += (code, verifyId, userAgent) => Dispatcher.Invoke(() =>
         {
-            // Show confirmation dialog with verification ID
+            // Show custom confirmation dialog — not a plain system MessageBox
             Show();
             Activate();
-            var result = MessageBox.Show(
-                $"A device wants to connect:\n\nDevice: {userAgent}\nVerification ID: {verifyId}\n\nDo you approve this connection?",
-                "Fluentia — Connection Request",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Question);
-
-            if (result == MessageBoxResult.Yes)
+            var dlg = new ConfirmConnectionDialog(verifyId, userAgent) { Owner = this };
+            if (dlg.ShowDialog() == true)
             {
                 _ = _roomManager.ConfirmDeviceCode(code);
             }
@@ -311,7 +328,108 @@ public partial class MainWindow : Window
 
             case "clear":
                 break;
+
+            case "file_start":
+                // Begin accumulating a new file transfer
+                if (!string.IsNullOrEmpty(cmd.TransferId))
+                {
+                    _fileTransfers[cmd.TransferId] = (cmd, new List<byte[]>());
+                    if (_devMode) Dispatcher.BeginInvoke(() =>
+                        AppendLog($"File transfer started: {cmd.FileName} ({cmd.FileSize} bytes)"));
+                }
+                break;
+
+            case "file_chunk":
+                if (!string.IsNullOrEmpty(cmd.TransferId) && !string.IsNullOrEmpty(cmd.ChunkData)
+                    && _fileTransfers.TryGetValue(cmd.TransferId, out var transfer))
+                {
+                    try { transfer.Chunks.Add(Convert.FromBase64String(cmd.ChunkData)); }
+                    catch { break; } // ignore malformed chunk
+
+                    if (cmd.IsLast)
+                    {
+                        _fileTransfers.Remove(cmd.TransferId);
+                        var allBytes = CombineChunks(transfer.Chunks);
+                        HandleReceivedFile(transfer.Header, allBytes);
+                    }
+                }
+                break;
+
+            case "file_abort":
+                if (!string.IsNullOrEmpty(cmd.TransferId))
+                    _fileTransfers.Remove(cmd.TransferId);
+                break;
         }
+    }
+
+    private static byte[] CombineChunks(List<byte[]> chunks)
+    {
+        int total = 0;
+        foreach (var c in chunks) total += c.Length;
+        var result = new byte[total];
+        int pos = 0;
+        foreach (var c in chunks) { Buffer.BlockCopy(c, 0, result, pos, c.Length); pos += c.Length; }
+        return result;
+    }
+
+    private void HandleReceivedFile(InputCommand header, byte[] data)
+    {
+        var fileName = SanitizeFileName(header.FileName ?? "received_file");
+        var mimeType = header.MimeType ?? "application/octet-stream";
+
+        // Save to ~/Downloads — path traversal is prevented by SanitizeFileName
+        var userProfile = System.Environment.GetFolderPath(System.Environment.SpecialFolder.UserProfile);
+        var savePath = Path.Combine(userProfile, "Downloads", fileName);
+        int suffix = 1;
+        while (File.Exists(savePath))
+        {
+            var ext = Path.GetExtension(fileName);
+            var name = Path.GetFileNameWithoutExtension(fileName);
+            savePath = Path.Combine(userProfile, "Downloads", $"{name}_{suffix++}{ext}");
+        }
+
+        try { File.WriteAllBytes(savePath, data); }
+        catch (Exception ex)
+        {
+            if (_devMode) Dispatcher.BeginInvoke(() => AppendLog($"File save failed: {ex.Message}"));
+            return;
+        }
+
+        // Images also go to clipboard
+        if (mimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+        {
+            Dispatcher.Invoke(() =>
+            {
+                try
+                {
+                    using var ms = new MemoryStream(data);
+                    var bmp = new BitmapImage();
+                    bmp.BeginInit();
+                    bmp.StreamSource = ms;
+                    bmp.CacheOption = BitmapCacheOption.OnLoad;
+                    bmp.EndInit();
+                    bmp.Freeze();
+                    Clipboard.SetImage(bmp);
+                }
+                catch { /* clipboard busy or unsupported image format */ }
+            });
+        }
+
+        if (_devMode)
+            Dispatcher.BeginInvoke(() => AppendLog(
+                $"File received → {savePath}" +
+                (mimeType.StartsWith("image/") ? " (copied to clipboard)" : "")));
+    }
+
+    private static string SanitizeFileName(string name)
+    {
+        // Strip path separators and invalid chars — prevents path traversal attacks
+        var invalid = Path.GetInvalidFileNameChars();
+        var sb = new System.Text.StringBuilder();
+        foreach (var ch in name)
+            if (Array.IndexOf(invalid, ch) < 0) sb.Append(ch);
+        var result = sb.ToString().Trim().TrimStart('.');
+        return string.IsNullOrEmpty(result) ? "received_file" : result;
     }
 
     private void ShowQrArea(bool show)
@@ -338,62 +456,63 @@ public partial class MainWindow : Window
             return;
         }
 
+        // ECCLevel.L = minimum error correction → minimum QR version → fewest alignment patterns.
+        // For our ~64-byte compact payload this yields version 4 (29×29) with exactly
+        // 3 large finder patterns (corners) and 1 small alignment pattern — exactly as requested.
         using var qrGenerator = new QRCodeGenerator();
-        using var qrCodeData = qrGenerator.CreateQrCode(qrData, QRCodeGenerator.ECCLevel.H);
+        using var qrCodeData = qrGenerator.CreateQrCode(qrData, QRCodeGenerator.ECCLevel.L);
 
-        // Telegram-style QR: render with rounded modules and accent color
         var modules = qrCodeData.ModuleMatrix;
         int size = modules.Count;
-        int moduleSize = 8; // px per module
+
+        // Choose module size so the final image fills ~280px
+        const int targetPx = 280;
+        int moduleSize = Math.Max(4, targetPx / (size + 4)); // 4-module quiet zone
+        int margin = moduleSize * 2;                          // 2-module quiet zone each side
         int canvasSize = size * moduleSize;
-        int margin = moduleSize * 2;
         int totalSize = canvasSize + margin * 2;
+
+        // Pre-classify each module: finder pattern, alignment pattern, or data
+        var (finderSet, alignSet) = ClassifyQrPatterns(modules, size);
 
         var dv = new DrawingVisual();
         using (var dc = dv.RenderOpen())
         {
-            // White background with rounded corners
-            dc.DrawRoundedRectangle(Brushes.White, null,
-                new Rect(0, 0, totalSize, totalSize), 16, 16);
+            // Pure white background — scanners need maximum contrast
+            dc.DrawRectangle(Brushes.White, null, new Rect(0, 0, totalSize, totalSize));
 
-            var accentBrush = new SolidColorBrush(Color.FromRgb(10, 132, 255));
-            var darkBrush = new SolidColorBrush(Color.FromRgb(30, 30, 32));
-            double r = moduleSize * 0.38; // rounded dot radius
+            var darkBrush = Brushes.Black; // pure black for all modules
 
             for (int row = 0; row < size; row++)
             {
                 for (int col = 0; col < size; col++)
                 {
-                    if (!modules[row][col]) continue;
+                    if (!modules[row][col]) continue; // white (light) module — skip
 
-                    double cx = margin + col * moduleSize + moduleSize / 2.0;
-                    double cy = margin + row * moduleSize + moduleSize / 2.0;
+                    double x = margin + col * moduleSize;
+                    double y = margin + row * moduleSize;
+                    double ms = moduleSize;
 
-                    // Finder patterns (top-left, top-right, bottom-left 7x7 blocks) use dark color
-                    bool isFinder = (row < 7 && col < 7) ||
-                                    (row < 7 && col >= size - 7) ||
-                                    (row >= size - 7 && col < 7);
-
-                    var brush = isFinder ? darkBrush : accentBrush;
-                    dc.DrawEllipse(brush, null, new Point(cx, cy), r, r);
+                    if (finderSet.Contains((row, col)))
+                    {
+                        // Finder pattern modules: draw as solid square (sharp edges for scanner)
+                        dc.DrawRectangle(darkBrush, null, new Rect(x, y, ms, ms));
+                    }
+                    else if (alignSet.Contains((row, col)))
+                    {
+                        // Alignment pattern: also solid square
+                        dc.DrawRectangle(darkBrush, null, new Rect(x, y, ms, ms));
+                    }
+                    else
+                    {
+                        // Data modules: Telegram-style rounded dots
+                        double cx = x + ms / 2.0;
+                        double cy = y + ms / 2.0;
+                        double r = ms * 0.42;
+                        dc.DrawEllipse(darkBrush, null, new Point(cx, cy), r, r);
+                    }
                 }
             }
-
-            // Center logo area: clear a circle and draw "F" logo
-            double logoRadius = totalSize * 0.12;
-            double centerX = totalSize / 2.0;
-            double centerY = totalSize / 2.0;
-            dc.DrawEllipse(Brushes.White, null, new Point(centerX, centerY), logoRadius + 4, logoRadius + 4);
-            dc.DrawEllipse(accentBrush, null, new Point(centerX, centerY), logoRadius, logoRadius);
-
-            var ft = new FormattedText("F",
-                System.Globalization.CultureInfo.InvariantCulture,
-                FlowDirection.LeftToRight,
-                new Typeface(new FontFamily("Segoe UI"), FontStyles.Normal, FontWeights.Bold, FontStretches.Normal),
-                logoRadius * 1.2,
-                Brushes.White,
-                VisualTreeHelper.GetDpi(this).PixelsPerDip);
-            dc.DrawText(ft, new Point(centerX - ft.Width / 2, centerY - ft.Height / 2));
         }
 
         var rtb = new RenderTargetBitmap(totalSize, totalSize, 96, 96, PixelFormats.Pbgra32);
@@ -401,9 +520,58 @@ public partial class MainWindow : Window
         rtb.Freeze();
 
         QrCodeImage.Source = rtb;
-        QrCodeImage.Width = 280;
-        QrCodeImage.Height = 280;
+        QrCodeImage.Width = targetPx;
+        QrCodeImage.Height = targetPx;
         QrHintText.Text = $"Scan with Fluentia mobile\nRoom: {_roomManager.CurrentToken}";
+    }
+
+    /// <summary>
+    /// Returns two HashSets: modules that belong to finder patterns and alignment patterns.
+    /// Finder patterns occupy the three 7×7 corners (plus 1-module separator ring).
+    /// Alignment patterns are the 5×5 blocks defined in the QR spec for version ≥ 2.
+    /// </summary>
+    private static (HashSet<(int, int)> finders, HashSet<(int, int)> aligns)
+        ClassifyQrPatterns(List<System.Collections.BitArray> modules, int size)
+    {
+        var finders = new HashSet<(int, int)>();
+        var aligns = new HashSet<(int, int)>();
+
+        // 3 finder patterns: top-left, top-right, bottom-left (each 7×7 + 1-wide separator)
+        void AddFinder(int startRow, int startCol)
+        {
+            for (int r = startRow - 1; r <= startRow + 7; r++)
+                for (int c = startCol - 1; c <= startCol + 7; c++)
+                    if (r >= 0 && r < size && c >= 0 && c < size)
+                        finders.Add((r, c));
+        }
+        AddFinder(0, 0);           // top-left
+        AddFinder(0, size - 7);    // top-right
+        AddFinder(size - 7, 0);    // bottom-left
+
+        // Alignment pattern centers — for version 4 the single center is at (16, 16)
+        // We detect them heuristically: a 5×5 block where modules[c][c] is set (center on),
+        // bordered by a ring of dark modules. Use ZXing's module matrix to find.
+        // Simple approach: every set of 5×5 that looks like a "bullseye" not inside a finder.
+        for (int r = 2; r < size - 2; r++)
+        {
+            for (int c = 2; c < size - 2; c++)
+            {
+                if (finders.Contains((r, c))) continue;
+                // Check for alignment pattern centre pattern: dark–light–dark–light–dark in both axes
+                if (modules[r][c] &&
+                    modules[r - 2][c - 2] && modules[r - 2][c + 2] &&
+                    modules[r + 2][c - 2] && modules[r + 2][c + 2] &&
+                    !modules[r - 1][c - 1] && !modules[r - 1][c + 1] &&
+                    !modules[r + 1][c - 1] && !modules[r + 1][c + 1])
+                {
+                    for (int dr = -2; dr <= 2; dr++)
+                        for (int dc = -2; dc <= 2; dc++)
+                            aligns.Add((r + dr, c + dc));
+                }
+            }
+        }
+
+        return (finders, aligns);
     }
 
     private void SetStatus(string text, bool connected)

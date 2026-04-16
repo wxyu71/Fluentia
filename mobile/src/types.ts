@@ -30,10 +30,19 @@ export interface TextDiff {
 
 // Encrypted inner message (after decryption)
 export interface InputCommand {
-  type: 'diff' | 'text_commit' | 'backspace' | 'clear' | 'ratchet_init' | 'clipboard';
+  type: 'diff' | 'text_commit' | 'backspace' | 'clear' | 'ratchet_init' | 'clipboard'
+      | 'file_start' | 'file_chunk' | 'file_abort';
   text?: string;
   count?: number;
   seed?: string;
+  // file transfer fields
+  fileName?: string;
+  fileSize?: number;     // total bytes
+  mimeType?: string;
+  chunkIndex?: number;
+  chunkData?: string;    // base64-encoded binary chunk
+  isLast?: boolean;
+  transferId?: string;   // random ID to correlate chunks to a transfer
 }
 
 // History entry

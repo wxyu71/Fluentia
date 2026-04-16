@@ -1,6 +1,7 @@
 import React, { useRef, useCallback, useImperativeHandle, forwardRef } from 'react';
 import { computeDiff } from '../utils/diff';
 import { ScanIcon, ClearIcon, ClipboardIcon } from './Icons';
+import { FileTransfer } from './FileTransfer';
 import type { InputCommand, HistoryEntry } from '../types';
 
 interface InputAreaProps {
@@ -14,7 +15,10 @@ interface InputAreaProps {
 }
 
 export interface InputAreaHandle {
-  resetDiffState: () => void;
+  /** Called when PC focus changes AWAY from target window — pause sync, keep lastSentRef intact */
+  pauseSync: () => void;
+  /** Called when PC focus returns to a text window — resume sync and immediately flush pending diff */
+  resumeSync: () => void;
 }
 
 export const InputArea = forwardRef<InputAreaHandle, InputAreaProps>(({
@@ -29,15 +33,12 @@ export const InputArea = forwardRef<InputAreaHandle, InputAreaProps>(({
   const lastSentRef = useRef('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const charCountRef = useRef(0);
+  const syncPausedRef = useRef(false);   // true while PC focus is on another window
+  const isComposingRef = useRef(false);  // true during IME composition — skip diff during compose
 
-  // Expose resetDiffState to parent (used when PC focus changes)
-  useImperativeHandle(ref, () => ({
-    resetDiffState: () => {
-      lastSentRef.current = text;
-    },
-  }), [text]);
-
+  // sendDiff must be declared BEFORE useImperativeHandle so the handle closure can reference it
   const sendDiff = useCallback((newText: string) => {
+    if (syncPausedRef.current) return; // don't send while PC focus is elsewhere
     const diff = computeDiff(lastSentRef.current, newText);
     if (diff.backspace > 0 || diff.insert) {
       onSendCommand({ type: 'diff', count: diff.backspace, text: diff.insert || '' });
@@ -46,15 +47,37 @@ export const InputArea = forwardRef<InputAreaHandle, InputAreaProps>(({
     charCountRef.current += (diff.insert?.length || 0);
   }, [onSendCommand]);
 
+  // Expose pause/resume to parent
+  useImperativeHandle(ref, () => ({
+    pauseSync: () => {
+      // Pause: keep lastSentRef pointing to last confirmed PC state (do NOT reset it).
+      syncPausedRef.current = true;
+    },
+    resumeSync: () => {
+      syncPausedRef.current = false;
+      // Immediately flush any text changes that accumulated while paused.
+      if (encryptionReady && !isComposingRef.current) {
+        const currentText = textareaRef.current?.value ?? '';
+        sendDiff(currentText);
+      }
+    },
+  }), [encryptionReady, sendDiff]);
+
   const handleInput = useCallback((e: React.FormEvent<HTMLTextAreaElement>) => {
     const newText = e.currentTarget.value;
     setText(newText);
-    if (encryptionReady) {
+    // Skip diff during IME composition to avoid sending partial/uncommitted characters.
+    if (encryptionReady && !isComposingRef.current) {
       sendDiff(newText);
     }
   }, [encryptionReady, sendDiff, setText]);
 
+  const handleCompositionStart = useCallback(() => {
+    isComposingRef.current = true;
+  }, []);
+
   const handleCompositionEnd = useCallback((e: React.CompositionEvent<HTMLTextAreaElement>) => {
+    isComposingRef.current = false;
     const newText = e.currentTarget.value;
     setText(newText);
     if (encryptionReady) {
@@ -158,6 +181,7 @@ export const InputArea = forwardRef<InputAreaHandle, InputAreaProps>(({
           className="glass-input"
           value={text}
           onInput={handleInput}
+          onCompositionStart={handleCompositionStart}
           onCompositionEnd={handleCompositionEnd}
           placeholder={encryptionReady ? 'Start typing or use voice input...' : 'Connect to PC first...'}
           disabled={!encryptionReady}
@@ -180,7 +204,7 @@ export const InputArea = forwardRef<InputAreaHandle, InputAreaProps>(({
         </div>
       </div>
 
-      {/* Clear button */}
+      {/* Clear button + file transfer */}
       <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
         <button
           className="glass-btn full-width"
@@ -192,6 +216,9 @@ export const InputArea = forwardRef<InputAreaHandle, InputAreaProps>(({
           Clear{autoSaveHistory ? ' & Save' : ''}
         </button>
       </div>
+
+      {/* File / photo transfer */}
+      <FileTransfer encryptionReady={encryptionReady} onSendCommand={onSendCommand} />
     </div>
   );
 });
