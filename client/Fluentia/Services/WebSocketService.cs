@@ -9,6 +9,11 @@ public class WebSocketService : IDisposable
     private ClientWebSocket? _webSocket;
     private CancellationTokenSource? _cts;
     private readonly SemaphoreSlim _sendLock = new(1, 1);
+    private string? _serverUrl;
+    private bool _intentionalClose;
+    private int _reconnectAttempts;
+    private const int MaxReconnectAttempts = 10;
+    private const int ReconnectDelayMs = 3000;
 
     public event Action<WsMessage>? OnMessage;
     public event Action? OnConnected;
@@ -18,20 +23,46 @@ public class WebSocketService : IDisposable
 
     public async Task ConnectAsync(string serverUrl)
     {
-        Dispose();
+        _serverUrl = serverUrl;
+        _intentionalClose = false;
+        _reconnectAttempts = 0;
+        await ConnectInternal(serverUrl);
+    }
+
+    private async Task ConnectInternal(string serverUrl)
+    {
+        Dispose(disposeUrl: false);
         _cts = new CancellationTokenSource();
         _webSocket = new ClientWebSocket();
 
         try
         {
             await _webSocket.ConnectAsync(new Uri(serverUrl), _cts.Token);
+            _reconnectAttempts = 0;
             OnConnected?.Invoke();
             _ = Task.Run(() => ReceiveLoop(_cts.Token));
         }
         catch (Exception ex)
         {
             OnDisconnected?.Invoke(ex.Message);
+            ScheduleReconnect();
         }
+    }
+
+    private void ScheduleReconnect()
+    {
+        if (_intentionalClose || _serverUrl == null) return;
+        if (_reconnectAttempts >= MaxReconnectAttempts) return;
+
+        _reconnectAttempts++;
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(ReconnectDelayMs);
+            if (!_intentionalClose && _serverUrl != null)
+            {
+                await ConnectInternal(_serverUrl);
+            }
+        });
     }
 
     private async Task ReceiveLoop(CancellationToken ct)
@@ -47,6 +78,7 @@ public class WebSocketService : IDisposable
                 if (result.MessageType == WebSocketMessageType.Close)
                 {
                     OnDisconnected?.Invoke("Server closed connection");
+                    ScheduleReconnect();
                     break;
                 }
 
@@ -68,10 +100,12 @@ public class WebSocketService : IDisposable
         catch (WebSocketException ex)
         {
             OnDisconnected?.Invoke(ex.Message);
+            ScheduleReconnect();
         }
         catch (Exception ex)
         {
             OnDisconnected?.Invoke(ex.Message);
+            ScheduleReconnect();
         }
     }
 
@@ -96,7 +130,7 @@ public class WebSocketService : IDisposable
         }
     }
 
-    public void Dispose()
+    private void Dispose(bool disposeUrl)
     {
         _cts?.Cancel();
         if (_webSocket != null)
@@ -116,5 +150,12 @@ public class WebSocketService : IDisposable
         }
         _cts?.Dispose();
         _cts = null;
+        if (disposeUrl) _serverUrl = null;
+    }
+
+    public void Dispose()
+    {
+        _intentionalClose = true;
+        Dispose(disposeUrl: true);
     }
 }

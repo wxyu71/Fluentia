@@ -1,4 +1,5 @@
 import React from 'react';
+import { EmptyIcon, ResendIcon, TrashIcon } from './Icons';
 import type { HistoryEntry, InputCommand } from '../types';
 
 interface HistoryProps {
@@ -6,9 +7,14 @@ interface HistoryProps {
   encryptionReady: boolean;
   onResend: (cmd: InputCommand) => void;
   onClearHistory: () => void;
+  autoSaveHistory: boolean;
+  onToggleAutoSave: () => void;
 }
 
-export const History: React.FC<HistoryProps> = ({ entries, encryptionReady, onResend, onClearHistory }) => {
+export const History: React.FC<HistoryProps> = ({
+  entries, encryptionReady, onResend, onClearHistory,
+  autoSaveHistory, onToggleAutoSave,
+}) => {
   const handleResend = (entry: HistoryEntry) => {
     onResend({ type: 'text_commit', text: entry.text });
   };
@@ -19,22 +25,35 @@ export const History: React.FC<HistoryProps> = ({ entries, encryptionReady, onRe
   };
 
   return (
-    <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '0 20px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '0 20px', height: '100%' }}>
+      {/* Header with settings */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
       }}>
-        <h3 style={{ fontSize: 16, fontWeight: 600 }}>Input History</h3>
-        {entries.length > 0 && (
-          <button
-            className="glass-btn"
-            style={{ fontSize: 12, padding: '6px 12px' }}
-            onClick={onClearHistory}
-          >
-            Clear All
-          </button>
-        )}
+        <h3 style={{ fontSize: 16, fontWeight: 600 }}>History</h3>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {/* Auto-save toggle */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--text-secondary)' }}>
+            <span>Auto-save</span>
+            <button
+              className={`toggle-switch ${autoSaveHistory ? 'on' : ''}`}
+              onClick={onToggleAutoSave}
+              style={{ transform: 'scale(0.7)', transformOrigin: 'right center' }}
+            />
+          </div>
+          {entries.length > 0 && (
+            <button
+              className="glass-btn"
+              style={{ fontSize: 12, padding: '6px 12px', display: 'flex', alignItems: 'center', gap: 4 }}
+              onClick={onClearHistory}
+            >
+              <TrashIcon size={12} />
+              Clear
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="scroll-area" style={{ flex: 1, maxHeight: 'calc(100vh - 260px)' }}>
@@ -44,7 +63,9 @@ export const History: React.FC<HistoryProps> = ({ entries, encryptionReady, onRe
             textAlign: 'center',
             color: 'var(--text-tertiary)',
           }}>
-            <div style={{ fontSize: 40, marginBottom: 12 }}>📋</div>
+            <div style={{ marginBottom: 12, opacity: 0.5 }}>
+              <EmptyIcon size={48} />
+            </div>
             <p style={{ fontSize: 14 }}>No history yet</p>
             <p style={{ fontSize: 12, marginTop: 4 }}>Your sent texts will appear here</p>
           </div>
@@ -78,10 +99,11 @@ export const History: React.FC<HistoryProps> = ({ entries, encryptionReady, onRe
                   </span>
                   <button
                     className="glass-btn"
-                    style={{ fontSize: 11, padding: '4px 12px' }}
+                    style={{ fontSize: 11, padding: '4px 12px', display: 'flex', alignItems: 'center', gap: 4 }}
                     disabled={!encryptionReady}
                     onClick={() => handleResend(entry)}
                   >
+                    <ResendIcon size={12} />
                     Resend
                   </button>
                 </div>

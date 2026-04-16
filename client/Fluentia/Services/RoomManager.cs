@@ -139,12 +139,10 @@ public class RoomManager : IDisposable
             string plaintext;
             if (msg.Seq.HasValue && _crypto.RatchetReady)
             {
-                // Ratcheted decryption (forward secrecy)
                 plaintext = _crypto.DecryptRatcheted(msg.Payload, msg.Nonce, msg.Seq.Value);
             }
             else
             {
-                // Legacy crypto_box decryption
                 plaintext = _crypto.Decrypt(msg.Payload, msg.Nonce);
             }
 
@@ -154,7 +152,20 @@ public class RoomManager : IDisposable
                 if (cmd.Type == "ratchet_init" && cmd.Seed != null)
                 {
                     _crypto.InitRatchet(cmd.Seed);
-                    OnStatusChanged?.Invoke("Forward secrecy established 🔐");
+                    OnStatusChanged?.Invoke("Forward secrecy established");
+
+                    // Initialize PC's send ratchet for backward security
+                    var pcSeed = _crypto.InitSendRatchet();
+                    var initCmd = System.Text.Json.JsonSerializer.Serialize(
+                        new { type = "pc_ratchet_init", seed = pcSeed });
+                    var (payload, nonce) = _crypto.Encrypt(initCmd);
+                    _ = _ws.SendAsync(new WsMessage
+                    {
+                        Type = MsgTypes.Encrypted,
+                        Payload = payload,
+                        Nonce = nonce,
+                    });
+                    OnStatusChanged?.Invoke("Bidirectional secrecy established");
                     return;
                 }
                 OnInputCommand?.Invoke(cmd);

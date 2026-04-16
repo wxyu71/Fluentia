@@ -3,63 +3,142 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Fluentia"
         Width="480" Height="720"
-        MinWidth="400" MinHeight="600"
+        MinWidth="400" MinHeight="500"
         WindowStartupLocation="CenterScreen"
-        Background="{StaticResource BgDarkBrush}"
-        ResizeMode="CanResize">
+        Background="{DynamicResource BgDarkBrush}"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        ResizeMode="CanResizeWithGrip">
 
-    <!-- TrayIcon created in code-behind for reliable shell registration -->
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="0" ResizeBorderThickness="6" GlassFrameThickness="0"/>
+    </WindowChrome.WindowChrome>
 
-    <Grid>
-        <!-- Main panel background -->
-        <Border Background="{StaticResource BgPanelBrush}" CornerRadius="0" Margin="0">
-            <Grid Margin="24">
+    <Border CornerRadius="12" Background="{DynamicResource BgPanelBrush}"
+            BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0.5">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="40"/>  <!-- Custom title bar -->
+                <RowDefinition Height="*"/>   <!-- Content -->
+            </Grid.RowDefinitions>
+
+            <!-- Custom Title Bar (macOS-style) -->
+            <Border Grid.Row="0" Background="Transparent" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown"
+                    MouseLeftButtonUp="TitleBar_MouseLeftButtonUp">
+                <Grid Margin="14,0">
+                    <!-- Traffic light buttons (left) -->
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Left">
+                        <!-- Close → minimize to tray -->
+                        <Border x:Name="BtnClose" Width="14" Height="14" CornerRadius="7"
+                                Background="#FF5F57" Margin="0,0,8,0" Cursor="Hand"
+                                MouseLeftButtonDown="TrafficClose_Click"
+                                ToolTip="Hide to tray">
+                            <Path Data="M4,4 L10,10 M10,4 L4,10" Stroke="#4D0000" StrokeThickness="1.2"
+                                  HorizontalAlignment="Center" VerticalAlignment="Center"
+                                  Visibility="Collapsed" x:Name="CloseX"/>
+                        </Border>
+                        <!-- Minimize -->
+                        <Border x:Name="BtnMinimize" Width="14" Height="14" CornerRadius="7"
+                                Background="#FEBC2E" Margin="0,0,8,0" Cursor="Hand"
+                                MouseLeftButtonDown="TrafficMinimize_Click"
+                                ToolTip="Minimize">
+                            <Path Data="M3,7 L11,7" Stroke="#995700" StrokeThickness="1.2"
+                                  HorizontalAlignment="Center" VerticalAlignment="Center"
+                                  Visibility="Collapsed" x:Name="MinLine"/>
+                        </Border>
+                        <!-- Maximize / Restore -->
+                        <Border x:Name="BtnMaximize" Width="14" Height="14" CornerRadius="7"
+                                Background="#28C840" Cursor="Hand"
+                                MouseLeftButtonDown="TrafficMaximize_Click"
+                                ToolTip="Maximize">
+                            <Path Data="M3,7 L7,3 L11,7 L7,11 Z" Stroke="#006500" StrokeThickness="1"
+                                  HorizontalAlignment="Center" VerticalAlignment="Center"
+                                  Visibility="Collapsed" x:Name="MaxDiamond"/>
+                        </Border>
+                    </StackPanel>
+
+                    <!-- Title (center) -->
+                    <TextBlock Text="Fluentia" FontSize="13" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"
+                               x:Name="TitleLabel" MouseLeftButtonDown="Title_DevTap"/>
+
+                    <!-- Connection key button (right) -->
+                    <Button x:Name="CopyKeyBtn" HorizontalAlignment="Right" VerticalAlignment="Center"
+                            Click="CopyKey_Click" Visibility="Collapsed"
+                            Style="{StaticResource SecondaryButton}"
+                            Content="Copy Key" FontSize="11" Padding="8,4"
+                            ToolTip="Copy connection key for manual pairing"/>
+                </Grid>
+            </Border>
+
+            <!-- Main Content -->
+            <Grid Grid.Row="1" Margin="20,0,20,20">
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>  <!-- Server URL -->
+                    <RowDefinition Height="Auto"/>  <!-- Connect -->
+                    <RowDefinition Height="Auto"/>  <!-- QR area -->
+                    <RowDefinition Height="Auto"/>  <!-- Status -->
+                    <RowDefinition Height="Auto"/>  <!-- Refresh -->
+                    <RowDefinition Height="*"/>     <!-- Log (dev only) -->
                 </Grid.RowDefinitions>
 
-                <!-- Title -->
-                <StackPanel Grid.Row="0" Margin="0,0,0,20">
-                    <TextBlock Text="Fluentia" FontSize="22" FontWeight="Bold"
-                               Foreground="{StaticResource TextPrimaryBrush}"/>
-                    <TextBlock Text="Wireless Voice Input" FontSize="11"
-                               Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2,0,0"/>
-                </StackPanel>
-
                 <!-- Server URL -->
-                <StackPanel Grid.Row="1" Margin="0,0,0,16">
+                <StackPanel Grid.Row="0" Margin="0,0,0,12">
                     <TextBlock Text="Server URL" FontSize="12"
-                               Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,6"/>
+                               Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,6"/>
                     <TextBox x:Name="ServerUrlBox" Text="wss://f.106918.xyz/ws"
                              Style="{StaticResource DarkTextBox}"/>
                 </StackPanel>
 
                 <!-- Connect Button -->
-                <Button Grid.Row="2" x:Name="ConnectBtn" Content="Connect &amp; Create Room"
-                        Style="{StaticResource AccentButton}" Click="Connect_Click" Margin="0,0,0,16"/>
+                <Button Grid.Row="1" x:Name="ConnectBtn" Content="Connect"
+                        Style="{StaticResource AccentButton}" Click="Connect_Click" Margin="0,0,0,12"/>
 
-                <!-- QR Code -->
-                <Border Grid.Row="3" Background="{StaticResource BgInputBrush}"
-                        CornerRadius="16" Padding="16" Margin="0,0,0,16"
-                        HorizontalAlignment="Center">
-                    <StackPanel HorizontalAlignment="Center">
-                        <Image x:Name="QrCodeImage" Width="300" Height="300"
-                               RenderOptions.BitmapScalingMode="NearestNeighbor"/>
-                        <TextBlock x:Name="QrHintText" Text="Connect to generate QR code"
-                                   FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"
-                                   HorizontalAlignment="Center" Margin="0,8,0,0"/>
-                    </StackPanel>
+                <!-- QR Code Area (collapsible) -->
+                <Border Grid.Row="2" x:Name="QrContainer"
+                        Background="{DynamicResource BgInputBrush}"
+                        CornerRadius="16" Padding="16" Margin="0,0,0,12"
+                        HorizontalAlignment="Center" Visibility="Collapsed">
+                    <Grid>
+                        <!-- QR content -->
+                        <StackPanel x:Name="QrContent" HorizontalAlignment="Center">
+                            <Image x:Name="QrCodeImage" Width="260" Height="260"
+                                   RenderOptions.BitmapScalingMode="NearestNeighbor"/>
+                            <!-- Timer countdown -->
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,8,0,0">
+                                <TextBlock x:Name="QrTimerText" Text="5:00"
+                                           FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                            </StackPanel>
+                            <TextBlock x:Name="QrHintText" Text=""
+                                       FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"
+                                       HorizontalAlignment="Center" Margin="0,4,0,0"
+                                       TextAlignment="Center"/>
+                        </StackPanel>
+
+                        <!-- Blur overlay when connected -->
+                        <Border x:Name="QrBlurOverlay" Background="#80000000" CornerRadius="12"
+                                Visibility="Collapsed" Cursor="Hand"
+                                MouseLeftButtonDown="QrBlur_Click">
+                            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                                <TextBlock Text="Connected" FontSize="15" FontWeight="SemiBold"
+                                           Foreground="White" HorizontalAlignment="Center"/>
+                                <TextBlock Text="Click to reveal QR" FontSize="11"
+                                           Foreground="#AAA" HorizontalAlignment="Center" Margin="0,4,0,0"/>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
                 </Border>
 
+                <!-- QR expand button (shown when QR is collapsed) -->
+                <Button Grid.Row="2" x:Name="QrExpandBtn" Visibility="Collapsed"
+                        Style="{StaticResource SecondaryButton}" Click="QrExpand_Click"
+                        Content="Show QR Code" Margin="0,0,0,12" HorizontalAlignment="Center"
+                        Padding="16,8"/>
+
                 <!-- Status -->
-                <Border Grid.Row="4" Background="{StaticResource BgInputBrush}"
-                        CornerRadius="10" Padding="12,10" Margin="0,0,0,12">
+                <Border Grid.Row="3" Background="{DynamicResource BgInputBrush}"
+                        CornerRadius="10" Padding="12,10" Margin="0,0,0,10">
                     <StackPanel Orientation="Horizontal">
                         <Ellipse x:Name="StatusDot" Width="8" Height="8" Margin="0,0,10,0">
                             <Ellipse.Fill>
@@ -67,23 +146,24 @@
                             </Ellipse.Fill>
                         </Ellipse>
                         <TextBlock x:Name="StatusText" Text="Not connected"
-                                   FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"/>
+                                   FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"/>
                     </StackPanel>
                 </Border>
 
                 <!-- Refresh Button -->
-                <Button Grid.Row="5" Content="Refresh Room" Style="{StaticResource SecondaryButton}"
-                        Click="Refresh_Click" Margin="0,0,0,12"/>
+                <Button Grid.Row="4" Content="Refresh Room" Style="{StaticResource SecondaryButton}"
+                        Click="Refresh_Click" Margin="0,0,0,10"/>
 
-                <!-- Log area -->
-                <Border Grid.Row="6" Background="{StaticResource BgInputBrush}" CornerRadius="10" Padding="8">
+                <!-- Log area (dev mode only) -->
+                <Border Grid.Row="5" x:Name="LogContainer" Visibility="Collapsed"
+                        Background="{DynamicResource BgInputBrush}" CornerRadius="10" Padding="8">
                     <ScrollViewer VerticalScrollBarVisibility="Auto">
                         <TextBlock x:Name="LogText" FontSize="11" FontFamily="Consolas"
-                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
                                    TextWrapping="Wrap"/>
                     </ScrollViewer>
                 </Border>
             </Grid>
-        </Border>
-    </Grid>
+        </Grid>
+    </Border>
 </Window>

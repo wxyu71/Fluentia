@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 using System.Threading.Channels;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Interop;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
@@ -19,9 +19,21 @@ public partial class MainWindow : Window
     private readonly RoomManager _roomManager;
     private TaskbarIcon? _trayIcon;
     private System.Drawing.Icon? _appIcon;
-    // FIFO channel ensures commands execute in arrival order on a single thread
     private readonly Channel<InputCommand> _cmdChannel =
         Channel.CreateUnbounded<InputCommand>(new UnboundedChannelOptions { SingleReader = true });
+
+    // QR timer — 5-minute validity
+    private DispatcherTimer? _qrTimer;
+    private DateTime _qrCreatedAt;
+    private const int QR_VALIDITY_SECONDS = 300; // 5 minutes
+
+    // Dev mode — multi-tap title to enable
+    private int _devTapCount;
+    private DateTime _lastDevTap = DateTime.MinValue;
+    private bool _devMode;
+
+    // Mobile connection state for QR collapse/blur
+    private bool _mobileConnected;
 
     [DllImport("user32.dll")]
     private static extern bool DestroyIcon(IntPtr handle);
@@ -32,14 +44,28 @@ public partial class MainWindow : Window
         _roomManager = new RoomManager();
         SetupRoomManagerEvents();
         SetupTrayIcon();
+        SetupQRTimer();
         Closing += MainWindow_Closing;
 
-        // Wire diagnostic logging from TextInjector → our log pane
-        TextInjector.DiagnosticLog = (msg) => Dispatcher.BeginInvoke(() => AppendLog(msg));
+        // Wire diagnostic logging — only in dev mode
+        TextInjector.DiagnosticLog = (msg) =>
+        {
+            if (_devMode) Dispatcher.BeginInvoke(() => AppendLog(msg));
+        };
 
-        // Start a single long-lived consumer that processes commands in FIFO order.
-        // Task.Run + Channel guarantees ordering (unlike multiple Task.Run calls).
         Task.Run(ProcessCommandQueue);
+
+        // Show traffic-light icons on hover
+        MouseEnter += (_, _) => ShowTrafficIcons(true);
+        MouseLeave += (_, _) => ShowTrafficIcons(false);
+    }
+
+    private void ShowTrafficIcons(bool show)
+    {
+        var vis = show ? Visibility.Visible : Visibility.Collapsed;
+        CloseX.Visibility = vis;
+        MinLine.Visibility = vis;
+        MaxDiamond.Visibility = vis;
     }
 
     private async Task ProcessCommandQueue()
@@ -47,13 +73,15 @@ public partial class MainWindow : Window
         await foreach (var cmd in _cmdChannel.Reader.ReadAllAsync())
         {
             try { HandleInputCommand(cmd); }
-            catch (Exception ex) { Dispatcher.BeginInvoke(() => AppendLog($"Inject error: {ex.Message}")); }
+            catch (Exception ex)
+            {
+                if (_devMode) Dispatcher.BeginInvoke(() => AppendLog($"Inject error: {ex.Message}"));
+            }
         }
     }
 
     private void SetupTrayIcon()
     {
-        // Build a 32×32 icon in memory → save as ICO → reload as proper Icon
         using var bmp = new System.Drawing.Bitmap(32, 32, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
         using (var g = System.Drawing.Graphics.FromImage(bmp))
         {
@@ -75,12 +103,10 @@ public partial class MainWindow : Window
         _appIcon = new System.Drawing.Icon(ms);
         DestroyIcon(hIcon);
 
-        // Create TaskbarIcon entirely in code (XAML resource approach doesn't
-        // reliably register with the shell notification area on all Windows versions).
         _trayIcon = new TaskbarIcon
         {
             Icon = _appIcon,
-            ToolTipText = "Fluentia - Voice Input Relay",
+            ToolTipText = "Fluentia",
         };
         _trayIcon.TrayLeftMouseDown += TrayIcon_TrayLeftMouseDown;
 
@@ -89,15 +115,39 @@ public partial class MainWindow : Window
         showItem.Click += ShowWindow_Click;
         var refreshItem = new MenuItem { Header = "Refresh Room" };
         refreshItem.Click += Refresh_Click;
-        var exitItem = new MenuItem { Header = "Exit" };
+        var exitItem = new MenuItem { Header = "Quit Fluentia" };
         exitItem.Click += Exit_Click;
         menu.Items.Add(showItem);
         menu.Items.Add(refreshItem);
         menu.Items.Add(new Separator());
         menu.Items.Add(exitItem);
         _trayIcon.ContextMenu = menu;
-
         _trayIcon.ForceCreate();
+    }
+
+    private void SetupQRTimer()
+    {
+        _qrTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        _qrTimer.Tick += QrTimer_Tick;
+    }
+
+    private void QrTimer_Tick(object? sender, EventArgs e)
+    {
+        var elapsed = (DateTime.Now - _qrCreatedAt).TotalSeconds;
+        var remaining = QR_VALIDITY_SECONDS - (int)elapsed;
+        if (remaining <= 0)
+        {
+            // Refresh QR
+            _qrTimer?.Stop();
+            _ = _roomManager.RefreshRoom();
+            return;
+        }
+        var min = remaining / 60;
+        var sec = remaining % 60;
+        QrTimerText.Text = $"{min}:{sec:D2}";
+        QrTimerText.Foreground = remaining < 30
+            ? new SolidColorBrush(Color.FromRgb(255, 69, 58))
+            : (Brush)FindResource("TextSecondaryBrush");
     }
 
     private void SetupRoomManagerEvents()
@@ -105,79 +155,101 @@ public partial class MainWindow : Window
         _roomManager.OnRoomCreated += (token) => Dispatcher.Invoke(() =>
         {
             UpdateQRCode();
+            ShowQrArea(true);
+            _qrCreatedAt = DateTime.Now;
+            _qrTimer?.Start();
+            CopyKeyBtn.Visibility = Visibility.Visible;
         });
 
         _roomManager.OnMobileConnected += (deviceId) => Dispatcher.Invoke(() =>
         {
+            _mobileConnected = true;
             SetStatus("Mobile connected", true);
-            AppendLog($"Mobile device {deviceId[..Math.Min(8, deviceId.Length)]}... connected");
+            // Blur the QR and collapse
+            QrBlurOverlay.Visibility = Visibility.Visible;
+            if (_devMode) AppendLog($"Mobile {deviceId[..Math.Min(8, deviceId.Length)]}... connected");
         });
 
         _roomManager.OnMobileDisconnected += () => Dispatcher.Invoke(() =>
         {
+            _mobileConnected = false;
             SetStatus("Mobile disconnected", false);
-            AppendLog("Mobile disconnected");
-            // Regenerate QR with new keys
+            QrBlurOverlay.Visibility = Visibility.Collapsed;
+            ShowQrArea(true);
             UpdateQRCode();
+            _qrCreatedAt = DateTime.Now;
+            _qrTimer?.Start();
         });
 
         _roomManager.OnEncryptionReady += () => Dispatcher.Invoke(() =>
         {
-            SetStatus("E2E encrypted 🔒", true);
-            AppendLog("End-to-end encryption established — hiding to tray");
-            // Auto-hide so Fluentia never holds focus during input relay
+            SetStatus("E2E Encrypted", true);
+            // Collapse QR after encryption
+            ShowQrArea(false);
+            if (_devMode) AppendLog("E2E encryption established");
             Hide();
         });
 
-        // Enqueue commands into FIFO channel for ordered, single-threaded processing
         _roomManager.OnInputCommand += (cmd) => _cmdChannel.Writer.TryWrite(cmd);
 
         _roomManager.OnStatusChanged += (status) => Dispatcher.Invoke(() =>
         {
-            AppendLog(status);
+            if (_devMode) AppendLog(status);
         });
 
         _roomManager.OnError += (error) => Dispatcher.Invoke(() =>
         {
             SetStatus($"Error: {error}", false);
-            AppendLog($"ERROR: {error}");
+            if (_devMode) AppendLog($"ERROR: {error}");
         });
     }
 
-    // Called from the single command-queue consumer thread — guaranteed FIFO order.
     private void HandleInputCommand(InputCommand cmd)
     {
         switch (cmd.Type)
         {
             case "diff":
                 TextInjector.ApplyDiff(cmd.Count, cmd.Text ?? "");
-                var bs = cmd.Count;
-                var ins = cmd.Text ?? "";
-                var preview = Truncate(ins, 30);
-                Dispatcher.BeginInvoke(() => AppendLog($"⇄ diff bs={bs} ins=\"{preview}\""));
                 break;
 
             case "text_commit":
                 if (!string.IsNullOrEmpty(cmd.Text))
-                {
                     TextInjector.TypeText(cmd.Text);
-                    var p = Truncate(cmd.Text, 40);
-                    Dispatcher.BeginInvoke(() => AppendLog($"→ \"{p}\""));
-                }
                 break;
 
             case "backspace":
                 if (cmd.Count > 0)
-                {
                     TextInjector.SendBackspace(cmd.Count);
-                    var n = cmd.Count;
-                    Dispatcher.BeginInvoke(() => AppendLog($"← Backspace x{n}"));
+                break;
+
+            case "clipboard":
+                if (!string.IsNullOrEmpty(cmd.Text))
+                {
+                    Dispatcher.Invoke(() =>
+                    {
+                        try { Clipboard.SetText(cmd.Text); }
+                        catch { /* clipboard busy */ }
+                    });
                 }
                 break;
 
             case "clear":
-                Dispatcher.BeginInvoke(() => AppendLog("○ Clear signal received"));
                 break;
+        }
+    }
+
+    private void ShowQrArea(bool show)
+    {
+        if (show)
+        {
+            QrContainer.Visibility = Visibility.Visible;
+            QrExpandBtn.Visibility = Visibility.Collapsed;
+        }
+        else
+        {
+            QrContainer.Visibility = Visibility.Collapsed;
+            QrExpandBtn.Visibility = _mobileConnected ? Visibility.Visible : Visibility.Collapsed;
+            _qrTimer?.Stop();
         }
     }
 
@@ -204,34 +276,116 @@ public partial class MainWindow : Window
         bitmap.Freeze();
 
         QrCodeImage.Source = bitmap;
-        QrHintText.Text = $"Scan with Fluentia mobile app\nRoom: {_roomManager.CurrentToken?[..8]}...";
+        QrHintText.Text = $"Scan with Fluentia mobile\nRoom: {_roomManager.CurrentToken?[..8]}...";
     }
 
     private void SetStatus(string text, bool connected)
     {
         StatusText.Text = text;
         StatusDot.Fill = new SolidColorBrush(connected
-            ? Color.FromRgb(48, 209, 88)    // Apple green
-            : Color.FromRgb(255, 69, 58));  // Apple red
+            ? Color.FromRgb(48, 209, 88)
+            : Color.FromRgb(255, 69, 58));
     }
 
     private void AppendLog(string text)
     {
+        if (!_devMode) return;
         var time = DateTime.Now.ToString("HH:mm:ss");
         LogText.Text += $"[{time}] {text}\n";
-
-        // Keep log size manageable
         var lines = LogText.Text.Split('\n');
         if (lines.Length > 100)
-        {
             LogText.Text = string.Join('\n', lines[^50..]);
-        }
     }
 
     private static string Truncate(string text, int maxLen)
     {
         text = text.Replace("\n", "↵").Replace("\r", "");
         return text.Length <= maxLen ? text : text[..maxLen] + "...";
+    }
+
+    // ── Title bar interactions ──
+
+    private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ClickCount == 2)
+        {
+            ToggleMaximize();
+        }
+        else
+        {
+            DragMove();
+        }
+    }
+
+    private void TitleBar_MouseLeftButtonUp(object sender, MouseButtonEventArgs e) { }
+
+    private void TrafficClose_Click(object sender, MouseButtonEventArgs e)
+    {
+        e.Handled = true;
+        Hide(); // minimize to tray
+    }
+
+    private void TrafficMinimize_Click(object sender, MouseButtonEventArgs e)
+    {
+        e.Handled = true;
+        WindowState = WindowState.Minimized;
+    }
+
+    private void TrafficMaximize_Click(object sender, MouseButtonEventArgs e)
+    {
+        e.Handled = true;
+        ToggleMaximize();
+    }
+
+    private void ToggleMaximize()
+    {
+        WindowState = WindowState == WindowState.Maximized
+            ? WindowState.Normal
+            : WindowState.Maximized;
+    }
+
+    // Dev mode — 5 rapid taps on title
+    private void Title_DevTap(object sender, MouseButtonEventArgs e)
+    {
+        var now = DateTime.Now;
+        if ((now - _lastDevTap).TotalSeconds > 2) _devTapCount = 0;
+        _lastDevTap = now;
+        _devTapCount++;
+
+        if (_devTapCount >= 5 && !_devMode)
+        {
+            _devMode = true;
+            LogContainer.Visibility = Visibility.Visible;
+            AppendLog("Developer mode enabled");
+            _devTapCount = 0;
+        }
+    }
+
+    // QR blur click — reveal QR
+    private void QrBlur_Click(object sender, MouseButtonEventArgs e)
+    {
+        QrBlurOverlay.Visibility = Visibility.Collapsed;
+    }
+
+    // QR expand — show collapsed QR
+    private void QrExpand_Click(object sender, RoutedEventArgs e)
+    {
+        ShowQrArea(true);
+    }
+
+    // Copy connection key for manual pairing
+    private void CopyKey_Click(object sender, RoutedEventArgs e)
+    {
+        var qrData = _roomManager.GetQRData();
+        if (qrData != null)
+        {
+            try
+            {
+                Clipboard.SetText(qrData);
+                SetStatus("Connection key copied", true);
+            }
+            catch { /* clipboard busy */ }
+        }
     }
 
     // ── UI Event Handlers ──
@@ -250,17 +404,17 @@ public partial class MainWindow : Window
         try
         {
             await _roomManager.ConnectAsync(url);
-            SetStatus("Connected", false); // waiting for mobile
+            SetStatus("Connected", false);
         }
         catch (Exception ex)
         {
             SetStatus("Connection failed", false);
-            AppendLog($"Connection error: {ex.Message}");
+            if (_devMode) AppendLog($"Connection error: {ex.Message}");
         }
         finally
         {
             ConnectBtn.IsEnabled = true;
-            ConnectBtn.Content = "Connect & Create Room";
+            ConnectBtn.Content = "Connect";
         }
     }
 
@@ -286,6 +440,7 @@ public partial class MainWindow : Window
 
     private void Exit_Click(object sender, RoutedEventArgs e)
     {
+        _qrTimer?.Stop();
         _roomManager.Dispose();
         _trayIcon?.Dispose();
         Application.Current.Shutdown();
@@ -293,7 +448,6 @@ public partial class MainWindow : Window
 
     private void MainWindow_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
-        // Minimize to tray instead of closing
         e.Cancel = true;
         Hide();
     }

@@ -26,13 +26,13 @@
 
         <!-- TextBox style -->
         <Style x:Key="DarkTextBox" TargetType="TextBox">
-            <Setter Property="Background" Value="{StaticResource BgInputBrush}"/>
-            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
-            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+            <Setter Property="Background" Value="{DynamicResource BgInputBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Padding" Value="10,8"/>
             <Setter Property="FontSize" Value="13"/>
-            <Setter Property="CaretBrush" Value="{StaticResource TextPrimaryBrush}"/>
+            <Setter Property="CaretBrush" Value="{DynamicResource TextPrimaryBrush}"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="TextBox">
@@ -49,7 +49,7 @@
 
         <!-- Accent button — Apple Blue -->
         <Style x:Key="AccentButton" TargetType="Button">
-            <Setter Property="Background" Value="{StaticResource AccentBrush}"/>
+            <Setter Property="Background" Value="{DynamicResource AccentBrush}"/>
             <Setter Property="Foreground" Value="White"/>
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
@@ -84,12 +84,8 @@
 
         <!-- Secondary button -->
         <Style x:Key="SecondaryButton" TargetType="Button">
-            <Setter Property="Background">
-                <Setter.Value>
-                    <SolidColorBrush Color="#FF2C2C2E"/>
-                </Setter.Value>
-            </Setter>
-            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+            <Setter Property="Background" Value="{DynamicResource BgInputBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="Padding" Value="16,10"/>
             <Setter Property="Cursor" Value="Hand"/>

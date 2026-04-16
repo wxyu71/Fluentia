@@ -4,7 +4,7 @@ import type { WsMessage, ConnectionState, InputCommand, ConnectionInfo } from '.
 import { PROTOCOL_VERSION } from '../types';
 
 const RECONNECT_DELAY = 3000;
-const MAX_RECONNECT_ATTEMPTS = 5;
+const MAX_RECONNECT_ATTEMPTS = 300; // ~15 minutes at 3s intervals
 
 interface UseWebSocketReturn {
   connectionState: ConnectionState;
@@ -159,6 +159,27 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
           console.error('Failed to init ratchet:', err);
         }
         break;
+
+      case 'encrypted': {
+        // Handle PC → mobile encrypted messages (e.g., pc_ratchet_init for backward security)
+        if (msg.payload && msg.nonce) {
+          try {
+            let plaintext: string;
+            if (msg.seq !== undefined && cryptoRef.current.isRecvRatchetReady()) {
+              plaintext = cryptoRef.current.decryptRatcheted(msg.payload, msg.nonce, msg.seq);
+            } else {
+              plaintext = cryptoRef.current.decrypt(msg.payload, msg.nonce);
+            }
+            const parsed = JSON.parse(plaintext);
+            if (parsed.type === 'pc_ratchet_init' && parsed.seed) {
+              cryptoRef.current.initRecvRatchet(parsed.seed);
+            }
+          } catch {
+            // Non-parseable encrypted messages are ignored
+          }
+        }
+        break;
+      }
 
       case 'preempted':
         setConnectionState('preempted');

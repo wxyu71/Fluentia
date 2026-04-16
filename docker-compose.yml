@@ -5,4 +5,14 @@ services:
       - "127.0.0.1:8778:8080"
     environment:
       - PORT=8080
+      # ── Security ──
+      # PRIVATE_MODE=true requires SECRET_PATH to connect
+      - PRIVATE_MODE=false
+      - SECRET_PATH=
+      # IP_WHITELIST=true restricts connections to ALLOWED_IPS
+      - IP_WHITELIST=false
+      - ALLOWED_IPS=
+      # ── File Transfer ──
+      # -1=disabled, 0=unlimited, N=max MB per file
+      - MAX_FILE_MB=-1
     restart: unless-stopped

@@ -9,10 +9,15 @@ public class CryptoService
     private KeyPair _keyPair;
     private byte[]? _peerPublicKey;
 
-    // Symmetric ratchet state for forward secrecy
+    // Receive ratchet (mobile → PC)
     private byte[]? _recvChainKey;
     private int _expectedSeq;
     private bool _ratchetReady;
+
+    // Send ratchet (PC → mobile) — backward security
+    private byte[]? _sendChainKey;
+    private int _sendSeq;
+    private bool _sendRatchetReady;
 
     public CryptoService()
     {
@@ -20,10 +25,9 @@ public class CryptoService
     }
 
     public string PublicKeyBase64 => Convert.ToBase64String(_keyPair.PublicKey);
-
     public bool IsReady => _peerPublicKey != null;
-
     public bool RatchetReady => _ratchetReady;
+    public bool SendRatchetReady => _sendRatchetReady;
 
     public void SetPeerPublicKey(string base64Key)
     {
@@ -31,8 +35,7 @@ public class CryptoService
     }
 
     /// <summary>
-    /// Initialize the symmetric ratchet from the seed sent by mobile.
-    /// Must use the same KDF as the TypeScript side.
+    /// Initialize the receive ratchet from the seed sent by mobile.
     /// </summary>
     public void InitRatchet(string seedBase64)
     {
@@ -40,6 +43,41 @@ public class CryptoService
         _recvChainKey = Kdf(seed, "fluentia_chain_v1");
         _expectedSeq = 0;
         _ratchetReady = true;
+    }
+
+    /// <summary>
+    /// Initialize the PC's send ratchet for backward security.
+    /// Returns the seed that must be sent to mobile.
+    /// </summary>
+    public string InitSendRatchet()
+    {
+        var seed = new byte[32];
+        RandomNumberGenerator.Fill(seed);
+        _sendChainKey = Kdf(seed, "fluentia_chain_v1");
+        _sendSeq = 0;
+        _sendRatchetReady = true;
+        return Convert.ToBase64String(seed);
+    }
+
+    /// <summary>
+    /// Ratcheted encryption (PC → mobile) using SecretBox.
+    /// </summary>
+    public (string Payload, string Nonce, int Seq) EncryptRatcheted(string plaintext)
+    {
+        if (_sendChainKey == null)
+            throw new InvalidOperationException("Send ratchet not initialized");
+
+        var (msgKey, nextChain) = RatchetStep(_sendChainKey);
+        _sendChainKey = nextChain;
+        var seq = _sendSeq++;
+
+        var nonce = SecretBox.GenerateNonce();
+        var messageBytes = Encoding.UTF8.GetBytes(plaintext);
+        var encrypted = SecretBox.Create(messageBytes, nonce, msgKey);
+
+        Array.Clear(msgKey, 0, msgKey.Length);
+
+        return (Convert.ToBase64String(encrypted), Convert.ToBase64String(nonce), seq);
     }
 
     /// <summary>
@@ -58,7 +96,7 @@ public class CryptoService
     }
 
     /// <summary>
-    /// Legacy crypto_box decryption (used for ratchet_init and pre-ratchet messages).
+    /// Legacy crypto_box decryption.
     /// </summary>
     public string Decrypt(string payloadBase64, string nonceBase64)
     {
@@ -76,14 +114,12 @@ public class CryptoService
 
     /// <summary>
     /// Ratcheted decryption using SecretBox with forward secrecy.
-    /// Fast-forwards the chain if seq is ahead (missed messages).
     /// </summary>
     public string DecryptRatcheted(string payloadBase64, string nonceBase64, int seq)
     {
         if (_recvChainKey == null)
             throw new InvalidOperationException("Ratchet not initialized");
 
-        // Fast-forward chain to match sender's seq
         while (_expectedSeq < seq)
         {
             var (_, next) = RatchetStep(_recvChainKey);
@@ -100,7 +136,6 @@ public class CryptoService
             Convert.FromBase64String(nonceBase64),
             msgKey);
 
-        // Wipe message key for forward secrecy
         Array.Clear(msgKey, 0, msgKey.Length);
 
         return Encoding.UTF8.GetString(decrypted);
@@ -113,12 +148,11 @@ public class CryptoService
         _recvChainKey = null;
         _expectedSeq = 0;
         _ratchetReady = false;
+        _sendChainKey = null;
+        _sendSeq = 0;
+        _sendRatchetReady = false;
     }
 
-    /// <summary>
-    /// KDF: SHA-512(key || UTF8(label))[0:32]
-    /// Must match the TypeScript implementation exactly.
-    /// </summary>
     private static byte[] Kdf(byte[] key, string label)
     {
         var labelBytes = Encoding.UTF8.GetBytes(label);

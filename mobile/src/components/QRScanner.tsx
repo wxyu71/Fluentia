@@ -1,16 +1,20 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
+import { ScanIcon, CloseIcon } from './Icons';
 import type { ConnectionInfo } from '../types';
 
 interface QRScannerProps {
   onScan: (info: ConnectionInfo) => void;
+  overlay?: boolean;    // true = modal overlay, false = full page
+  onClose?: () => void; // required when overlay=true
 }
 
-export const QRScanner: React.FC<QRScannerProps> = ({ onScan }) => {
+export const QRScanner: React.FC<QRScannerProps> = ({ onScan, overlay = false, onClose }) => {
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
+  const [manualMode, setManualMode] = useState(false);
 
   const startScanner = async () => {
     if (scannerRef.current || !containerRef.current) return;
@@ -63,78 +67,128 @@ export const QRScanner: React.FC<QRScannerProps> = ({ onScan }) => {
   };
 
   useEffect(() => {
-    return () => {
-      stopScanner();
-    };
+    return () => { stopScanner(); };
   }, []);
 
-  return (
-    <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '0 20px' }}>
+  const content = (
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      gap: 16,
+      padding: overlay ? '0' : '0 20px',
+      width: '100%',
+      maxWidth: 360,
+    }}>
       <div className="glass" style={{
         padding: 20,
         textAlign: 'center',
+        width: '100%',
       }}>
-        <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>
-          Scan PC QR Code
-        </h3>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 8 }}>
+          <ScanIcon size={20} color="var(--accent)" />
+          <h3 style={{ fontSize: 16, fontWeight: 600 }}>Scan QR Code</h3>
+        </div>
         <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16 }}>
-          Open Fluentia on your PC and scan the QR code to connect
+          Open Fluentia on your PC and scan the QR code
         </p>
 
-        {/* Scanner viewport */}
-        <div style={{
-          position: 'relative',
-          borderRadius: 16,
-          overflow: 'hidden',
-          background: 'rgba(0,0,0,0.3)',
-          minHeight: 280,
-        }}>
-          <div id="qr-reader" ref={containerRef} style={{ width: '100%' }} />
-
-          {!scanning && !error && (
+        {!manualMode ? (
+          <>
             <div style={{
-              position: 'absolute',
-              inset: 0,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
+              position: 'relative',
+              borderRadius: 16,
+              overflow: 'hidden',
+              background: 'rgba(0,0,0,0.3)',
+              minHeight: 280,
             }}>
-              <button className="glass-btn accent" onClick={startScanner}>
-                📷 Start Camera
-              </button>
+              <div id="qr-reader" ref={containerRef} style={{ width: '100%' }} />
+
+              {!scanning && !error && (
+                <div style={{
+                  position: 'absolute',
+                  inset: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}>
+                  <button className="glass-btn accent" onClick={startScanner}>
+                    <ScanIcon size={16} color="white" /> Start Camera
+                  </button>
+                </div>
+              )}
             </div>
-          )}
+
+            {error && (
+              <div style={{
+                marginTop: 12,
+                padding: '10px 16px',
+                background: 'rgba(255, 59, 48, 0.12)',
+                borderRadius: 12,
+                color: 'var(--danger)',
+                fontSize: 13,
+              }}>
+                {error}
+                <div style={{ marginTop: 8 }}>
+                  <button className="glass-btn" style={{ fontSize: 13, padding: '8px 16px' }} onClick={startScanner}>
+                    Retry
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {scanning && (
+              <div style={{ marginTop: 12 }}>
+                <button className="glass-btn danger" style={{ fontSize: 13, padding: '8px 16px' }} onClick={stopScanner}>
+                  Stop Camera
+                </button>
+              </div>
+            )}
+          </>
+        ) : (
+          <ManualConnect onConnect={onScan} />
+        )}
+
+        <div style={{ marginTop: 12 }}>
+          <button
+            style={{
+              background: 'none',
+              border: 'none',
+              color: 'var(--accent)',
+              fontSize: 13,
+              cursor: 'pointer',
+              padding: '4px 8px',
+            }}
+            onClick={() => { setManualMode(!manualMode); if (scanning) stopScanner(); }}
+          >
+            {manualMode ? 'Use Camera' : 'Manual Connection'}
+          </button>
         </div>
-
-        {error && (
-          <div style={{
-            marginTop: 12,
-            padding: '10px 16px',
-            background: 'rgba(239, 68, 68, 0.15)',
-            borderRadius: 12,
-            color: 'var(--danger)',
-            fontSize: 13,
-          }}>
-            {error}
-            <div style={{ marginTop: 8 }}>
-              <button className="glass-btn" style={{ fontSize: 13, padding: '8px 16px' }} onClick={startScanner}>
-                Retry
-              </button>
-            </div>
-          </div>
-        )}
-
-        {scanning && (
-          <div style={{ marginTop: 12 }}>
-            <button className="glass-btn danger" style={{ fontSize: 13, padding: '8px 16px' }} onClick={stopScanner}>
-              Stop Camera
-            </button>
-          </div>
-        )}
       </div>
+    </div>
+  );
 
-      {/* Manual input fallback */}
-      <ManualConnect onConnect={onScan} />
+  if (overlay) {
+    return (
+      <div className="scan-overlay">
+        <button className="scan-overlay-close" onClick={() => { stopScanner(); onClose?.(); }}>
+          <CloseIcon size={18} color="white" />
+        </button>
+        {content}
+      </div>
+    );
+  }
+
+  return (
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      height: '100%',
+      padding: '0 20px',
+    }}>
+      {content}
     </div>
   );
 };
@@ -158,19 +212,19 @@ const ManualConnect: React.FC<{ onConnect: (info: ConnectionInfo) => void }> = (
   };
 
   return (
-    <div className="glass" style={{ padding: 16 }}>
-      <h4 style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 8 }}>
-        Manual Connection
-      </h4>
+    <div style={{ textAlign: 'left' }}>
+      <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 8 }}>
+        Paste the connection key from your PC:
+      </p>
       <input
         className="glass-input"
         value={jsonInput}
         onChange={(e) => setJsonInput(e.target.value)}
-        placeholder='Paste QR data JSON here...'
+        placeholder='Paste connection key...'
         style={{ fontSize: 13, marginBottom: 8 }}
       />
       {error && <div style={{ color: 'var(--danger)', fontSize: 12, marginBottom: 8 }}>{error}</div>}
-      <button className="glass-btn full-width" style={{ fontSize: 13 }} onClick={handleConnect} disabled={!jsonInput}>
+      <button className="glass-btn accent full-width" style={{ fontSize: 13 }} onClick={handleConnect} disabled={!jsonInput}>
         Connect
       </button>
     </div>

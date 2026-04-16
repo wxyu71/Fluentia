@@ -25,10 +25,15 @@ export class CryptoService {
   private peerPublicKey: Uint8Array | null = null;
   private ready = false;
 
-  // Symmetric ratchet state for forward secrecy
+  // Send ratchet (mobile → PC) — forward secrecy
   private sendChainKey: Uint8Array | null = null;
   private sendSeq = 0;
   private _ratchetReady = false;
+
+  // Receive ratchet (PC → mobile) — backward secrecy
+  private recvChainKey: Uint8Array | null = null;
+  private expectedSeq = 0;
+  private _recvRatchetReady = false;
 
   constructor() {
     this.keyPair = nacl.box.keyPair();
@@ -124,6 +129,50 @@ export class CryptoService {
     return new TextDecoder().decode(decrypted);
   }
 
+  /**
+   * Initialize receive ratchet from seed sent by PC (backward security).
+   */
+  initRecvRatchet(seedBase64: string): void {
+    const seed = decodeBase64(seedBase64);
+    this.recvChainKey = kdf(seed, 'fluentia_chain_v1');
+    this.expectedSeq = 0;
+    this._recvRatchetReady = true;
+  }
+
+  isRecvRatchetReady(): boolean {
+    return this._recvRatchetReady;
+  }
+
+  /**
+   * Ratcheted decryption for PC → mobile messages (backward security).
+   */
+  decryptRatcheted(payloadBase64: string, nonceBase64: string, seq: number): string {
+    if (!this.recvChainKey) throw new Error('Receive ratchet not initialized');
+
+    // Fast-forward to match sender's seq
+    while (this.expectedSeq < seq) {
+      const { nextChainKey } = ratchetStep(this.recvChainKey);
+      this.recvChainKey = nextChainKey;
+      this.expectedSeq++;
+    }
+
+    const { messageKey, nextChainKey } = ratchetStep(this.recvChainKey);
+    this.recvChainKey = nextChainKey;
+    this.expectedSeq++;
+
+    const decrypted = nacl.secretbox.open(
+      decodeBase64(payloadBase64),
+      decodeBase64(nonceBase64),
+      messageKey
+    );
+
+    // Wipe message key
+    messageKey.fill(0);
+
+    if (!decrypted) throw new Error('Ratcheted decryption failed');
+    return new TextDecoder().decode(decrypted);
+  }
+
   reset(): void {
     this.keyPair = nacl.box.keyPair();
     this.peerPublicKey = null;
@@ -131,5 +180,8 @@ export class CryptoService {
     this.sendChainKey = null;
     this.sendSeq = 0;
     this._ratchetReady = false;
+    this.recvChainKey = null;
+    this.expectedSeq = 0;
+    this._recvRatchetReady = false;
   }
 }

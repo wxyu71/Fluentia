@@ -1,56 +1,58 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useRef, useCallback } from 'react';
 import { computeDiff } from '../utils/diff';
+import { ScanIcon, ClearIcon, ClipboardIcon } from './Icons';
 import type { InputCommand, HistoryEntry } from '../types';
 
 interface InputAreaProps {
   encryptionReady: boolean;
+  text: string;
+  setText: (text: string) => void;
   onSendCommand: (cmd: InputCommand) => void;
   onAddHistory: (entry: HistoryEntry) => void;
+  onOpenScanner: () => void;
+  autoSaveHistory: boolean;
 }
 
-export const InputArea: React.FC<InputAreaProps> = ({ encryptionReady, onSendCommand, onAddHistory }) => {
-  const [text, setText] = useState('');
-  const [isComposing, setIsComposing] = useState(false);
-  const [charCount, setCharCount] = useState(0);
+export const InputArea: React.FC<InputAreaProps> = ({
+  encryptionReady,
+  text,
+  setText,
+  onSendCommand,
+  onAddHistory,
+  onOpenScanner,
+  autoSaveHistory,
+}) => {
   const lastSentRef = useRef('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const charCountRef = useRef(0);
 
   const sendDiff = useCallback((newText: string) => {
     const diff = computeDiff(lastSentRef.current, newText);
-    // Send as a single atomic 'diff' command so the PC can apply
-    // backspace + insert in one SendInput call — prevents race conditions.
     if (diff.backspace > 0 || diff.insert) {
       onSendCommand({ type: 'diff', count: diff.backspace, text: diff.insert || '' });
     }
     lastSentRef.current = newText;
-    setCharCount((prev) => prev + (diff.insert?.length || 0));
+    charCountRef.current += (diff.insert?.length || 0);
   }, [onSendCommand]);
 
   const handleInput = useCallback((e: React.FormEvent<HTMLTextAreaElement>) => {
     const newText = e.currentTarget.value;
     setText(newText);
-    // Always send diffs — including during composition (voice input / IME).
-    // This enables real-time streaming of every character change.
     if (encryptionReady) {
       sendDiff(newText);
     }
-  }, [encryptionReady, sendDiff]);
-
-  const handleCompositionStart = useCallback(() => {
-    setIsComposing(true);
-  }, []);
+  }, [encryptionReady, sendDiff, setText]);
 
   const handleCompositionEnd = useCallback((e: React.CompositionEvent<HTMLTextAreaElement>) => {
-    setIsComposing(false);
     const newText = e.currentTarget.value;
     setText(newText);
     if (encryptionReady) {
       sendDiff(newText);
     }
-  }, [encryptionReady, sendDiff]);
+  }, [encryptionReady, sendDiff, setText]);
 
   const handleClear = useCallback(() => {
-    if (text.trim()) {
+    if (text.trim() && autoSaveHistory) {
       onAddHistory({
         id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
         text: text.trim(),
@@ -59,52 +61,103 @@ export const InputArea: React.FC<InputAreaProps> = ({ encryptionReady, onSendCom
     }
     setText('');
     lastSentRef.current = '';
-    textareaRef.current?.focus();
-  }, [text, onAddHistory]);
-
-  const handleNewLine = useCallback(() => {
     if (encryptionReady) {
-      onSendCommand({ type: 'text_commit', text: '\n' });
-      const newText = text + '\n';
-      setText(newText);
-      lastSentRef.current = newText;
+      onSendCommand({ type: 'clear' });
     }
+    textareaRef.current?.focus();
+  }, [text, autoSaveHistory, onAddHistory, encryptionReady, onSendCommand, setText]);
+
+  const handleCopyToClipboard = useCallback(() => {
+    if (!text.trim() || !encryptionReady) return;
+    onSendCommand({ type: 'clipboard', text: text.trim() });
   }, [text, encryptionReady, onSendCommand]);
 
   return (
-    <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '0 20px' }}>
-      {/* Status hint */}
+    <div className="input-page" style={{ padding: '0 20px' }}>
+      {/* Spacer — pushes content to bottom for thumb reach */}
+      <div style={{ flex: 1, minHeight: 40 }} />
+
+      {/* Encryption hint */}
       {!encryptionReady && (
         <div className="glass glass-xs" style={{
           padding: '10px 16px',
           textAlign: 'center',
           color: 'var(--warning)',
           fontSize: 13,
+          marginBottom: 12,
         }}>
-          ⏳ Waiting for encrypted connection...
+          Waiting for encrypted connection...
         </div>
       )}
 
-      {/* Main textarea */}
+      {/* Toolbar: scan icon + clipboard */}
+      {encryptionReady && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: 8,
+          padding: '0 4px',
+        }}>
+          <button
+            onClick={onOpenScanner}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: 'var(--accent)',
+              cursor: 'pointer',
+              padding: '6px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              fontSize: 13,
+              fontWeight: 500,
+            }}
+          >
+            <ScanIcon size={18} color="var(--accent)" />
+            Scan
+          </button>
+          <button
+            onClick={handleCopyToClipboard}
+            disabled={!text.trim()}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: text.trim() ? 'var(--accent)' : 'var(--text-tertiary)',
+              cursor: text.trim() ? 'pointer' : 'default',
+              padding: '6px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              fontSize: 13,
+              fontWeight: 500,
+              opacity: text.trim() ? 1 : 0.4,
+            }}
+          >
+            <ClipboardIcon size={16} />
+            Copy to PC
+          </button>
+        </div>
+      )}
+
+      {/* Main textarea — large, positioned for thumb reach */}
       <div style={{ position: 'relative' }}>
         <textarea
           ref={textareaRef}
           className="glass-input"
           value={text}
           onInput={handleInput}
-          onCompositionStart={handleCompositionStart}
           onCompositionEnd={handleCompositionEnd}
           placeholder={encryptionReady ? 'Start typing or use voice input...' : 'Connect to PC first...'}
           disabled={!encryptionReady}
-          autoFocus
+          autoFocus={encryptionReady}
           style={{
-            minHeight: 160,
-            maxHeight: '40vh',
+            minHeight: 200,
+            maxHeight: '50vh',
             lineHeight: 1.6,
             fontSize: 17,
           }}
         />
-        {/* Character counter */}
         <div style={{
           position: 'absolute',
           bottom: 10,
@@ -112,39 +165,22 @@ export const InputArea: React.FC<InputAreaProps> = ({ encryptionReady, onSendCom
           fontSize: 11,
           color: 'var(--text-tertiary)',
         }}>
-          {text.length} chars · {charCount} sent
+          {text.length} chars
         </div>
       </div>
 
-      {/* Action buttons */}
-      <div style={{ display: 'flex', gap: 8 }}>
-        <button
-          className="glass-btn accent full-width"
-          disabled={!encryptionReady}
-          onClick={handleNewLine}
-        >
-          ↵ Enter
-        </button>
+      {/* Clear button */}
+      <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
         <button
           className="glass-btn full-width"
           disabled={!text}
           onClick={handleClear}
+          style={{ gap: 6 }}
         >
-          ✕ Clear & Save
+          <ClearIcon size={14} />
+          Clear{autoSaveHistory ? ' & Save' : ''}
         </button>
       </div>
-
-      {/* Composing indicator */}
-      {isComposing && (
-        <div style={{
-          fontSize: 12,
-          color: 'var(--accent)',
-          textAlign: 'center',
-          animation: 'pulse 1s ease-in-out infinite',
-        }}>
-          ● Composing...
-        </div>
-      )}
     </div>
   );
 };

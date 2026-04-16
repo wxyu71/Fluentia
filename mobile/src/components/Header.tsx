@@ -1,4 +1,5 @@
 import React from 'react';
+import { LockIcon } from './Icons';
 import type { ConnectionState } from '../types';
 
 interface HeaderProps {
@@ -57,7 +58,7 @@ export const Header: React.FC<HeaderProps> = ({ connectionState, peerConnected, 
         <span className={`status-dot ${dotClass()}`} />
         <span style={{ color: 'var(--text-secondary)' }}>{statusText()}</span>
         {encryptionReady && peerConnected && (
-          <span style={{ fontSize: 11 }}>🔒</span>
+          <LockIcon size={12} color="var(--success)" />
         )}
       </div>
     </header>

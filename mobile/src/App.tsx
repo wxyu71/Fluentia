@@ -1,25 +1,37 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { Header } from './components/Header';
 import { InputArea } from './components/InputArea';
 import { QRScanner } from './components/QRScanner';
 import { History } from './components/History';
+import { KeyboardIcon, HistoryIcon, WarningIcon } from './components/Icons';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useDeviceId } from './hooks/useDeviceId';
-import type { AppTab, ConnectionInfo, HistoryEntry, InputCommand } from './types';
+import type { AppTab, ConnectionInfo, HistoryEntry, InputCommand, AppSettings } from './types';
 
 const HISTORY_KEY = 'fluentia_history';
+const SETTINGS_KEY = 'fluentia_settings';
+const CONN_KEY = 'fluentia_conn';
 
 function loadHistory(): HistoryEntry[] {
   try {
     const raw = localStorage.getItem(HISTORY_KEY);
     return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
+  } catch { return []; }
 }
 
 function saveHistory(entries: HistoryEntry[]) {
   localStorage.setItem(HISTORY_KEY, JSON.stringify(entries.slice(-100)));
+}
+
+function loadSettings(): AppSettings {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    return raw ? JSON.parse(raw) : { autoSaveHistory: true };
+  } catch { return { autoSaveHistory: true }; }
+}
+
+function saveSettings(s: AppSettings) {
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
 }
 
 export const App: React.FC = () => {
@@ -34,13 +46,46 @@ export const App: React.FC = () => {
     lastError,
   } = useWebSocket(deviceId);
 
-  const [activeTab, setActiveTab] = useState<AppTab>('scan');
+  const [activeTab, setActiveTab] = useState<AppTab>('input');
   const [history, setHistory] = useState<HistoryEntry[]>(loadHistory);
+  const [settings, setSettings] = useState<AppSettings>(loadSettings);
+  const [inputText, setInputText] = useState('');
+  const [scannerOverlay, setScannerOverlay] = useState(false);
+
+  // Swipe state
+  const touchStartRef = useRef<{ x: number; y: number; t: number } | null>(null);
+  const swipeContainerRef = useRef<HTMLDivElement>(null);
+  const [swipeOffset, setSwipeOffset] = useState(0);
+  const [isSwiping, setIsSwiping] = useState(false);
+
+  const isConnected = connectionState === 'connected' && peerConnected;
 
   const handleScan = useCallback((info: ConnectionInfo) => {
+    // Persist connection info for auto-reconnect
+    localStorage.setItem(CONN_KEY, JSON.stringify(info));
     connect(info);
     setActiveTab('input');
+    setScannerOverlay(false);
   }, [connect]);
+
+  // Auto-reconnect on visibility change (15-minute tolerance)
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible' && connectionState === 'disconnected') {
+        try {
+          const raw = localStorage.getItem(CONN_KEY);
+          if (raw) {
+            const info = JSON.parse(raw) as ConnectionInfo;
+            if (info.s && info.t && info.k) {
+              connect(info);
+            }
+          }
+        } catch { /* ignore */ }
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [connectionState, connect]);
 
   const handleSendCommand = useCallback((cmd: InputCommand) => {
     sendEncrypted(cmd);
@@ -63,14 +108,69 @@ export const App: React.FC = () => {
     sendEncrypted(cmd);
   }, [sendEncrypted]);
 
+  const handleToggleAutoSave = useCallback(() => {
+    setSettings(prev => {
+      const next = { ...prev, autoSaveHistory: !prev.autoSaveHistory };
+      saveSettings(next);
+      return next;
+    });
+  }, []);
+
+  // Swipe gesture handlers
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    const touch = e.touches[0];
+    touchStartRef.current = { x: touch.clientX, y: touch.clientY, t: Date.now() };
+  }, []);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (!touchStartRef.current) return;
+    const touch = e.touches[0];
+    const dx = touch.clientX - touchStartRef.current.x;
+    const dy = touch.clientY - touchStartRef.current.y;
+    // Only swipe if more horizontal than vertical
+    if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 10) {
+      setIsSwiping(true);
+      setSwipeOffset(dx);
+    }
+  }, []);
+
+  const handleTouchEnd = useCallback(() => {
+    if (!touchStartRef.current || !isSwiping) {
+      touchStartRef.current = null;
+      return;
+    }
+    const threshold = 80;
+    if (swipeOffset > threshold && activeTab === 'history') {
+      setActiveTab('input');
+    } else if (swipeOffset < -threshold && activeTab === 'input') {
+      setActiveTab('history');
+    }
+    setSwipeOffset(0);
+    setIsSwiping(false);
+    touchStartRef.current = null;
+  }, [swipeOffset, activeTab, isSwiping]);
+
+  const tabIndex = activeTab === 'input' ? 0 : 1;
+  const translateX = isSwiping
+    ? `calc(-${tabIndex * 50}% + ${swipeOffset}px)`
+    : `-${tabIndex * 50}%`;
+
+  // Show full-page scanner when not connected (input tab)
+  const showFullScanner = !isConnected && !encryptionReady && activeTab === 'input';
+
   return (
-    <div style={{
-      height: '100%',
-      display: 'flex',
-      flexDirection: 'column',
-      position: 'relative',
-      zIndex: 1,
-    }}>
+    <div
+      style={{
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        position: 'relative',
+        zIndex: 1,
+      }}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+    >
       {/* Animated background */}
       <div className="bg-scene">
         <div className="bg-blob bg-blob-1" />
@@ -86,7 +186,7 @@ export const App: React.FC = () => {
         encryptionReady={encryptionReady}
       />
 
-      {/* Error / Preemption banner */}
+      {/* Error banner */}
       {(connectionState === 'preempted' || lastError) && (
         <div style={{
           margin: '0 20px 12px',
@@ -99,72 +199,88 @@ export const App: React.FC = () => {
           justifyContent: 'space-between',
           gap: 12,
         }}>
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--danger)' }}>
-              {connectionState === 'preempted' ? '⚠️ Device Preempted' : '⚠️ Error'}
-            </div>
-            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
-              {lastError || 'Another device took control of this session'}
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+            <WarningIcon size={16} color="var(--danger)" />
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--danger)' }}>
+                {connectionState === 'preempted' ? 'Device Preempted' : 'Error'}
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
+                {lastError || 'Another device took control'}
+              </div>
             </div>
           </div>
           <button
             className="glass-btn"
             style={{ fontSize: 12, padding: '6px 14px', flexShrink: 0 }}
-            onClick={() => { disconnect(); setActiveTab('scan'); }}
+            onClick={() => { disconnect(); localStorage.removeItem(CONN_KEY); }}
           >
             Reconnect
           </button>
         </div>
       )}
 
-      {/* Main Content */}
+      {/* Main Content — swipeable pages */}
       <div style={{ flex: 1, overflow: 'hidden' }}>
-        {activeTab === 'input' && (
-          <InputArea
-            encryptionReady={encryptionReady}
-            onSendCommand={handleSendCommand}
-            onAddHistory={handleAddHistory}
-          />
-        )}
-        {activeTab === 'scan' && (
+        {showFullScanner ? (
           <QRScanner onScan={handleScan} />
-        )}
-        {activeTab === 'history' && (
-          <History
-            entries={history}
-            encryptionReady={encryptionReady}
-            onResend={handleResend}
-            onClearHistory={handleClearHistory}
-          />
+        ) : (
+          <div
+            ref={swipeContainerRef}
+            className={`swipe-container ${isSwiping ? 'no-transition' : ''}`}
+            style={{ transform: `translateX(${translateX})` }}
+          >
+            <div className="swipe-page">
+              <InputArea
+                encryptionReady={encryptionReady}
+                text={inputText}
+                setText={setInputText}
+                onSendCommand={handleSendCommand}
+                onAddHistory={handleAddHistory}
+                onOpenScanner={() => setScannerOverlay(true)}
+                autoSaveHistory={settings.autoSaveHistory}
+              />
+            </div>
+            <div className="swipe-page">
+              <History
+                entries={history}
+                encryptionReady={encryptionReady}
+                onResend={handleResend}
+                onClearHistory={handleClearHistory}
+                autoSaveHistory={settings.autoSaveHistory}
+                onToggleAutoSave={handleToggleAutoSave}
+              />
+            </div>
+          </div>
         )}
       </div>
 
-      {/* Tab Bar */}
-      <div style={{ padding: '12px 20px 20px', paddingBottom: 'max(20px, env(safe-area-inset-bottom))' }}>
-        <div className="tab-bar">
-          <button
-            className={`tab-item ${activeTab === 'input' ? 'active' : ''}`}
-            onClick={() => setActiveTab('input')}
-          >
-            <span className="tab-icon">⌨️</span>
-            Input
-          </button>
-          <button
-            className={`tab-item ${activeTab === 'scan' ? 'active' : ''}`}
-            onClick={() => setActiveTab('scan')}
-          >
-            <span className="tab-icon">📷</span>
-            Scan
-          </button>
-          <button
-            className={`tab-item ${activeTab === 'history' ? 'active' : ''}`}
-            onClick={() => setActiveTab('history')}
-          >
-            <span className="tab-icon">📋</span>
-            History
-          </button>
+      {/* Scanner overlay (modal) — only when connected */}
+      {scannerOverlay && (
+        <QRScanner onScan={handleScan} overlay onClose={() => setScannerOverlay(false)} />
+      )}
+
+      {/* Tab Bar — only show when connected */}
+      {!showFullScanner && (
+        <div style={{ padding: '12px 20px 20px', paddingBottom: 'max(20px, env(safe-area-inset-bottom))' }}>
+          <div className="tab-bar">
+            <button
+              className={`tab-item ${activeTab === 'input' ? 'active' : ''}`}
+              onClick={() => setActiveTab('input')}
+            >
+              <KeyboardIcon size={18} />
+              Input
+            </button>
+            <button
+              className={`tab-item ${activeTab === 'history' ? 'active' : ''}`}
+              onClick={() => setActiveTab('history')}
+            >
+              <HistoryIcon size={18} />
+              History
+            </button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };

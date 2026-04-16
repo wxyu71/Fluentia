@@ -7,9 +7,10 @@ import (
 
 // Hub manages all rooms and connected clients.
 type Hub struct {
-	rooms   map[string]*Room
-	clients map[*Client]bool
-	mu      sync.RWMutex
+	rooms      map[string]*Room
+	clients    map[*Client]bool
+	mu         sync.RWMutex
+	MaxFileMB  int // -1=disabled, 0=unlimited, N=N MB
 }
 
 func NewHub() *Hub {

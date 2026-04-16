@@ -1,10 +1,11 @@
 /* ═══════════════════════════════════════════
    Fluentia — Apple-inspired Design System
    Clean, modern UI matching Apple.com style
+   Supports dark + light via prefers-color-scheme
    ═══════════════════════════════════════════ */
 
 :root {
-  /* Apple system colors — dark mode */
+  /* Apple system colors — dark mode (default) */
   --bg-primary: #000000;
   --bg-secondary: #1C1C1E;
   --bg-tertiary: #2C2C2E;
@@ -24,7 +25,7 @@
   --text-secondary: #86868B;
   --text-tertiary: #48484A;
 
-  /* Apple accent — blue, no purple */
+  /* Apple accent — blue */
   --accent: #0A84FF;
   --accent-hover: #409CFF;
   --accent-glow: rgba(10, 132, 255, 0.25);
@@ -33,6 +34,33 @@
   --danger: #FF453A;
 
   --separator: rgba(84, 84, 88, 0.36);
+}
+
+/* ── Light mode ── */
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg-primary: #FFFFFF;
+    --bg-secondary: #F2F2F7;
+    --bg-tertiary: #E5E5EA;
+
+    --glass-bg: rgba(242, 242, 247, 0.72);
+    --glass-bg-hover: rgba(229, 229, 234, 0.8);
+    --glass-border: rgba(0, 0, 0, 0.06);
+    --glass-border-focus: rgba(0, 0, 0, 0.14);
+
+    --text-primary: #1D1D1F;
+    --text-secondary: #86868B;
+    --text-tertiary: #AEAEB2;
+
+    --accent: #007AFF;
+    --accent-hover: #0A84FF;
+    --accent-glow: rgba(0, 122, 255, 0.2);
+    --success: #34C759;
+    --warning: #FF9500;
+    --danger: #FF3B30;
+
+    --separator: rgba(60, 60, 67, 0.18);
+  }
 }
 
 * {
@@ -318,3 +346,125 @@ body {
 .scroll-area::-webkit-scrollbar { width: 3px; }
 .scroll-area::-webkit-scrollbar-track { background: transparent; }
 .scroll-area::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; }
+
+/* ── Light mode blob adjustments ── */
+@media (prefers-color-scheme: light) {
+  .bg-blob { opacity: 0.15; }
+  .bg-blob-1 { background: radial-gradient(circle, rgba(0, 122, 255, 0.3), transparent 70%); }
+  .bg-blob-2 { background: radial-gradient(circle, rgba(52, 199, 89, 0.2), transparent 70%); }
+  .bg-blob-3 { background: radial-gradient(circle, rgba(0, 122, 255, 0.15), transparent 70%); }
+  .bg-blob-4 { background: radial-gradient(circle, rgba(88, 86, 214, 0.1), transparent 70%); }
+
+  .glass-input {
+    background: rgba(255, 255, 255, 0.6);
+  }
+  .scroll-area::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.08); }
+}
+
+/* ── Swipe container ── */
+.swipe-container {
+  display: flex;
+  width: 200%;
+  height: 100%;
+  transition: transform 0.32s cubic-bezier(0.25, 0.1, 0.25, 1);
+  touch-action: pan-y;
+}
+
+.swipe-container.no-transition {
+  transition: none;
+}
+
+.swipe-page {
+  width: 50%;
+  height: 100%;
+  flex-shrink: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ── SVG Icon utility ── */
+.icon-svg {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+}
+
+.icon-svg svg {
+  fill: currentColor;
+}
+
+/* ── Input page layout (thumb-friendly) ── */
+.input-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  justify-content: flex-end;
+  padding-bottom: 8px;
+}
+
+/* ── QR Scanner overlay (modal) ── */
+.scan-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.scan-overlay-close {
+  position: absolute;
+  top: max(16px, env(safe-area-inset-top));
+  right: 16px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  border: none;
+  color: white;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+/* ── Settings toggle (iOS-style switch) ── */
+.toggle-switch {
+  position: relative;
+  width: 51px;
+  height: 31px;
+  border-radius: 15.5px;
+  background: var(--bg-tertiary);
+  border: none;
+  cursor: pointer;
+  transition: background 0.25s ease;
+  flex-shrink: 0;
+}
+
+.toggle-switch.on {
+  background: var(--success);
+}
+
+.toggle-switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 27px;
+  height: 27px;
+  border-radius: 50%;
+  background: white;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  transition: transform 0.25s ease;
+}
+
+.toggle-switch.on::after {
+  transform: translateX(20px);
+}

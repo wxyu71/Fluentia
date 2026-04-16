@@ -30,7 +30,7 @@ export interface TextDiff {
 
 // Encrypted inner message (after decryption)
 export interface InputCommand {
-  type: 'diff' | 'text_commit' | 'backspace' | 'clear' | 'ratchet_init';
+  type: 'diff' | 'text_commit' | 'backspace' | 'clear' | 'ratchet_init' | 'clipboard';
   text?: string;
   count?: number;
   seed?: string;
@@ -43,6 +43,12 @@ export interface HistoryEntry {
   timestamp: number;
 }
 
+// App settings persisted in localStorage
+export interface AppSettings {
+  autoSaveHistory: boolean;
+}
+
 export type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'preempted';
 
-export type AppTab = 'input' | 'scan' | 'history';
+// Only 2 tabs: input (with integrated scan) and history
+export type AppTab = 'input' | 'history';
