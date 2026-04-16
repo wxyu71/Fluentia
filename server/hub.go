@@ -64,6 +64,18 @@ func (h *Hub) Unregister(c *Client) {
 
 // HandleMessage is called from a client's ReadPump goroutine.
 func (h *Hub) HandleMessage(c *Client, msg Message) {
+	// Version check for handshake messages
+	if msg.Type == MsgCreateRoom || msg.Type == MsgJoinRoom {
+		if msg.Version != "" && msg.Version != ProtocolVersion {
+			c.SendMessage(Message{
+				Type:    MsgError,
+				Error:   "version mismatch: client=" + msg.Version + " server=" + ProtocolVersion,
+				Version: ProtocolVersion,
+			})
+			return
+		}
+	}
+
 	switch msg.Type {
 	case MsgCreateRoom:
 		h.handleCreateRoom(c)
@@ -101,7 +113,7 @@ func (h *Hub) handleCreateRoom(c *Client) {
 	h.rooms[room.Token] = room
 
 	log.Printf("Room created: %s", room.Token)
-	c.SendMessage(Message{Type: MsgRoomCreated, Token: room.Token})
+	c.SendMessage(Message{Type: MsgRoomCreated, Token: room.Token, Version: ProtocolVersion})
 }
 
 func (h *Hub) handleJoinRoom(c *Client, msg Message) {
@@ -141,7 +153,7 @@ func (h *Hub) handleJoinRoom(c *Client, msg Message) {
 	room.Mobile = c
 	log.Printf("Device %s joined room %s", c.deviceID, room.Token)
 
-	c.SendMessage(Message{Type: MsgJoined, Role: "mobile", Token: room.Token})
+	c.SendMessage(Message{Type: MsgJoined, Role: "mobile", Token: room.Token, Version: ProtocolVersion})
 	if room.PC != nil {
 		room.PC.SendMessage(Message{Type: MsgPeerJoined, Role: "mobile", DeviceID: c.deviceID})
 	}

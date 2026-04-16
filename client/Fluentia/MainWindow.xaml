@@ -25,21 +25,18 @@
                 </Grid.RowDefinitions>
 
                 <!-- Title -->
-                <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,20">
-                    <TextBlock Text="🎙" FontSize="28" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                    <StackPanel>
-                        <TextBlock Text="Fluentia" FontSize="22" FontWeight="Bold"
-                                   Foreground="{StaticResource TextPrimaryBrush}"/>
-                        <TextBlock Text="Voice Input Relay" FontSize="11"
-                                   Foreground="{StaticResource TextSecondaryBrush}"/>
-                    </StackPanel>
+                <StackPanel Grid.Row="0" Margin="0,0,0,20">
+                    <TextBlock Text="Fluentia" FontSize="22" FontWeight="Bold"
+                               Foreground="{StaticResource TextPrimaryBrush}"/>
+                    <TextBlock Text="Wireless Voice Input" FontSize="11"
+                               Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2,0,0"/>
                 </StackPanel>
 
                 <!-- Server URL -->
                 <StackPanel Grid.Row="1" Margin="0,0,0,16">
                     <TextBlock Text="Server URL" FontSize="12"
                                Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,6"/>
-                    <TextBox x:Name="ServerUrlBox" Text="ws://localhost:8080/ws"
+                    <TextBox x:Name="ServerUrlBox" Text="wss://f.106918.xyz/ws"
                              Style="{StaticResource DarkTextBox}"/>
                 </StackPanel>
 

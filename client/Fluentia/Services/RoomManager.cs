@@ -33,7 +33,7 @@ public class RoomManager : IDisposable
         _ws.OnConnected += () =>
         {
             OnStatusChanged?.Invoke("Connected to server");
-            _ = _ws.SendAsync(new WsMessage { Type = MsgTypes.CreateRoom });
+            _ = _ws.SendAsync(new WsMessage { Type = MsgTypes.CreateRoom, Version = MsgTypes.ProtocolVersion });
         };
 
         _ws.OnDisconnected += (reason) =>
@@ -57,7 +57,7 @@ public class RoomManager : IDisposable
         _crypto.Reset();
         if (_ws.IsConnected)
         {
-            await _ws.SendAsync(new WsMessage { Type = MsgTypes.CreateRoom });
+            await _ws.SendAsync(new WsMessage { Type = MsgTypes.CreateRoom, Version = MsgTypes.ProtocolVersion });
         }
     }
 
@@ -136,10 +136,27 @@ public class RoomManager : IDisposable
 
         try
         {
-            var plaintext = _crypto.Decrypt(msg.Payload, msg.Nonce);
+            string plaintext;
+            if (msg.Seq.HasValue && _crypto.RatchetReady)
+            {
+                // Ratcheted decryption (forward secrecy)
+                plaintext = _crypto.DecryptRatcheted(msg.Payload, msg.Nonce, msg.Seq.Value);
+            }
+            else
+            {
+                // Legacy crypto_box decryption
+                plaintext = _crypto.Decrypt(msg.Payload, msg.Nonce);
+            }
+
             var cmd = InputCommand.Deserialize(plaintext);
             if (cmd != null)
             {
+                if (cmd.Type == "ratchet_init" && cmd.Seed != null)
+                {
+                    _crypto.InitRatchet(cmd.Seed);
+                    OnStatusChanged?.Invoke("Forward secrecy established 🔐");
+                    return;
+                }
                 OnInputCommand?.Invoke(cmd);
             }
         }

@@ -1,5 +1,8 @@
 package main
 
+// Protocol version — all three components (server, mobile, Windows) must match.
+const ProtocolVersion = "1.1.0"
+
 // Message type constants
 const (
 	MsgCreateRoom  = "create_room"
@@ -26,4 +29,6 @@ type Message struct {
 	Payload   string `json:"payload,omitempty"`
 	Nonce     string `json:"nonce,omitempty"`
 	Error     string `json:"error,omitempty"`
+	Version   string `json:"version,omitempty"`
+	Seq       *int   `json:"seq,omitempty"`
 }

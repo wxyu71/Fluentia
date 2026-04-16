@@ -36,6 +36,14 @@ public class WsMessage
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Error { get; set; }
 
+    [JsonPropertyName("version")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Version { get; set; }
+
+    [JsonPropertyName("seq")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? Seq { get; set; }
+
     public string Serialize() => JsonSerializer.Serialize(this);
 
     public static WsMessage? Deserialize(string json) =>
@@ -55,6 +63,10 @@ public class InputCommand
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public int Count { get; set; }
 
+    [JsonPropertyName("seed")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Seed { get; set; }
+
     public string Serialize() => JsonSerializer.Serialize(this);
 
     public static InputCommand? Deserialize(string json) =>
@@ -63,6 +75,7 @@ public class InputCommand
 
 public static class MsgTypes
 {
+    public const string ProtocolVersion = "1.1.0";
     public const string CreateRoom = "create_room";
     public const string RoomCreated = "room_created";
     public const string JoinRoom = "join_room";

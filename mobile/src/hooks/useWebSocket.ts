@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { CryptoService } from '../utils/crypto';
 import type { WsMessage, ConnectionState, InputCommand, ConnectionInfo } from '../types';
+import { PROTOCOL_VERSION } from '../types';
 
 const RECONNECT_DELAY = 3000;
 const MAX_RECONNECT_ATTEMPTS = 5;
@@ -66,6 +67,7 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
         type: 'join_room',
         token: info.t,
         deviceId: deviceId,
+        version: PROTOCOL_VERSION,
       };
       ws.send(JSON.stringify(joinMsg));
     };
@@ -143,6 +145,19 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
           cryptoRef.current.setPeerPublicKey(msg.publicKey);
         }
         setEncryptionReady(true);
+
+        // Initialize symmetric ratchet for forward secrecy
+        try {
+          const { seed } = cryptoRef.current.initRatchet();
+          const initCmd = JSON.stringify({ type: 'ratchet_init', seed });
+          const { payload: initPayload, nonce: initNonce } = cryptoRef.current.encrypt(initCmd);
+          if (wsRef.current?.readyState === WebSocket.OPEN) {
+            const initMsg: WsMessage = { type: 'encrypted', payload: initPayload, nonce: initNonce };
+            wsRef.current.send(JSON.stringify(initMsg));
+          }
+        } catch (err) {
+          console.error('Failed to init ratchet:', err);
+        }
         break;
 
       case 'preempted':
@@ -173,12 +188,18 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
 
     try {
       const plaintext = JSON.stringify(cmd);
-      const { payload, nonce } = cryptoRef.current.encrypt(plaintext);
-      const msg: WsMessage = {
-        type: 'encrypted',
-        payload,
-        nonce,
-      };
+      let msg: WsMessage;
+
+      if (cryptoRef.current.isRatchetReady()) {
+        // Forward-secret ratcheted encryption
+        const { payload, nonce, seq } = cryptoRef.current.encryptRatcheted(plaintext);
+        msg = { type: 'encrypted', payload, nonce, seq };
+      } else {
+        // Fallback: legacy crypto_box
+        const { payload, nonce } = cryptoRef.current.encrypt(plaintext);
+        msg = { type: 'encrypted', payload, nonce };
+      }
+
       wsRef.current.send(JSON.stringify(msg));
     } catch (err) {
       console.error('Encryption error:', err);

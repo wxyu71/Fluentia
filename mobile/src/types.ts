@@ -1,3 +1,6 @@
+// Protocol version — must match server and Windows client
+export const PROTOCOL_VERSION = '1.1.0';
+
 // Protocol message types matching the Go server
 export interface WsMessage {
   type: string;
@@ -8,6 +11,8 @@ export interface WsMessage {
   payload?: string;
   nonce?: string;
   error?: string;
+  version?: string;
+  seq?: number;
 }
 
 // Parsed QR code data from PC client
@@ -25,9 +30,10 @@ export interface TextDiff {
 
 // Encrypted inner message (after decryption)
 export interface InputCommand {
-  type: 'diff' | 'text_commit' | 'backspace' | 'clear';
+  type: 'diff' | 'text_commit' | 'backspace' | 'clear' | 'ratchet_init';
   text?: string;
   count?: number;
+  seed?: string;
 }
 
 // History entry

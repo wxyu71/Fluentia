@@ -1,25 +1,38 @@
 /* ═══════════════════════════════════════════
-   Fluentia — Liquid Glass Design System
-   Inspired by Apple iOS 26 Liquid Glass
+   Fluentia — Apple-inspired Design System
+   Clean, modern UI matching Apple.com style
    ═══════════════════════════════════════════ */
 
 :root {
-  --glass-bg: rgba(255, 255, 255, 0.06);
-  --glass-bg-hover: rgba(255, 255, 255, 0.1);
-  --glass-border: rgba(255, 255, 255, 0.12);
-  --glass-border-light: rgba(255, 255, 255, 0.2);
+  /* Apple system colors — dark mode */
+  --bg-primary: #000000;
+  --bg-secondary: #1C1C1E;
+  --bg-tertiary: #2C2C2E;
+
+  /* Glass */
+  --glass-bg: rgba(44, 44, 46, 0.72);
+  --glass-bg-hover: rgba(58, 58, 60, 0.8);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-border-focus: rgba(255, 255, 255, 0.16);
   --glass-blur: 40px;
-  --glass-radius: 24px;
-  --glass-radius-sm: 16px;
-  --glass-radius-xs: 12px;
-  --text-primary: rgba(255, 255, 255, 0.95);
-  --text-secondary: rgba(255, 255, 255, 0.55);
-  --text-tertiary: rgba(255, 255, 255, 0.35);
-  --accent: #6366f1;
-  --accent-glow: rgba(99, 102, 241, 0.4);
-  --success: #22c55e;
-  --warning: #f59e0b;
-  --danger: #ef4444;
+  --glass-radius: 20px;
+  --glass-radius-sm: 14px;
+  --glass-radius-xs: 10px;
+
+  /* Text — Apple dark mode */
+  --text-primary: #F5F5F7;
+  --text-secondary: #86868B;
+  --text-tertiary: #48484A;
+
+  /* Apple accent — blue, no purple */
+  --accent: #0A84FF;
+  --accent-hover: #409CFF;
+  --accent-glow: rgba(10, 132, 255, 0.25);
+  --success: #30D158;
+  --warning: #FF9F0A;
+  --danger: #FF453A;
+
+  --separator: rgba(84, 84, 88, 0.36);
 }
 
 * {
@@ -35,17 +48,19 @@ html, body {
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
-  background: #06060f;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text',
+               'Helvetica Neue', Arial, sans-serif;
+  background: var(--bg-primary);
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 #root {
   height: 100%;
 }
 
-/* ── Animated Background ── */
+/* ── Subtle animated background ── */
 .bg-scene {
   position: fixed;
   inset: 0;
@@ -57,67 +72,64 @@ body {
 .bg-blob {
   position: absolute;
   border-radius: 50%;
-  filter: blur(100px);
-  opacity: 0.6;
+  filter: blur(120px);
+  opacity: 0.3;
   will-change: transform;
 }
 
 .bg-blob-1 {
-  width: 340px;
-  height: 340px;
-  background: radial-gradient(circle, rgba(99, 102, 241, 0.6), transparent 70%);
-  top: -80px;
-  left: -60px;
-  animation: floatA 18s ease-in-out infinite;
+  width: 400px;
+  height: 400px;
+  background: radial-gradient(circle, rgba(10, 132, 255, 0.45), transparent 70%);
+  top: -120px;
+  left: -100px;
+  animation: floatA 20s ease-in-out infinite;
 }
 
 .bg-blob-2 {
-  width: 280px;
-  height: 280px;
-  background: radial-gradient(circle, rgba(236, 72, 153, 0.5), transparent 70%);
-  bottom: -60px;
-  right: -40px;
-  animation: floatB 22s ease-in-out infinite;
+  width: 350px;
+  height: 350px;
+  background: radial-gradient(circle, rgba(48, 209, 88, 0.25), transparent 70%);
+  bottom: -80px;
+  right: -60px;
+  animation: floatB 24s ease-in-out infinite;
 }
 
 .bg-blob-3 {
-  width: 220px;
-  height: 220px;
-  background: radial-gradient(circle, rgba(34, 211, 238, 0.35), transparent 70%);
-  top: 45%;
-  left: 55%;
-  animation: floatC 20s ease-in-out infinite;
+  width: 280px;
+  height: 280px;
+  background: radial-gradient(circle, rgba(10, 132, 255, 0.2), transparent 70%);
+  top: 50%;
+  left: 60%;
+  animation: floatC 22s ease-in-out infinite;
 }
 
 .bg-blob-4 {
-  width: 180px;
-  height: 180px;
-  background: radial-gradient(circle, rgba(168, 85, 247, 0.3), transparent 70%);
-  top: 20%;
-  right: 20%;
-  animation: floatD 24s ease-in-out infinite;
+  width: 200px;
+  height: 200px;
+  background: radial-gradient(circle, rgba(94, 92, 230, 0.15), transparent 70%);
+  top: 25%;
+  right: 15%;
+  animation: floatD 26s ease-in-out infinite;
 }
 
 @keyframes floatA {
   0%, 100% { transform: translate(0, 0) scale(1); }
-  33% { transform: translate(40px, 60px) scale(1.1); }
-  66% { transform: translate(-20px, 30px) scale(0.95); }
+  33% { transform: translate(30px, 50px) scale(1.08); }
+  66% { transform: translate(-15px, 25px) scale(0.95); }
 }
-
 @keyframes floatB {
   0%, 100% { transform: translate(0, 0) scale(1); }
-  33% { transform: translate(-50px, -40px) scale(1.05); }
-  66% { transform: translate(30px, -60px) scale(0.9); }
+  33% { transform: translate(-40px, -30px) scale(1.04); }
+  66% { transform: translate(20px, -50px) scale(0.92); }
 }
-
 @keyframes floatC {
   0%, 100% { transform: translate(0, 0) scale(1); }
-  50% { transform: translate(-40px, 40px) scale(1.15); }
+  50% { transform: translate(-30px, 30px) scale(1.1); }
 }
-
 @keyframes floatD {
   0%, 100% { transform: translate(0, 0) scale(1); }
-  50% { transform: translate(50px, -30px) scale(1.1); }
+  50% { transform: translate(40px, -25px) scale(1.06); }
 }
 
 /* ── Glass Panel ── */
@@ -125,11 +137,9 @@ body {
   background: var(--glass-bg);
   backdrop-filter: blur(var(--glass-blur)) saturate(180%);
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(180%);
-  border: 1px solid var(--glass-border);
+  border: 0.5px solid var(--glass-border);
   border-radius: var(--glass-radius);
-  box-shadow:
-    0 8px 32px rgba(0, 0, 0, 0.25),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
 }
 
 .glass-sm {
@@ -145,44 +155,45 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  background: rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid var(--glass-border);
+  gap: 6px;
+  background: var(--bg-tertiary);
+  border: 0.5px solid var(--glass-border);
   border-radius: var(--glass-radius-sm);
   color: var(--text-primary);
   font-size: 15px;
   font-weight: 500;
   padding: 12px 24px;
   cursor: pointer;
-  transition: all 0.25s ease;
+  transition: all 0.2s ease;
   user-select: none;
   outline: none;
+  letter-spacing: -0.01em;
 }
 
 .glass-btn:active {
   transform: scale(0.97);
-  background: rgba(255, 255, 255, 0.14);
+  opacity: 0.85;
 }
 
 .glass-btn.accent {
-  background: rgba(99, 102, 241, 0.25);
-  border-color: rgba(99, 102, 241, 0.4);
-  box-shadow: 0 4px 16px var(--accent-glow);
+  background: var(--accent);
+  border-color: transparent;
+  color: #fff;
+  font-weight: 600;
 }
 
 .glass-btn.accent:active {
-  background: rgba(99, 102, 241, 0.35);
+  background: var(--accent-hover);
 }
 
 .glass-btn.danger {
-  background: rgba(239, 68, 68, 0.2);
-  border-color: rgba(239, 68, 68, 0.35);
+  background: rgba(255, 69, 58, 0.18);
+  border-color: rgba(255, 69, 58, 0.25);
+  color: var(--danger);
 }
 
 .glass-btn:disabled {
-  opacity: 0.4;
+  opacity: 0.35;
   pointer-events: none;
 }
 
@@ -193,18 +204,19 @@ body {
 /* ── Glass Input / Textarea ── */
 .glass-input {
   width: 100%;
-  background: rgba(0, 0, 0, 0.2);
+  background: rgba(0, 0, 0, 0.25);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid var(--glass-border);
+  border: 0.5px solid var(--glass-border);
   border-radius: var(--glass-radius-sm);
   color: var(--text-primary);
-  font-size: 16px;
+  font-size: 17px;
   padding: 14px 16px;
   outline: none;
   resize: none;
-  transition: border-color 0.25s ease;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
   font-family: inherit;
+  letter-spacing: -0.01em;
 }
 
 .glass-input::placeholder {
@@ -218,33 +230,42 @@ body {
 
 /* ── Status Dot ── */
 .status-dot {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   display: inline-block;
   flex-shrink: 0;
 }
 
-.status-dot.connected { background: var(--success); box-shadow: 0 0 8px var(--success); }
-.status-dot.connecting { background: var(--warning); animation: pulse 1.5s ease-in-out infinite; }
-.status-dot.disconnected { background: var(--danger); }
-.status-dot.preempted { background: var(--danger); animation: pulse 1s ease-in-out infinite; }
+.status-dot.connected {
+  background: var(--success);
+  box-shadow: 0 0 6px rgba(48, 209, 88, 0.5);
+}
+.status-dot.connecting {
+  background: var(--warning);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+.status-dot.disconnected {
+  background: var(--danger);
+}
+.status-dot.preempted {
+  background: var(--danger);
+  animation: pulse 1s ease-in-out infinite;
+}
 
 @keyframes pulse {
   0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
+  50% { opacity: 0.35; }
 }
 
-/* ── Tab Bar ── */
+/* ── Tab Bar (Apple segmented control) ── */
 .tab-bar {
   display: flex;
-  gap: 4px;
-  padding: 4px;
-  background: rgba(255, 255, 255, 0.04);
-  backdrop-filter: blur(30px);
-  -webkit-backdrop-filter: blur(30px);
-  border: 1px solid var(--glass-border);
-  border-radius: 18px;
+  gap: 2px;
+  padding: 3px;
+  background: var(--bg-tertiary);
+  border: 0.5px solid var(--glass-border);
+  border-radius: 14px;
 }
 
 .tab-item {
@@ -253,26 +274,28 @@ body {
   flex-direction: column;
   align-items: center;
   gap: 2px;
-  padding: 10px 0;
+  padding: 8px 0;
   border: none;
   background: transparent;
   color: var(--text-secondary);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 500;
   cursor: pointer;
-  border-radius: 14px;
-  transition: all 0.25s ease;
+  border-radius: 11px;
+  transition: all 0.2s ease;
   outline: none;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
 }
 
 .tab-item.active {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--bg-secondary);
   color: var(--text-primary);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
 }
 
 .tab-item svg, .tab-item .tab-icon {
-  font-size: 20px;
+  font-size: 18px;
 }
 
 /* ── Utilities ── */
@@ -281,7 +304,7 @@ body {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(8px); }
+  from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
@@ -289,9 +312,9 @@ body {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: thin;
-  scrollbar-color: rgba(255,255,255,0.1) transparent;
+  scrollbar-color: rgba(255,255,255,0.06) transparent;
 }
 
-.scroll-area::-webkit-scrollbar { width: 4px; }
+.scroll-area::-webkit-scrollbar { width: 3px; }
 .scroll-area::-webkit-scrollbar-track { background: transparent; }
-.scroll-area::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+.scroll-area::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; }

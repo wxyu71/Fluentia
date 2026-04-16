@@ -91,9 +91,9 @@ export const App: React.FC = () => {
         <div style={{
           margin: '0 20px 12px',
           padding: '12px 16px',
-          background: 'rgba(239, 68, 68, 0.15)',
-          border: '1px solid rgba(239, 68, 68, 0.3)',
-          borderRadius: 16,
+          background: 'rgba(255, 69, 58, 0.12)',
+          border: '0.5px solid rgba(255, 69, 58, 0.25)',
+          borderRadius: 14,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',

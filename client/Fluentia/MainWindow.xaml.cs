@@ -1,5 +1,6 @@
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Threading.Channels;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
@@ -17,8 +18,10 @@ public partial class MainWindow : Window
 {
     private readonly RoomManager _roomManager;
     private TaskbarIcon? _trayIcon;
-    private System.Drawing.Icon? _appIcon; // prevent GC of the icon handle
-    private readonly object _injectLock = new(); // serialize all injection ops
+    private System.Drawing.Icon? _appIcon;
+    // FIFO channel ensures commands execute in arrival order on a single thread
+    private readonly Channel<InputCommand> _cmdChannel =
+        Channel.CreateUnbounded<InputCommand>(new UnboundedChannelOptions { SingleReader = true });
 
     [DllImport("user32.dll")]
     private static extern bool DestroyIcon(IntPtr handle);
@@ -33,6 +36,19 @@ public partial class MainWindow : Window
 
         // Wire diagnostic logging from TextInjector → our log pane
         TextInjector.DiagnosticLog = (msg) => Dispatcher.BeginInvoke(() => AppendLog(msg));
+
+        // Start a single long-lived consumer that processes commands in FIFO order.
+        // Task.Run + Channel guarantees ordering (unlike multiple Task.Run calls).
+        Task.Run(ProcessCommandQueue);
+    }
+
+    private async Task ProcessCommandQueue()
+    {
+        await foreach (var cmd in _cmdChannel.Reader.ReadAllAsync())
+        {
+            try { HandleInputCommand(cmd); }
+            catch (Exception ex) { Dispatcher.BeginInvoke(() => AppendLog($"Inject error: {ex.Message}")); }
+        }
     }
 
     private void SetupTrayIcon()
@@ -44,7 +60,7 @@ public partial class MainWindow : Window
             g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
             g.Clear(System.Drawing.Color.Transparent);
             g.FillEllipse(
-                new System.Drawing.SolidBrush(System.Drawing.Color.FromArgb(99, 102, 241)),
+                new System.Drawing.SolidBrush(System.Drawing.Color.FromArgb(10, 132, 255)),
                 0, 0, 31, 31);
             g.DrawString("F",
                 new System.Drawing.Font("Segoe UI", 16f, System.Drawing.FontStyle.Bold),
@@ -113,9 +129,8 @@ public partial class MainWindow : Window
             Hide();
         });
 
-        // Text injection must NOT run on the UI thread — we need the target
-        // app's window to hold focus, not Fluentia. Run on a thread-pool thread.
-        _roomManager.OnInputCommand += (cmd) => Task.Run(() => HandleInputCommand(cmd));
+        // Enqueue commands into FIFO channel for ordered, single-threaded processing
+        _roomManager.OnInputCommand += (cmd) => _cmdChannel.Writer.TryWrite(cmd);
 
         _roomManager.OnStatusChanged += (status) => Dispatcher.Invoke(() =>
         {
@@ -129,45 +144,40 @@ public partial class MainWindow : Window
         });
     }
 
-    // Called from a thread-pool thread — do NOT touch UI controls directly here.
-    // Uses lock to serialize commands so rapid diffs don't interleave.
+    // Called from the single command-queue consumer thread — guaranteed FIFO order.
     private void HandleInputCommand(InputCommand cmd)
     {
-        lock (_injectLock)
+        switch (cmd.Type)
         {
-            switch (cmd.Type)
-            {
-                case "diff":
-                    // Atomic diff: backspace + insert in one SendInput call
-                    TextInjector.ApplyDiff(cmd.Count, cmd.Text ?? "");
-                    var bs = cmd.Count;
-                    var ins = cmd.Text ?? "";
-                    var preview = Truncate(ins, 30);
-                    Dispatcher.BeginInvoke(() => AppendLog($"⇄ diff bs={bs} ins=\"{preview}\""));
-                    break;
+            case "diff":
+                TextInjector.ApplyDiff(cmd.Count, cmd.Text ?? "");
+                var bs = cmd.Count;
+                var ins = cmd.Text ?? "";
+                var preview = Truncate(ins, 30);
+                Dispatcher.BeginInvoke(() => AppendLog($"⇄ diff bs={bs} ins=\"{preview}\""));
+                break;
 
-                case "text_commit":
-                    if (!string.IsNullOrEmpty(cmd.Text))
-                    {
-                        TextInjector.TypeText(cmd.Text);
-                        var p = Truncate(cmd.Text, 40);
-                        Dispatcher.BeginInvoke(() => AppendLog($"→ \"{p}\""));
-                    }
-                    break;
+            case "text_commit":
+                if (!string.IsNullOrEmpty(cmd.Text))
+                {
+                    TextInjector.TypeText(cmd.Text);
+                    var p = Truncate(cmd.Text, 40);
+                    Dispatcher.BeginInvoke(() => AppendLog($"→ \"{p}\""));
+                }
+                break;
 
-                case "backspace":
-                    if (cmd.Count > 0)
-                    {
-                        TextInjector.SendBackspace(cmd.Count);
-                        var n = cmd.Count;
-                        Dispatcher.BeginInvoke(() => AppendLog($"← Backspace x{n}"));
-                    }
-                    break;
+            case "backspace":
+                if (cmd.Count > 0)
+                {
+                    TextInjector.SendBackspace(cmd.Count);
+                    var n = cmd.Count;
+                    Dispatcher.BeginInvoke(() => AppendLog($"← Backspace x{n}"));
+                }
+                break;
 
-                case "clear":
-                    Dispatcher.BeginInvoke(() => AppendLog("○ Clear signal received"));
-                    break;
-            }
+            case "clear":
+                Dispatcher.BeginInvoke(() => AppendLog("○ Clear signal received"));
+                break;
         }
     }
 
@@ -201,8 +211,8 @@ public partial class MainWindow : Window
     {
         StatusText.Text = text;
         StatusDot.Fill = new SolidColorBrush(connected
-            ? Color.FromRgb(34, 197, 94)    // green
-            : Color.FromRgb(239, 68, 68));  // red
+            ? Color.FromRgb(48, 209, 88)    // Apple green
+            : Color.FromRgb(255, 69, 58));  // Apple red
     }
 
     private void AppendLog(string text)

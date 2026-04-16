@@ -4,17 +4,17 @@
              StartupUri="MainWindow.xaml"
              ShutdownMode="OnExplicitShutdown">
     <Application.Resources>
-        <!-- Dark theme colors -->
-        <Color x:Key="BgDark">#FF0F0F1A</Color>
-        <Color x:Key="BgPanel">#FF1A1A2E</Color>
-        <Color x:Key="BgInput">#FF12121F</Color>
-        <Color x:Key="Accent">#FF6366F1</Color>
-        <Color x:Key="AccentHover">#FF818CF8</Color>
-        <Color x:Key="TextPrimary">#FFF0F0F0</Color>
-        <Color x:Key="TextSecondary">#FF888899</Color>
-        <Color x:Key="BorderColor">#FF2A2A3E</Color>
-        <Color x:Key="Success">#FF22C55E</Color>
-        <Color x:Key="Danger">#FFEF4444</Color>
+        <!-- ══ Apple-inspired Dark Theme (default) ══ -->
+        <Color x:Key="BgDark">#FF000000</Color>
+        <Color x:Key="BgPanel">#FF1C1C1E</Color>
+        <Color x:Key="BgInput">#FF2C2C2E</Color>
+        <Color x:Key="Accent">#FF0A84FF</Color>
+        <Color x:Key="AccentHover">#FF409CFF</Color>
+        <Color x:Key="TextPrimary">#FFF5F5F7</Color>
+        <Color x:Key="TextSecondary">#FF86868B</Color>
+        <Color x:Key="BorderColor">#FF38383A</Color>
+        <Color x:Key="Success">#FF30D158</Color>
+        <Color x:Key="Danger">#FFFF453A</Color>
 
         <SolidColorBrush x:Key="BgDarkBrush" Color="{StaticResource BgDark}"/>
         <SolidColorBrush x:Key="BgPanelBrush" Color="{StaticResource BgPanel}"/>
@@ -47,7 +47,7 @@
             </Setter>
         </Style>
 
-        <!-- Accent button style -->
+        <!-- Accent button — Apple Blue -->
         <Style x:Key="AccentButton" TargetType="Button">
             <Setter Property="Background" Value="{StaticResource AccentBrush}"/>
             <Setter Property="Foreground" Value="White"/>
@@ -74,7 +74,7 @@
                                 </Setter>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="border" Property="Opacity" Value="0.5"/>
+                                <Setter TargetName="border" Property="Opacity" Value="0.4"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -82,11 +82,11 @@
             </Setter>
         </Style>
 
-        <!-- Secondary button style -->
+        <!-- Secondary button -->
         <Style x:Key="SecondaryButton" TargetType="Button">
             <Setter Property="Background">
                 <Setter.Value>
-                    <SolidColorBrush Color="#FF2A2A3E"/>
+                    <SolidColorBrush Color="#FF2C2C2E"/>
                 </Setter.Value>
             </Setter>
             <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
@@ -107,7 +107,7 @@
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="border" Property="Background">
                                     <Setter.Value>
-                                        <SolidColorBrush Color="#FF3A3A4E"/>
+                                        <SolidColorBrush Color="#FF3A3A3C"/>
                                     </Setter.Value>
                                 </Setter>
                             </Trigger>

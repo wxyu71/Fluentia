@@ -36,14 +36,11 @@ export const Header: React.FC<HeaderProps> = ({ connectionState, peerConnected, 
       justifyContent: 'space-between',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <span style={{ fontSize: 24 }}>🎙</span>
         <h1 style={{
           fontSize: 22,
           fontWeight: 700,
-          letterSpacing: '-0.02em',
-          background: 'linear-gradient(135deg, #fff 0%, rgba(255,255,255,0.7) 100%)',
-          WebkitBackgroundClip: 'text',
-          WebkitTextFillColor: 'transparent',
+          letterSpacing: '-0.025em',
+          color: 'var(--text-primary)',
         }}>
           Fluentia
         </h1>
