@@ -4,7 +4,7 @@ using Fluentia.Models;
 namespace Fluentia.Services;
 
 /// <summary>
-/// Manages the room lifecycle: connect to server, create room, handle messages, key exchange.
+/// Manages the session lifecycle: connect to server, create session, handle messages, key exchange.
 /// </summary>
 public class RoomManager : IDisposable
 {
@@ -12,8 +12,9 @@ public class RoomManager : IDisposable
     private readonly CryptoService _crypto;
     private string? _currentToken;
     private string? _serverUrl;
+    private int _mobileExpirySecs = 60; // default; overridden by server /api/config
 
-    public event Action<string>? OnRoomCreated;       // token
+    public event Action<string>? OnSessionCreated;     // token
     public event Action<string>? OnMobileConnected;    // deviceId
     public event Action? OnMobileDisconnected;
     public event Action? OnEncryptionReady;
@@ -26,6 +27,7 @@ public class RoomManager : IDisposable
     public string? CurrentToken => _currentToken;
     public string? ServerUrl => _serverUrl;
     public bool EncryptionReady => _crypto.IsReady;
+    public int MobileExpirySecs => _mobileExpirySecs;
 
     /// <summary>
     /// Send an encrypted command from PC to mobile.
@@ -60,7 +62,7 @@ public class RoomManager : IDisposable
         _ws.OnConnected += () =>
         {
             OnStatusChanged?.Invoke("Connected to server");
-            _ = _ws.SendAsync(new WsMessage { Type = MsgTypes.CreateRoom, Version = MsgTypes.ProtocolVersion });
+            _ = _ws.SendAsync(new WsMessage { Type = MsgTypes.CreateSession, Version = MsgTypes.ProtocolVersion });
         };
 
         _ws.OnDisconnected += (reason) =>
@@ -76,15 +78,35 @@ public class RoomManager : IDisposable
         _serverUrl = serverUrl;
         _crypto.Reset();
         OnStatusChanged?.Invoke("Connecting...");
+        // Fetch server config (non-blocking — best effort)
+        _ = FetchServerConfigAsync(serverUrl);
         await _ws.ConnectAsync(serverUrl);
     }
 
-    public async Task RefreshRoom()
+    private async Task FetchServerConfigAsync(string wsUrl)
+    {
+        try
+        {
+            // Convert ws:// or wss:// to http:// or https://
+            var httpUrl = wsUrl
+                .Replace("/ws", "/api/config")
+                .Replace("wss://", "https://")
+                .Replace("ws://", "http://");
+            using var http = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+            var json = await http.GetStringAsync(httpUrl);
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            if (doc.RootElement.TryGetProperty("mobileExpirySecs", out var expEl))
+                _mobileExpirySecs = expEl.GetInt32();
+        }
+        catch { /* best-effort; use defaults */ }
+    }
+
+    public async Task RefreshSession()
     {
         _crypto.Reset();
         if (_ws.IsConnected)
         {
-            await _ws.SendAsync(new WsMessage { Type = MsgTypes.CreateRoom, Version = MsgTypes.ProtocolVersion });
+            await _ws.SendAsync(new WsMessage { Type = MsgTypes.CreateSession, Version = MsgTypes.ProtocolVersion });
         }
     }
 
@@ -117,10 +139,6 @@ public class RoomManager : IDisposable
         }
     }
 
-    /// <summary>
-    /// Generates compact QR data: "F1|token|publicKey" (mobile derives server URL from page origin).
-    /// Falls back to full format with server URL if needed.
-    /// </summary>
     public string? GetQRData()
     {
         if (_currentToken == null || _serverUrl == null) return null;
@@ -142,10 +160,10 @@ public class RoomManager : IDisposable
     {
         switch (msg.Type)
         {
-            case MsgTypes.RoomCreated:
+            case MsgTypes.SessionCreated:
                 _currentToken = msg.Token;
-                OnRoomCreated?.Invoke(msg.Token!);
-                OnStatusChanged?.Invoke($"Room ready: {msg.Token?[..8]}...");
+                OnSessionCreated?.Invoke(msg.Token!);
+                OnStatusChanged?.Invoke($"Session ready: {msg.Token?[..8]}...");
                 break;
 
             case MsgTypes.PeerJoined:

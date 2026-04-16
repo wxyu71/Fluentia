@@ -1,0 +1,28 @@
+<Window x:Class="Fluentia.Views.ComposingOverlay"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title=""
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        Topmost="True"
+        ShowInTaskbar="False"
+        IsHitTestVisible="False"
+        SizeToContent="WidthAndHeight"
+        Focusable="False">
+
+    <!-- Semi-transparent floating pill showing composing / pending IME text -->
+    <Border Background="#CC1C1C1E" CornerRadius="10"
+            Padding="14,8" Margin="0">
+        <StackPanel Orientation="Horizontal">
+            <!-- Animated dots indicator -->
+            <TextBlock Text="…" FontSize="13" Foreground="#FF9F0A"
+                       VerticalAlignment="Center" Margin="0,0,8,0"/>
+            <!-- The composing text itself -->
+            <TextBlock x:Name="ComposingText"
+                       FontSize="15" Foreground="White"
+                       MaxWidth="400" TextTrimming="CharacterEllipsis"
+                       VerticalAlignment="Center"/>
+        </StackPanel>
+    </Border>
+</Window>

@@ -113,6 +113,11 @@ public class InputCommand
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool IsLast { get; set; }
 
+    // IME / voice composing preview
+    [JsonPropertyName("composingText")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ComposingText { get; set; }
+
     public string Serialize() => JsonSerializer.Serialize(this);
 
     public static InputCommand? Deserialize(string json) =>
@@ -121,24 +126,24 @@ public class InputCommand
 
 public static class MsgTypes
 {
-    public const string ProtocolVersion = "1.1.0";
-    public const string CreateRoom = "create_room";
-    public const string RoomCreated = "room_created";
-    public const string JoinRoom = "join_room";
-    public const string Joined = "joined";
-    public const string PeerJoined = "peer_joined";
-    public const string PeerLeft = "peer_left";
-    public const string Preempted = "preempted";
-    public const string KeyExchange = "key_exchange";
-    public const string Encrypted = "encrypted";
-    public const string Ping = "ping";
-    public const string Pong = "pong";
-    public const string Error = "error";
+    public const string ProtocolVersion  = "1.2.0";
+    public const string CreateSession    = "create_session";
+    public const string SessionCreated   = "session_created";
+    public const string JoinSession      = "join_session";
+    public const string Joined           = "joined";
+    public const string PeerJoined       = "peer_joined";
+    public const string PeerLeft         = "peer_left";
+    public const string Preempted        = "preempted";
+    public const string KeyExchange      = "key_exchange";
+    public const string Encrypted        = "encrypted";
+    public const string Ping             = "ping";
+    public const string Pong             = "pong";
+    public const string Error            = "error";
 
     // Device code auth
     public const string DeviceCodeRequest = "device_code_request";
     public const string DeviceCodeCreated = "device_code_created";
     public const string DeviceCodePending = "device_code_pending";
     public const string DeviceCodeConfirm = "device_code_confirm";
-    public const string DeviceCodeReject = "device_code_reject";
+    public const string DeviceCodeReject  = "device_code_reject";
 }

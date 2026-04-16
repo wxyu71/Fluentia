@@ -15,4 +15,8 @@ services:
       # ── File Transfer ──
       # -1=disabled, 0=unlimited, N=max MB per file
       - MAX_FILE_MB=-1
+      # ── Session Timing ──
+      # How many seconds after mobile disconnects before PC window re-appears (default 60)
+      # Set longer if you frequently switch apps and want the session to stay quiet
+      - MOBILE_EXPIRY_SECS=60
     restart: unless-stopped

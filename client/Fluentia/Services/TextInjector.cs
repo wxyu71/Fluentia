@@ -153,4 +153,42 @@ public static class TextInjector
             ki = new KEYBDINPUT { wVk = vk, dwFlags = keyUp ? KEYEVENTF_KEYUP : 0u }
         };
     }
+
+    /// <summary>
+    /// Select-all (Ctrl+A) then type the new text — used for full text replacement
+    /// when mobile cursor moved to the middle of text (text_sync command).
+    /// </summary>
+    public static void ReplaceAllText(string text)
+    {
+        var list = new List<INPUT>();
+        // Ctrl+A
+        list.Add(MakeVkInput(0x11, false)); // VK_CONTROL down
+        list.Add(MakeVkInput(0x41, false)); // A down
+        list.Add(MakeVkInput(0x41, true));  // A up
+        list.Add(MakeVkInput(0x11, true));  // VK_CONTROL up
+
+        // Type replacement text
+        foreach (char c in text)
+        {
+            if (c == '\n')
+            {
+                list.Add(MakeVkInput(0x0D, false));
+                list.Add(MakeVkInput(0x0D, true));
+                continue;
+            }
+            list.Add(new INPUT
+            {
+                Type = INPUT_KEYBOARD,
+                ki = new KEYBDINPUT { wScan = (ushort)c, dwFlags = KEYEVENTF_UNICODE }
+            });
+            list.Add(new INPUT
+            {
+                Type = INPUT_KEYBOARD,
+                ki = new KEYBDINPUT { wScan = (ushort)c, dwFlags = KEYEVENTF_UNICODE | KEYEVENTF_KEYUP }
+            });
+        }
+
+        DiagnosticLog?.Invoke($"[ReplaceAll] {text.Length} chars");
+        Inject(list.ToArray());
+    }
 }

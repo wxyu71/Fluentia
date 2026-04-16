@@ -21,8 +21,8 @@ type Client struct {
 	hub       *Hub
 	conn      *websocket.Conn
 	send      chan []byte
-	room      *Room
-	role      string // "pc" or "mobile"
+	session   *Session // the active session this client belongs to
+	role      string   // "pc" or "mobile"
 	deviceID  string
 	closeOnce sync.Once
 }

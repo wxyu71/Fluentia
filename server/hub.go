@@ -9,19 +9,19 @@ import (
 	"time"
 )
 
-// DeviceCodeEntry stores a pending device code and its associated room.
+// DeviceCodeEntry stores a pending device code and its associated session.
 type DeviceCodeEntry struct {
-	Code       string
-	Room       *Room
-	PC         *Client
-	CreatedAt  time.Time
-	Pending    *Client  // mobile client waiting for confirmation
-	VerifyID   string   // matching UUID for visual confirmation
+	Code      string
+	Session   *Session
+	PC        *Client
+	CreatedAt time.Time
+	Pending   *Client // mobile client waiting for confirmation
+	VerifyID  string  // matching ID for visual confirmation
 }
 
-// Hub manages all rooms and connected clients.
+// Hub manages all sessions and connected clients.
 type Hub struct {
-	rooms       map[string]*Room
+	sessions    map[string]*Session
 	clients     map[*Client]bool
 	deviceCodes map[string]*DeviceCodeEntry // code → entry
 	mu          sync.RWMutex
@@ -34,21 +34,21 @@ type Hub struct {
 
 func NewHub() *Hub {
 	return &Hub{
-		rooms:        make(map[string]*Room),
+		sessions:     make(map[string]*Session),
 		clients:      make(map[*Client]bool),
 		deviceCodes:  make(map[string]*DeviceCodeEntry),
 		codeAttempts: make(map[string][]time.Time),
 	}
 }
 
-// GenerateDeviceCode creates an 8-char alphanumeric code for a room.
-func (h *Hub) GenerateDeviceCode(room *Room, pc *Client) string {
+// GenerateDeviceCode creates an 8-char alphanumeric code for a session.
+func (h *Hub) GenerateDeviceCode(session *Session, pc *Client) string {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	// Remove any existing code for this room
+	// Remove any existing code for this session
 	for code, entry := range h.deviceCodes {
-		if entry.Room == room {
+		if entry.Session == session {
 			delete(h.deviceCodes, code)
 		}
 	}
@@ -56,7 +56,7 @@ func (h *Hub) GenerateDeviceCode(room *Room, pc *Client) string {
 	code := generateAlphanumericCode(8)
 	h.deviceCodes[code] = &DeviceCodeEntry{
 		Code:      code,
-		Room:      room,
+		Session:   session,
 		PC:        pc,
 		CreatedAt: time.Now(),
 	}
@@ -120,37 +120,37 @@ func (h *Hub) Unregister(c *Client) {
 	delete(h.clients, c)
 	c.Shutdown()
 
-	if c.room == nil {
+	if c.session == nil {
 		return
 	}
 
-	room := c.room
+	session := c.session
 	if c.role == "pc" {
-		room.PC = nil
-		// PC disconnected → destroy room, kick mobile
-		if room.Mobile != nil {
-			mobile := room.Mobile
-			room.Mobile = nil
-			mobile.room = nil
+		session.PC = nil
+		// PC disconnected → destroy session, kick mobile
+		if session.Mobile != nil {
+			mobile := session.Mobile
+			session.Mobile = nil
+			mobile.session = nil
 			delete(h.clients, mobile)
 			mobile.SendAndClose(Message{Type: MsgPeerLeft, Role: "pc"})
 		}
-		delete(h.rooms, room.Token)
-		log.Printf("Room %s destroyed (PC disconnected)", room.Token)
+		delete(h.sessions, session.Token)
+		log.Printf("Session %s destroyed (PC disconnected)", session.Token)
 	} else if c.role == "mobile" {
-		room.Mobile = nil
-		if room.PC != nil {
-			room.PC.SendMessage(Message{Type: MsgPeerLeft, Role: "mobile", DeviceID: c.deviceID})
+		session.Mobile = nil
+		if session.PC != nil {
+			session.PC.SendMessage(Message{Type: MsgPeerLeft, Role: "mobile", DeviceID: c.deviceID})
 		}
-		log.Printf("Mobile %s left room %s", c.deviceID, room.Token)
+		log.Printf("Mobile %s left session %s", c.deviceID, session.Token)
 	}
-	c.room = nil
+	c.session = nil
 }
 
 // HandleMessage is called from a client's ReadPump goroutine.
 func (h *Hub) HandleMessage(c *Client, msg Message) {
 	// Version check for handshake messages
-	if msg.Type == MsgCreateRoom || msg.Type == MsgJoinRoom {
+	if msg.Type == MsgCreateSession || msg.Type == MsgJoinSession {
 		if msg.Version != "" && msg.Version != ProtocolVersion {
 			c.SendMessage(Message{
 				Type:    MsgError,
@@ -162,10 +162,10 @@ func (h *Hub) HandleMessage(c *Client, msg Message) {
 	}
 
 	switch msg.Type {
-	case MsgCreateRoom:
-		h.handleCreateRoom(c)
-	case MsgJoinRoom:
-		h.handleJoinRoom(c, msg)
+	case MsgCreateSession:
+		h.handleCreateSession(c)
+	case MsgJoinSession:
+		h.handleJoinSession(c, msg)
 	case MsgKeyExchange, MsgEncrypted:
 		h.handleRelay(c, msg)
 	case MsgPing:
@@ -183,33 +183,33 @@ func (h *Hub) HandleMessage(c *Client, msg Message) {
 	}
 }
 
-func (h *Hub) handleCreateRoom(c *Client) {
+func (h *Hub) handleCreateSession(c *Client) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	// Destroy existing room owned by this client
-	if c.room != nil {
-		oldRoom := c.room
-		if oldRoom.Mobile != nil {
-			mobile := oldRoom.Mobile
-			oldRoom.Mobile = nil
-			mobile.room = nil
+	// Destroy existing session owned by this client
+	if c.session != nil {
+		oldSession := c.session
+		if oldSession.Mobile != nil {
+			mobile := oldSession.Mobile
+			oldSession.Mobile = nil
+			mobile.session = nil
 			delete(h.clients, mobile)
 			mobile.SendAndClose(Message{Type: MsgPeerLeft, Role: "pc"})
 		}
-		delete(h.rooms, oldRoom.Token)
+		delete(h.sessions, oldSession.Token)
 	}
 
-	room := NewRoom(c)
-	c.room = room
+	session := NewSession(c)
+	c.session = session
 	c.role = "pc"
-	h.rooms[room.Token] = room
+	h.sessions[session.Token] = session
 
-	log.Printf("Room created: %s", room.Token)
-	c.SendMessage(Message{Type: MsgRoomCreated, Token: room.Token, Version: ProtocolVersion})
+	log.Printf("Session created: %s", session.Token)
+	c.SendMessage(Message{Type: MsgSessionCreated, Token: session.Token, Version: ProtocolVersion})
 }
 
-func (h *Hub) handleJoinRoom(c *Client, msg Message) {
+func (h *Hub) handleJoinSession(c *Client, msg Message) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -218,37 +218,37 @@ func (h *Hub) handleJoinRoom(c *Client, msg Message) {
 		return
 	}
 
-	room, ok := h.rooms[msg.Token]
+	session, ok := h.sessions[msg.Token]
 	if !ok {
-		c.SendMessage(Message{Type: MsgError, Error: "room not found"})
+		c.SendMessage(Message{Type: MsgError, Error: "session not found"})
 		return
 	}
 
 	c.role = "mobile"
 	c.deviceID = msg.DeviceID
-	c.room = room
+	c.session = session
 
 	// Preempt existing mobile client (force-disconnect)
-	if old := room.Mobile; old != nil && old != c {
-		log.Printf("Preempting device %s in room %s (new: %s)", old.deviceID, room.Token, c.deviceID)
-		room.Mobile = nil
-		old.room = nil
+	if old := session.Mobile; old != nil && old != c {
+		log.Printf("Preempting device %s in session %s (new: %s)", old.deviceID, session.Token, c.deviceID)
+		session.Mobile = nil
+		old.session = nil
 		delete(h.clients, old)
 		old.SendAndClose(Message{
 			Type:  MsgPreempted,
 			Error: "another device connected",
 		})
-		if room.PC != nil {
-			room.PC.SendMessage(Message{Type: MsgPeerLeft, Role: "mobile", DeviceID: old.deviceID})
+		if session.PC != nil {
+			session.PC.SendMessage(Message{Type: MsgPeerLeft, Role: "mobile", DeviceID: old.deviceID})
 		}
 	}
 
-	room.Mobile = c
-	log.Printf("Device %s joined room %s", c.deviceID, room.Token)
+	session.Mobile = c
+	log.Printf("Device %s joined session %s", c.deviceID, session.Token)
 
-	c.SendMessage(Message{Type: MsgJoined, Role: "mobile", Token: room.Token, Version: ProtocolVersion})
-	if room.PC != nil {
-		room.PC.SendMessage(Message{Type: MsgPeerJoined, Role: "mobile", DeviceID: c.deviceID})
+	c.SendMessage(Message{Type: MsgJoined, Role: "mobile", Token: session.Token, Version: ProtocolVersion})
+	if session.PC != nil {
+		session.PC.SendMessage(Message{Type: MsgPeerJoined, Role: "mobile", DeviceID: c.deviceID})
 	}
 }
 
@@ -257,16 +257,16 @@ func (h *Hub) handleRelay(c *Client, msg Message) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
-	if c.room == nil {
-		c.SendMessage(Message{Type: MsgError, Error: "not in a room"})
+	if c.session == nil {
+		c.SendMessage(Message{Type: MsgError, Error: "not in a session"})
 		return
 	}
 
 	var peer *Client
 	if c.role == "pc" {
-		peer = c.room.Mobile
+		peer = c.session.Mobile
 	} else {
-		peer = c.room.PC
+		peer = c.session.PC
 	}
 
 	if peer == nil {
@@ -277,15 +277,15 @@ func (h *Hub) handleRelay(c *Client, msg Message) {
 	peer.SendMessage(msg)
 }
 
-// handleDeviceCodeRequest: PC requests a device code for its room.
+// handleDeviceCodeRequest: PC requests a device code for its session.
 func (h *Hub) handleDeviceCodeRequest(c *Client) {
-	if c.room == nil {
-		c.SendMessage(Message{Type: MsgError, Error: "create a room first"})
+	if c.session == nil {
+		c.SendMessage(Message{Type: MsgError, Error: "create a session first"})
 		return
 	}
-	code := h.GenerateDeviceCode(c.room, c)
+	code := h.GenerateDeviceCode(c.session, c)
 	c.SendMessage(Message{Type: MsgDeviceCodeCreated, DeviceCode: code})
-	log.Printf("Device code %s created for room %s", code, c.room.Token)
+	log.Printf("Device code %s created for session %s", code, c.session.Token)
 }
 
 // handleDeviceCodeJoin: mobile submits a device code to join.
@@ -354,41 +354,41 @@ func (h *Hub) handleDeviceCodeConfirm(c *Client, msg Message) {
 	}
 
 	mobile := entry.Pending
-	room := entry.Room
+	session := entry.Session
 
-	// Now join the mobile to the room (same as handleJoinRoom logic)
+	// Now join the mobile to the session (same as handleJoinSession logic)
 	mobile.role = "mobile"
 	mobile.deviceID = msg.DeviceID
-	mobile.room = room
+	mobile.session = session
 
 	// Preempt existing mobile
-	if old := room.Mobile; old != nil && old != mobile {
-		room.Mobile = nil
-		old.room = nil
+	if old := session.Mobile; old != nil && old != mobile {
+		session.Mobile = nil
+		old.session = nil
 		delete(h.clients, old)
 		old.SendAndClose(Message{Type: MsgPreempted, Error: "another device connected"})
-		if room.PC != nil {
-			room.PC.SendMessage(Message{Type: MsgPeerLeft, Role: "mobile", DeviceID: old.deviceID})
+		if session.PC != nil {
+			session.PC.SendMessage(Message{Type: MsgPeerLeft, Role: "mobile", DeviceID: old.deviceID})
 		}
 	}
 
-	room.Mobile = mobile
+	session.Mobile = mobile
 	delete(h.deviceCodes, code)
 
-	// Send room token and PC's public key to mobile
+	// Send session token and PC's public key to mobile
 	mobile.SendMessage(Message{
 		Type:      MsgJoined,
 		Role:      "mobile",
-		Token:     room.Token,
+		Token:     session.Token,
 		Version:   ProtocolVersion,
 		PublicKey: msg.PublicKey, // PC sends its public key in the confirm message
 		Approved:  true,
 	})
-	if room.PC != nil {
-		room.PC.SendMessage(Message{Type: MsgPeerJoined, Role: "mobile", DeviceID: mobile.deviceID})
+	if session.PC != nil {
+		session.PC.SendMessage(Message{Type: MsgPeerJoined, Role: "mobile", DeviceID: mobile.deviceID})
 	}
 
-	log.Printf("Device code %s confirmed, device joined room %s", code, room.Token)
+	log.Printf("Device code %s confirmed, device joined session %s", code, session.Token)
 }
 
 // handleDeviceCodeReject: PC rejects the device code join.

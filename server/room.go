@@ -6,17 +6,17 @@ import (
 	"time"
 )
 
-// Room represents a paired session between a PC client and a mobile client.
-type Room struct {
+// Session represents a paired connection between a PC client and a mobile client.
+type Session struct {
 	Token     string
 	PC        *Client
 	Mobile    *Client
 	CreatedAt time.Time
 }
 
-// NewRoom creates a new room with a random token, owned by the given PC client.
-func NewRoom(pc *Client) *Room {
-	return &Room{
+// NewSession creates a new session with a random token, owned by the given PC client.
+func NewSession(pc *Client) *Session {
+	return &Session{
 		Token:     generateToken(),
 		PC:        pc,
 		CreatedAt: time.Now(),

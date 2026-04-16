@@ -13,20 +13,22 @@ import (
 
 // ServerConfig holds all environment-driven settings.
 type ServerConfig struct {
-	Port        string
-	StaticDir   string
-	SecretPath  string   // if set, WS is served at /ws/<secret> instead of /ws
-	AllowedIPs  []string // if non-empty, only these IPs may connect
-	MaxFileMB   int      // -1=disabled, 0=unlimited, N=N MB
-	PrivateMode bool     // require SecretPath
-	IPWhitelist bool     // enforce AllowedIPs
+	Port          string
+	StaticDir     string
+	SecretPath    string   // if set, WS is served at /ws/<secret> instead of /ws
+	AllowedIPs    []string // if non-empty, only these IPs may connect
+	MaxFileMB     int      // -1=disabled, 0=unlimited, N=N MB
+	MobileExpiry  int      // seconds after mobile disconnects before PC shows window (default 60)
+	PrivateMode   bool     // require SecretPath
+	IPWhitelist   bool     // enforce AllowedIPs
 }
 
 func loadConfig() ServerConfig {
 	cfg := ServerConfig{
-		Port:      envOr("PORT", "8080"),
-		StaticDir: envOr("STATIC_DIR", "./static"),
-		MaxFileMB: envInt("MAX_FILE_MB", -1),
+		Port:         envOr("PORT", "8080"),
+		StaticDir:    envOr("STATIC_DIR", "./static"),
+		MaxFileMB:    envInt("MAX_FILE_MB", -1),
+		MobileExpiry: envInt("MOBILE_EXPIRY_SECS", 60),
 	}
 
 	cfg.SecretPath = os.Getenv("SECRET_PATH")
@@ -153,7 +155,8 @@ func main() {
 		fileEnabled := cfg.MaxFileMB != -1
 		maxMB := cfg.MaxFileMB
 		w.Write([]byte(`{"version":"` + ProtocolVersion + `","fileTransfer":` +
-			strconv.FormatBool(fileEnabled) + `,"maxFileMB":` + strconv.Itoa(maxMB) + `}`))
+			strconv.FormatBool(fileEnabled) + `,"maxFileMB":` + strconv.Itoa(maxMB) +
+			`,"mobileExpirySecs":` + strconv.Itoa(cfg.MobileExpiry) + `}`))
 	})
 
 	// Serve mobile web static files

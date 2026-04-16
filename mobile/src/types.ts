@@ -1,5 +1,5 @@
 // Protocol version — must match server and Windows client
-export const PROTOCOL_VERSION = '1.1.0';
+export const PROTOCOL_VERSION = '1.2.0';
 
 // Protocol message types matching the Go server
 export interface WsMessage {
@@ -31,10 +31,13 @@ export interface TextDiff {
 // Encrypted inner message (after decryption)
 export interface InputCommand {
   type: 'diff' | 'text_commit' | 'backspace' | 'clear' | 'ratchet_init' | 'clipboard'
+      | 'composing'    // IME/voice composing preview — shown in PC overlay, NOT injected
+      | 'text_sync'    // full text replacement (when cursor is mid-text)
       | 'file_start' | 'file_chunk' | 'file_abort';
   text?: string;
   count?: number;
   seed?: string;
+  composingText?: string; // the in-progress composing text (not yet committed)
   // file transfer fields
   fileName?: string;
   fileSize?: number;     // total bytes

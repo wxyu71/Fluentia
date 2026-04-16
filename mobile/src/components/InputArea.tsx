@@ -1,6 +1,6 @@
 import React, { useRef, useCallback, useImperativeHandle, forwardRef } from 'react';
 import { computeDiff } from '../utils/diff';
-import { ScanIcon, ClearIcon, ClipboardIcon } from './Icons';
+import { ScanIcon, ClearIcon, ClipboardIcon, AttachIcon } from './Icons';
 import { FileTransfer } from './FileTransfer';
 import type { InputCommand, HistoryEntry } from '../types';
 
@@ -34,7 +34,9 @@ export const InputArea = forwardRef<InputAreaHandle, InputAreaProps>(({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const charCountRef = useRef(0);
   const syncPausedRef = useRef(false);   // true while PC focus is on another window
-  const isComposingRef = useRef(false);  // true during IME composition — skip diff during compose
+  const isComposingRef = useRef(false);  // true during IME composition
+  const composingTextRef = useRef('');   // current composing text (for overlay on PC)
+  const fileTransferRef = useRef<{ open: () => void }>(null);
 
   // sendDiff must be declared BEFORE useImperativeHandle so the handle closure can reference it
   const sendDiff = useCallback((newText: string) => {
@@ -66,24 +68,47 @@ export const InputArea = forwardRef<InputAreaHandle, InputAreaProps>(({
   const handleInput = useCallback((e: React.FormEvent<HTMLTextAreaElement>) => {
     const newText = e.currentTarget.value;
     setText(newText);
-    // Skip diff during IME composition to avoid sending partial/uncommitted characters.
+    // Skip diff during IME composition — compositionEnd handles the final commit.
     if (encryptionReady && !isComposingRef.current) {
-      sendDiff(newText);
+      const el = e.currentTarget;
+      const cursorAtEnd = el.selectionStart === newText.length;
+      if (!cursorAtEnd && newText.length > 0) {
+        // Cursor is in the middle of text — send full replacement so PC stays in sync
+        // regardless of where its cursor is.
+        onSendCommand({ type: 'text_sync', text: newText });
+        lastSentRef.current = newText;
+      } else {
+        sendDiff(newText);
+      }
     }
-  }, [encryptionReady, sendDiff, setText]);
+  }, [encryptionReady, sendDiff, setText, onSendCommand]);
 
   const handleCompositionStart = useCallback(() => {
     isComposingRef.current = true;
+    composingTextRef.current = '';
   }, []);
+
+  const handleCompositionUpdate = useCallback((e: React.CompositionEvent<HTMLTextAreaElement>) => {
+    composingTextRef.current = e.data ?? '';
+    // Send composing preview to PC — it shows in a floating overlay without injecting
+    if (encryptionReady) {
+      onSendCommand({ type: 'composing', composingText: e.data ?? '' });
+    }
+  }, [encryptionReady, onSendCommand]);
 
   const handleCompositionEnd = useCallback((e: React.CompositionEvent<HTMLTextAreaElement>) => {
     isComposingRef.current = false;
+    composingTextRef.current = '';
+    // Clear composing overlay on PC
+    if (encryptionReady) {
+      onSendCommand({ type: 'composing', composingText: '' });
+    }
     const newText = e.currentTarget.value;
     setText(newText);
     if (encryptionReady) {
       sendDiff(newText);
     }
-  }, [encryptionReady, sendDiff, setText]);
+  }, [encryptionReady, sendDiff, setText, onSendCommand]);
 
   const handleClear = useCallback(() => {
     if (text.trim() && autoSaveHistory) {
@@ -124,7 +149,7 @@ export const InputArea = forwardRef<InputAreaHandle, InputAreaProps>(({
         </div>
       )}
 
-      {/* Toolbar: scan icon + clipboard */}
+      {/* Toolbar: scan icon + clipboard + attach */}
       {encryptionReady && (
         <div style={{
           display: 'flex',
@@ -151,26 +176,35 @@ export const InputArea = forwardRef<InputAreaHandle, InputAreaProps>(({
             <ScanIcon size={18} color="var(--accent)" />
             Scan
           </button>
-          <button
-            onClick={handleCopyToClipboard}
-            disabled={!text.trim()}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: text.trim() ? 'var(--accent)' : 'var(--text-tertiary)',
-              cursor: text.trim() ? 'pointer' : 'default',
-              padding: '6px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              fontSize: 13,
-              fontWeight: 500,
-              opacity: text.trim() ? 1 : 0.4,
-            }}
-          >
-            <ClipboardIcon size={16} />
-            Copy to PC
-          </button>
+          <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+            {/* File / photo attach — small icon, not a full bar */}
+            <FileTransfer
+              ref={fileTransferRef}
+              encryptionReady={encryptionReady}
+              onSendCommand={onSendCommand}
+              compact
+            />
+            <button
+              onClick={handleCopyToClipboard}
+              disabled={!text.trim()}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: text.trim() ? 'var(--accent)' : 'var(--text-tertiary)',
+                cursor: text.trim() ? 'pointer' : 'default',
+                padding: '6px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                fontSize: 13,
+                fontWeight: 500,
+                opacity: text.trim() ? 1 : 0.4,
+              }}
+            >
+              <ClipboardIcon size={16} />
+              Copy to PC
+            </button>
+          </div>
         </div>
       )}
 
@@ -182,6 +216,7 @@ export const InputArea = forwardRef<InputAreaHandle, InputAreaProps>(({
           value={text}
           onInput={handleInput}
           onCompositionStart={handleCompositionStart}
+          onCompositionUpdate={handleCompositionUpdate}
           onCompositionEnd={handleCompositionEnd}
           placeholder={encryptionReady ? 'Start typing or use voice input...' : 'Connect to PC first...'}
           disabled={!encryptionReady}
@@ -204,7 +239,7 @@ export const InputArea = forwardRef<InputAreaHandle, InputAreaProps>(({
         </div>
       </div>
 
-      {/* Clear button + file transfer */}
+      {/* Clear button */}
       <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
         <button
           className="glass-btn full-width"
@@ -216,9 +251,6 @@ export const InputArea = forwardRef<InputAreaHandle, InputAreaProps>(({
           Clear{autoSaveHistory ? ' & Save' : ''}
         </button>
       </div>
-
-      {/* File / photo transfer */}
-      <FileTransfer encryptionReady={encryptionReady} onSendCommand={onSendCommand} />
     </div>
   );
 });

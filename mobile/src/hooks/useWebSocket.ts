@@ -64,9 +64,9 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
 
     ws.onopen = () => {
       reconnectAttemptRef.current = 0;
-      // Join the room
+      // Join the session
       const joinMsg: WsMessage = {
-        type: 'join_room',
+        type: 'join_session',
         token: info.t,
         deviceId: deviceId,
         version: PROTOCOL_VERSION,
@@ -138,6 +138,14 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
       case 'peer_left':
         setPeerConnected(false);
         setEncryptionReady(false);
+        // If PC explicitly terminated the session (role === 'pc'), stop reconnecting
+        // so we don't loop with a stale session token.
+        if (msg.role === 'pc') {
+          intentionalCloseRef.current = true;
+          connInfoRef.current = null;
+          setConnectionState('disconnected');
+          connectionStateRef.current = 'disconnected';
+        }
         break;
 
       case 'key_exchange':

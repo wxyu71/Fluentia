@@ -29,6 +29,9 @@ public partial class MainWindow : Window
     private DateTime _qrCreatedAt;
     private const int QR_VALIDITY_SECONDS = 300; // 5 minutes
 
+    // Disconnect expiry timer — waits before showing window after mobile disconnects
+    private DispatcherTimer? _disconnectTimer;
+
     // Dev mode — multi-tap title to enable
     private int _devTapCount;
     private DateTime _lastDevTap = DateTime.MinValue;
@@ -37,8 +40,15 @@ public partial class MainWindow : Window
     // Mobile connection state for QR collapse/blur
     private bool _mobileConnected;
 
+    // Composing text overlay (IME / voice pending chars)
+    private ComposingOverlay? _composingOverlay;
+
     // In-progress file transfers: transferId → (header cmd, accumulated chunks)
     private readonly Dictionary<string, (InputCommand Header, List<byte[]> Chunks)> _fileTransfers = new();
+
+    // Settings: file save path
+    private string _fileSavePath = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
 
     [DllImport("user32.dll")]
     private static extern bool DestroyIcon(IntPtr handle);
@@ -71,6 +81,7 @@ public partial class MainWindow : Window
         SetupRoomManagerEvents();
         SetupTrayIcon();
         SetupQRTimer();
+        LoadSettings();
         Closing += MainWindow_Closing;
 
         // Wire diagnostic logging — only in dev mode
@@ -177,7 +188,7 @@ public partial class MainWindow : Window
         var menu = new ContextMenu();
         var showItem = new MenuItem { Header = "Show" };
         showItem.Click += ShowWindow_Click;
-        var refreshItem = new MenuItem { Header = "Refresh Room" };
+        var refreshItem = new MenuItem { Header = "New Session" };
         refreshItem.Click += Refresh_Click;
         var exitItem = new MenuItem { Header = "Quit Fluentia" };
         exitItem.Click += Exit_Click;
@@ -216,7 +227,7 @@ public partial class MainWindow : Window
 
     private void SetupRoomManagerEvents()
     {
-        _roomManager.OnRoomCreated += (token) => Dispatcher.Invoke(async () =>
+        _roomManager.OnSessionCreated += (token) => Dispatcher.Invoke(async () =>
         {
             UpdateQRCode();
             ShowQrArea(true);
@@ -252,6 +263,7 @@ public partial class MainWindow : Window
         _roomManager.OnMobileConnected += (deviceId) => Dispatcher.Invoke(() =>
         {
             _mobileConnected = true;
+            _disconnectTimer?.Stop(); // cancel popup if mobile reconnected in time
             SetStatus("Mobile connected", true);
             // Blur the QR and collapse
             QrBlurOverlay.Visibility = Visibility.Visible;
@@ -268,10 +280,24 @@ public partial class MainWindow : Window
             UpdateQRCode();
             _qrCreatedAt = DateTime.Now;
             _qrTimer?.Start();
-            // Auto-show window and change tray icon to disconnected state
             SetTrayIconColor(disconnected: true);
-            Show();
-            Activate();
+
+            // Don't immediately pop up — wait for the mobile session key expiry window.
+            // If mobile reconnects within that time, suppress the popup.
+            var expiry = _roomManager.MobileExpirySecs;
+            _disconnectTimer?.Stop();
+            _disconnectTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(expiry) };
+            _disconnectTimer.Tick += (_, _) =>
+            {
+                _disconnectTimer?.Stop();
+                if (!_mobileConnected) // still disconnected after expiry
+                {
+                    Show();
+                    WindowState = WindowState.Normal;
+                    Activate();
+                }
+            };
+            _disconnectTimer.Start();
         });
 
         _roomManager.OnEncryptionReady += () => Dispatcher.Invoke(() =>
@@ -301,6 +327,28 @@ public partial class MainWindow : Window
     {
         switch (cmd.Type)
         {
+            case "composing":
+                // Show IME / voice pending chars in floating overlay
+                if (!string.IsNullOrEmpty(cmd.Text))
+                {
+                    Dispatcher.Invoke(() =>
+                    {
+                        _composingOverlay ??= new ComposingOverlay();
+                        _composingOverlay.ShowComposing(cmd.Text);
+                    });
+                }
+                else
+                {
+                    Dispatcher.Invoke(() => _composingOverlay?.HideComposing());
+                }
+                break;
+
+            case "text_sync":
+                // Full text replacement (triggered when mobile cursor is not at end)
+                if (cmd.Text != null)
+                    TextInjector.ReplaceAllText(cmd.Text);
+                break;
+
             case "diff":
                 TextInjector.ApplyDiff(cmd.Count, cmd.Text ?? "");
                 break;
@@ -377,15 +425,14 @@ public partial class MainWindow : Window
         var fileName = SanitizeFileName(header.FileName ?? "received_file");
         var mimeType = header.MimeType ?? "application/octet-stream";
 
-        // Save to ~/Downloads — path traversal is prevented by SanitizeFileName
-        var userProfile = System.Environment.GetFolderPath(System.Environment.SpecialFolder.UserProfile);
-        var savePath = Path.Combine(userProfile, "Downloads", fileName);
+        // Save to user-configured path (default: ~/Downloads)
+        var savePath = Path.Combine(_fileSavePath, fileName);
         int suffix = 1;
         while (File.Exists(savePath))
         {
             var ext = Path.GetExtension(fileName);
             var name = Path.GetFileNameWithoutExtension(fileName);
-            savePath = Path.Combine(userProfile, "Downloads", $"{name}_{suffix++}{ext}");
+            savePath = Path.Combine(_fileSavePath, $"{name}_{suffix++}{ext}");
         }
 
         try { File.WriteAllBytes(savePath, data); }
@@ -522,7 +569,7 @@ public partial class MainWindow : Window
         QrCodeImage.Source = rtb;
         QrCodeImage.Width = targetPx;
         QrCodeImage.Height = targetPx;
-        QrHintText.Text = $"Scan with Fluentia mobile\nRoom: {_roomManager.CurrentToken}";
+        QrHintText.Text = $"Scan with Fluentia mobile\nSession: {_roomManager.CurrentToken}";
     }
 
     /// <summary>
@@ -715,7 +762,77 @@ public partial class MainWindow : Window
 
     private async void Refresh_Click(object sender, RoutedEventArgs e)
     {
-        await _roomManager.RefreshRoom();
+        await _roomManager.RefreshSession();
+    }
+
+    private void Settings_Click(object sender, RoutedEventArgs e)
+    {
+        SettingsPanel.Visibility = SettingsPanel.Visibility == Visibility.Collapsed
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    }
+
+    private void BrowseSavePath_Click(object sender, RoutedEventArgs e)
+    {
+        using var dlg = new System.Windows.Forms.FolderBrowserDialog
+        {
+            Description = "Select folder for received files",
+            SelectedPath = SavePathBox.Text,
+            UseDescriptionForTitle = true,
+        };
+        if (dlg.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+        {
+            SavePathBox.Text = dlg.SelectedPath;
+        }
+    }
+
+    private void SaveSettings_Click(object sender, RoutedEventArgs e)
+    {
+        var path = SavePathBox.Text.Trim();
+        if (string.IsNullOrEmpty(path) || !Directory.Exists(path))
+        {
+            SetStatus("Invalid save path", false);
+            return;
+        }
+        _fileSavePath = path;
+        PersistSettings();
+        SetStatus("Settings saved", true);
+        SettingsPanel.Visibility = Visibility.Collapsed;
+    }
+
+    private static readonly string SettingsFile = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        "Fluentia", "settings.json");
+
+    private void LoadSettings()
+    {
+        try
+        {
+            if (File.Exists(SettingsFile))
+            {
+                var json = File.ReadAllText(SettingsFile);
+                using var doc = System.Text.Json.JsonDocument.Parse(json);
+                if (doc.RootElement.TryGetProperty("savePath", out var el))
+                {
+                    var p = el.GetString();
+                    if (!string.IsNullOrEmpty(p) && Directory.Exists(p))
+                        _fileSavePath = p;
+                }
+            }
+        }
+        catch { /* use defaults */ }
+        SavePathBox.Text = _fileSavePath;
+    }
+
+    private void PersistSettings()
+    {
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(SettingsFile)!);
+            var json = System.Text.Json.JsonSerializer.Serialize(new { savePath = _fileSavePath });
+            File.WriteAllText(SettingsFile, json);
+        }
+        catch { /* best-effort */ }
     }
 
     private void TrayIcon_TrayLeftMouseDown(object sender, RoutedEventArgs e)

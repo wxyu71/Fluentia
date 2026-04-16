@@ -1,33 +1,32 @@
 package main
 
 // Protocol version — all three components (server, mobile, Windows) must match.
-const ProtocolVersion = "1.1.0"
+const ProtocolVersion = "1.2.0"
 
 // Message type constants
 const (
-	MsgCreateRoom  = "create_room"
-	MsgRoomCreated = "room_created"
-	MsgJoinRoom    = "join_room"
-	MsgJoined      = "joined"
-	MsgPeerJoined  = "peer_joined"
-	MsgPeerLeft    = "peer_left"
-	MsgPreempted   = "preempted"
-	MsgKeyExchange = "key_exchange"
-	MsgEncrypted   = "encrypted"
-	MsgPing        = "ping"
-	MsgPong        = "pong"
-	MsgError       = "error"
+	MsgCreateSession  = "create_session"
+	MsgSessionCreated = "session_created"
+	MsgJoinSession    = "join_session"
+	MsgJoined         = "joined"
+	MsgPeerJoined     = "peer_joined"
+	MsgPeerLeft       = "peer_left"
+	MsgPreempted      = "preempted"
+	MsgKeyExchange    = "key_exchange"
+	MsgEncrypted      = "encrypted"
+	MsgPing           = "ping"
+	MsgPong           = "pong"
+	MsgError          = "error"
 
-	// PC → mobile focus notifications (relayed as encrypted messages directly)
-	// These constants are used in hub's HandleMessage switch for relay routing.
+	// PC → mobile focus/state notifications (relayed as encrypted messages)
 
 	// Device code auth
-	MsgDeviceCodeRequest  = "device_code_request"
-	MsgDeviceCodeCreated  = "device_code_created"
-	MsgDeviceCodeJoin     = "device_code_join"
-	MsgDeviceCodePending  = "device_code_pending"  // sent to PC: mobile wants to join, show confirmation
-	MsgDeviceCodeConfirm  = "device_code_confirm"   // PC confirms
-	MsgDeviceCodeReject   = "device_code_reject"    // PC rejects
+	MsgDeviceCodeRequest = "device_code_request"
+	MsgDeviceCodeCreated = "device_code_created"
+	MsgDeviceCodeJoin    = "device_code_join"
+	MsgDeviceCodePending = "device_code_pending" // sent to PC: mobile wants to join
+	MsgDeviceCodeConfirm = "device_code_confirm" // PC confirms
+	MsgDeviceCodeReject  = "device_code_reject"  // PC rejects
 )
 
 // Message is the universal message envelope for all WebSocket communication.
