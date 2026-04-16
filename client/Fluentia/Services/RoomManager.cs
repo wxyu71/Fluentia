@@ -13,6 +13,8 @@ public class RoomManager : IDisposable
     private string? _currentToken;
     private string? _serverUrl;
     private int _mobileExpirySecs = 60; // default; overridden by server /api/config
+    private bool _fileTransferEnabled = false; // controlled by server MAX_FILE_MB
+    private int _maxFileMB = 0;
 
     public event Action<string>? OnSessionCreated;     // token
     public event Action<string>? OnMobileConnected;    // deviceId
@@ -28,6 +30,8 @@ public class RoomManager : IDisposable
     public string? ServerUrl => _serverUrl;
     public bool EncryptionReady => _crypto.IsReady;
     public int MobileExpirySecs => _mobileExpirySecs;
+    public bool FileTransferEnabled => _fileTransferEnabled;
+    public int MaxFileMB => _maxFileMB;
 
     /// <summary>
     /// Send an encrypted command from PC to mobile.
@@ -97,6 +101,10 @@ public class RoomManager : IDisposable
             using var doc = System.Text.Json.JsonDocument.Parse(json);
             if (doc.RootElement.TryGetProperty("mobileExpirySecs", out var expEl))
                 _mobileExpirySecs = expEl.GetInt32();
+            if (doc.RootElement.TryGetProperty("fileTransfer", out var ftEl))
+                _fileTransferEnabled = ftEl.GetBoolean();
+            if (doc.RootElement.TryGetProperty("maxFileMB", out var mbEl))
+                _maxFileMB = mbEl.GetInt32();
         }
         catch { /* best-effort; use defaults */ }
     }
@@ -161,6 +169,12 @@ public class RoomManager : IDisposable
         switch (msg.Type)
         {
             case MsgTypes.SessionCreated:
+                // Validate server protocol version
+                if (!string.IsNullOrEmpty(msg.Version) && msg.Version != MsgTypes.ProtocolVersion)
+                {
+                    OnError?.Invoke($"Protocol mismatch: client {MsgTypes.ProtocolVersion}, server {msg.Version}. Please update.");
+                    return;
+                }
                 _currentToken = msg.Token;
                 OnSessionCreated?.Invoke(msg.Token!);
                 OnStatusChanged?.Invoke($"Session ready: {msg.Token?[..8]}...");
@@ -258,9 +272,9 @@ public class RoomManager : IDisposable
                 OnInputCommand?.Invoke(cmd);
             }
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            OnError?.Invoke($"Decryption error: {ex.Message}");
+            OnError?.Invoke("Decryption failed");
         }
     }
 

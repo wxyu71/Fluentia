@@ -53,6 +53,7 @@ export const App: React.FC = () => {
   const [settings, setSettings] = useState<AppSettings>(loadSettings);
   const [inputText, setInputText] = useState('');
   const [scannerOverlay, setScannerOverlay] = useState(false);
+  const [fileTransferEnabled, setFileTransferEnabled] = useState(false);
   const inputAreaRef = useRef<InputAreaHandle>(null);
 
   // Handle PC → mobile commands (focus_change = pause, focus_regained = resume)
@@ -97,6 +98,11 @@ export const App: React.FC = () => {
     connect(info);
     setActiveTab('input');
     setScannerOverlay(false);
+    // Fetch server config (file transfer toggle, etc.)
+    const httpBase = info.s.replace(/\/ws.*$/, '').replace('wss://', 'https://').replace('ws://', 'http://');
+    fetch(`${httpBase}/api/config`).then(r => r.json()).then(cfg => {
+      if (typeof cfg.fileTransfer === 'boolean') setFileTransferEnabled(cfg.fileTransfer);
+    }).catch(() => {});
   }, [connect]);
 
   // Auto-reconnect from localStorage on mount (survives page refresh)
@@ -285,6 +291,7 @@ export const App: React.FC = () => {
                 onAddHistory={handleAddHistory}
                 onOpenScanner={() => setScannerOverlay(true)}
                 autoSaveHistory={settings.autoSaveHistory}
+                fileTransferEnabled={fileTransferEnabled}
               />
             </div>
             <div className="swipe-page">

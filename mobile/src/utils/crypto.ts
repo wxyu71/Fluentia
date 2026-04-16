@@ -52,6 +52,11 @@ export class CryptoService {
     return this.ready;
   }
 
+  /** Returns true if we already have a peer public key (e.g. from QR code). */
+  hasPeerKey(): boolean {
+    return this.peerPublicKey !== null;
+  }
+
   isRatchetReady(): boolean {
     return this._ratchetReady;
   }

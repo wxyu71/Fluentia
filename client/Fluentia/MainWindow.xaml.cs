@@ -13,6 +13,12 @@ using Fluentia.Views;
 using Fluentia.Services;
 using H.NotifyIcon;
 using QRCoder;
+using Brush = System.Windows.Media.Brush;
+using Brushes = System.Windows.Media.Brushes;
+using Clipboard = System.Windows.Clipboard;
+using Color = System.Windows.Media.Color;
+using MessageBox = System.Windows.MessageBox;
+using Application = System.Windows.Application;
 
 namespace Fluentia;
 
@@ -214,7 +220,7 @@ public partial class MainWindow : Window
         {
             // Refresh QR
             _qrTimer?.Stop();
-            _ = _roomManager.RefreshRoom();
+            _ = _roomManager.RefreshSession();
             return;
         }
         var min = remaining / 60;
@@ -329,12 +335,12 @@ public partial class MainWindow : Window
         {
             case "composing":
                 // Show IME / voice pending chars in floating overlay
-                if (!string.IsNullOrEmpty(cmd.Text))
+                if (!string.IsNullOrEmpty(cmd.ComposingText))
                 {
                     Dispatcher.Invoke(() =>
                     {
                         _composingOverlay ??= new ComposingOverlay();
-                        _composingOverlay.ShowComposing(cmd.Text);
+                        _composingOverlay.ShowComposing(cmd.ComposingText);
                     });
                 }
                 else
@@ -499,7 +505,7 @@ public partial class MainWindow : Window
         var qrData = _roomManager.GetQRData();
         if (qrData == null)
         {
-            QrHintText.Text = "No room available";
+            QrHintText.Text = "No session available";
             return;
         }
 
@@ -519,16 +525,13 @@ public partial class MainWindow : Window
         int canvasSize = size * moduleSize;
         int totalSize = canvasSize + margin * 2;
 
-        // Pre-classify each module: finder pattern, alignment pattern, or data
-        var (finderSet, alignSet) = ClassifyQrPatterns(modules, size);
-
         var dv = new DrawingVisual();
         using (var dc = dv.RenderOpen())
         {
             // Pure white background — scanners need maximum contrast
             dc.DrawRectangle(Brushes.White, null, new Rect(0, 0, totalSize, totalSize));
 
-            var darkBrush = Brushes.Black; // pure black for all modules
+            var darkBrush = Brushes.Black; // pure black for all modules — maximum contrast
 
             for (int row = 0; row < size; row++)
             {
@@ -540,24 +543,8 @@ public partial class MainWindow : Window
                     double y = margin + row * moduleSize;
                     double ms = moduleSize;
 
-                    if (finderSet.Contains((row, col)))
-                    {
-                        // Finder pattern modules: draw as solid square (sharp edges for scanner)
-                        dc.DrawRectangle(darkBrush, null, new Rect(x, y, ms, ms));
-                    }
-                    else if (alignSet.Contains((row, col)))
-                    {
-                        // Alignment pattern: also solid square
-                        dc.DrawRectangle(darkBrush, null, new Rect(x, y, ms, ms));
-                    }
-                    else
-                    {
-                        // Data modules: Telegram-style rounded dots
-                        double cx = x + ms / 2.0;
-                        double cy = y + ms / 2.0;
-                        double r = ms * 0.42;
-                        dc.DrawEllipse(darkBrush, null, new Point(cx, cy), r, r);
-                    }
+                    // All modules drawn as sharp squares for maximum scanner compatibility
+                    dc.DrawRectangle(darkBrush, null, new Rect(x, y, ms, ms));
                 }
             }
         }
@@ -570,55 +557,6 @@ public partial class MainWindow : Window
         QrCodeImage.Width = targetPx;
         QrCodeImage.Height = targetPx;
         QrHintText.Text = $"Scan with Fluentia mobile\nSession: {_roomManager.CurrentToken}";
-    }
-
-    /// <summary>
-    /// Returns two HashSets: modules that belong to finder patterns and alignment patterns.
-    /// Finder patterns occupy the three 7×7 corners (plus 1-module separator ring).
-    /// Alignment patterns are the 5×5 blocks defined in the QR spec for version ≥ 2.
-    /// </summary>
-    private static (HashSet<(int, int)> finders, HashSet<(int, int)> aligns)
-        ClassifyQrPatterns(List<System.Collections.BitArray> modules, int size)
-    {
-        var finders = new HashSet<(int, int)>();
-        var aligns = new HashSet<(int, int)>();
-
-        // 3 finder patterns: top-left, top-right, bottom-left (each 7×7 + 1-wide separator)
-        void AddFinder(int startRow, int startCol)
-        {
-            for (int r = startRow - 1; r <= startRow + 7; r++)
-                for (int c = startCol - 1; c <= startCol + 7; c++)
-                    if (r >= 0 && r < size && c >= 0 && c < size)
-                        finders.Add((r, c));
-        }
-        AddFinder(0, 0);           // top-left
-        AddFinder(0, size - 7);    // top-right
-        AddFinder(size - 7, 0);    // bottom-left
-
-        // Alignment pattern centers — for version 4 the single center is at (16, 16)
-        // We detect them heuristically: a 5×5 block where modules[c][c] is set (center on),
-        // bordered by a ring of dark modules. Use ZXing's module matrix to find.
-        // Simple approach: every set of 5×5 that looks like a "bullseye" not inside a finder.
-        for (int r = 2; r < size - 2; r++)
-        {
-            for (int c = 2; c < size - 2; c++)
-            {
-                if (finders.Contains((r, c))) continue;
-                // Check for alignment pattern centre pattern: dark–light–dark–light–dark in both axes
-                if (modules[r][c] &&
-                    modules[r - 2][c - 2] && modules[r - 2][c + 2] &&
-                    modules[r + 2][c - 2] && modules[r + 2][c + 2] &&
-                    !modules[r - 1][c - 1] && !modules[r - 1][c + 1] &&
-                    !modules[r + 1][c - 1] && !modules[r + 1][c + 1])
-                {
-                    for (int dr = -2; dr <= 2; dr++)
-                        for (int dc = -2; dc <= 2; dc++)
-                            aligns.Add((r + dr, c + dc));
-                }
-            }
-        }
-
-        return (finders, aligns);
     }
 
     private void SetStatus(string text, bool connected)

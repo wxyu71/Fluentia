@@ -117,6 +117,15 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
   const handleMessage = useCallback((msg: WsMessage) => {
     switch (msg.type) {
       case 'joined':
+        // Validate server protocol version
+        if (msg.version && msg.version !== PROTOCOL_VERSION) {
+          setLastError(`Protocol mismatch: mobile ${PROTOCOL_VERSION}, server ${msg.version}. Please update.`);
+          intentionalCloseRef.current = true;
+          wsRef.current?.close();
+          setConnectionState('disconnected');
+          connectionStateRef.current = 'disconnected';
+          return;
+        }
         setConnectionState('connected');
         connectionStateRef.current = 'connected';
         // PC created the room so it's already present — mark peer as connected
@@ -149,9 +158,11 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
         break;
 
       case 'key_exchange':
-        // PC confirms key exchange by sending its key (redundant but confirms)
-        if (msg.publicKey) {
-          // We already have PC's key from QR code, but update if provided
+        // PC sends its public key via server relay.
+        // SECURITY: If we already have PC's key from QR (out-of-band authenticated),
+        // do NOT overwrite it with the server-relayed key (prevents MITM by malicious server).
+        // Only accept server-relayed key for device-code flow (no QR).
+        if (msg.publicKey && !cryptoRef.current.hasPeerKey()) {
           cryptoRef.current.setPeerPublicKey(msg.publicKey);
         }
         setEncryptionReady(true);

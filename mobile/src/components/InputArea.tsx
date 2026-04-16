@@ -12,6 +12,7 @@ interface InputAreaProps {
   onAddHistory: (entry: HistoryEntry) => void;
   onOpenScanner: () => void;
   autoSaveHistory: boolean;
+  fileTransferEnabled?: boolean;
 }
 
 export interface InputAreaHandle {
@@ -29,6 +30,7 @@ export const InputArea = forwardRef<InputAreaHandle, InputAreaProps>(({
   onAddHistory,
   onOpenScanner,
   autoSaveHistory,
+  fileTransferEnabled = false,
 }, ref) => {
   const lastSentRef = useRef('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -57,10 +59,12 @@ export const InputArea = forwardRef<InputAreaHandle, InputAreaProps>(({
     },
     resumeSync: () => {
       syncPausedRef.current = false;
-      // Immediately flush any text changes that accumulated while paused.
+      // After a focus switch the PC text state is unknown (some keystrokes may have
+      // landed in the wrong window). Always send a full text_sync to reset PC state.
       if (encryptionReady && !isComposingRef.current) {
         const currentText = textareaRef.current?.value ?? '';
-        sendDiff(currentText);
+        onSendCommand({ type: 'text_sync', text: currentText });
+        lastSentRef.current = currentText;
       }
     },
   }), [encryptionReady, sendDiff]);
@@ -177,13 +181,15 @@ export const InputArea = forwardRef<InputAreaHandle, InputAreaProps>(({
             Scan
           </button>
           <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-            {/* File / photo attach — small icon, not a full bar */}
-            <FileTransfer
-              ref={fileTransferRef}
-              encryptionReady={encryptionReady}
-              onSendCommand={onSendCommand}
-              compact
-            />
+            {/* File / photo attach — only shown when server enables file transfer */}
+            {fileTransferEnabled && (
+              <FileTransfer
+                ref={fileTransferRef}
+                encryptionReady={encryptionReady}
+                onSendCommand={onSendCommand}
+                compact
+              />
+            )}
             <button
               onClick={handleCopyToClipboard}
               disabled={!text.trim()}
