@@ -24,7 +24,7 @@ func NewRoom(pc *Client) *Room {
 }
 
 func generateToken() string {
-	b := make([]byte, 16)
+	b := make([]byte, 8) // 8 bytes = 16 hex chars (64-bit entropy, sufficient for sessions)
 	if _, err := rand.Read(b); err != nil {
 		panic(err)
 	}

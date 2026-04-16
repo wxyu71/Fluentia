@@ -20,10 +20,37 @@ public class RoomManager : IDisposable
     public event Action<InputCommand>? OnInputCommand;
     public event Action<string>? OnStatusChanged;
     public event Action<string>? OnError;
+    public event Action<string>? OnDeviceCodeCreated;  // code
+    public event Action<string, string, string>? OnDeviceCodePending; // code, verifyId, userAgent
 
     public string? CurrentToken => _currentToken;
     public string? ServerUrl => _serverUrl;
     public bool EncryptionReady => _crypto.IsReady;
+
+    /// <summary>
+    /// Send an encrypted command from PC to mobile.
+    /// </summary>
+    public async Task SendToMobileAsync(string jsonPayload)
+    {
+        if (!_crypto.IsReady || !_ws.IsConnected) return;
+
+        try
+        {
+            WsMessage msg;
+            if (_crypto.SendRatchetReady)
+            {
+                var (payload, nonce, seq) = _crypto.EncryptRatcheted(jsonPayload);
+                msg = new WsMessage { Type = MsgTypes.Encrypted, Payload = payload, Nonce = nonce, Seq = seq };
+            }
+            else
+            {
+                var (payload, nonce) = _crypto.Encrypt(jsonPayload);
+                msg = new WsMessage { Type = MsgTypes.Encrypted, Payload = payload, Nonce = nonce };
+            }
+            await _ws.SendAsync(msg);
+        }
+        catch { /* best-effort */ }
+    }
 
     public RoomManager()
     {
@@ -61,19 +88,53 @@ public class RoomManager : IDisposable
         }
     }
 
+    public async Task RequestDeviceCode()
+    {
+        if (_ws.IsConnected)
+        {
+            await _ws.SendAsync(new WsMessage { Type = MsgTypes.DeviceCodeRequest });
+        }
+    }
+
+    public async Task ConfirmDeviceCode(string code)
+    {
+        if (_ws.IsConnected)
+        {
+            await _ws.SendAsync(new WsMessage
+            {
+                Type = MsgTypes.DeviceCodeConfirm,
+                DeviceCode = code,
+                PublicKey = _crypto.PublicKeyBase64,
+            });
+        }
+    }
+
+    public async Task RejectDeviceCode(string code)
+    {
+        if (_ws.IsConnected)
+        {
+            await _ws.SendAsync(new WsMessage { Type = MsgTypes.DeviceCodeReject, DeviceCode = code });
+        }
+    }
+
     /// <summary>
-    /// Generates the QR code data string containing server URL, token, and public key.
+    /// Generates compact QR data: "F1|token|publicKey" (mobile derives server URL from page origin).
+    /// Falls back to full format with server URL if needed.
     /// </summary>
     public string? GetQRData()
     {
         if (_currentToken == null || _serverUrl == null) return null;
+        // Compact format: F1|token|key (no server URL — mobile derives from page origin)
+        return $"F1|{_currentToken}|{_crypto.PublicKeyBase64}";
+    }
 
-        var data = new
-        {
-            s = _serverUrl,
-            t = _currentToken,
-            k = _crypto.PublicKeyBase64,
-        };
+    /// <summary>
+    /// Returns the full connection info JSON for manual pairing / device code auth.
+    /// </summary>
+    public string? GetFullConnectionInfo()
+    {
+        if (_currentToken == null || _serverUrl == null) return null;
+        var data = new { s = _serverUrl, t = _currentToken, k = _crypto.PublicKeyBase64 };
         return JsonSerializer.Serialize(data);
     }
 
@@ -105,6 +166,14 @@ public class RoomManager : IDisposable
 
             case MsgTypes.Encrypted:
                 HandleEncrypted(msg);
+                break;
+
+            case MsgTypes.DeviceCodeCreated:
+                OnDeviceCodeCreated?.Invoke(msg.DeviceCode ?? "");
+                break;
+
+            case MsgTypes.DeviceCodePending:
+                OnDeviceCodePending?.Invoke(msg.DeviceCode ?? "", msg.VerifyId ?? "", msg.UserAgent ?? "Unknown");
                 break;
 
             case MsgTypes.Error:

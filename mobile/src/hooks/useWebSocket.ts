@@ -14,6 +14,7 @@ interface UseWebSocketReturn {
   disconnect: () => void;
   sendEncrypted: (cmd: InputCommand) => void;
   lastError: string | null;
+  onPcCommand: React.MutableRefObject<((cmd: { type: string }) => void) | null>;
 }
 
 export function useWebSocket(deviceId: string): UseWebSocketReturn {
@@ -29,6 +30,7 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
   const reconnectTimerRef = useRef<number | null>(null);
   const intentionalCloseRef = useRef(false);
   const connectionStateRef = useRef<ConnectionState>('disconnected');
+  const pcCommandRef = useRef<((cmd: { type: string }) => void) | null>(null);
 
   const cleanup = useCallback(() => {
     if (reconnectTimerRef.current !== null) {
@@ -161,7 +163,7 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
         break;
 
       case 'encrypted': {
-        // Handle PC → mobile encrypted messages (e.g., pc_ratchet_init for backward security)
+        // Handle PC → mobile encrypted messages
         if (msg.payload && msg.nonce) {
           try {
             let plaintext: string;
@@ -173,6 +175,8 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
             const parsed = JSON.parse(plaintext);
             if (parsed.type === 'pc_ratchet_init' && parsed.seed) {
               cryptoRef.current.initRecvRatchet(parsed.seed);
+            } else if (pcCommandRef.current) {
+              pcCommandRef.current(parsed);
             }
           } catch {
             // Non-parseable encrypted messages are ignored
@@ -239,5 +243,6 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
     disconnect,
     sendEncrypted,
     lastError,
+    onPcCommand: pcCommandRef,
   };
 }

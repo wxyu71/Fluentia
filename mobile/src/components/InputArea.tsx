@@ -1,4 +1,4 @@
-import React, { useRef, useCallback } from 'react';
+import React, { useRef, useCallback, useImperativeHandle, forwardRef } from 'react';
 import { computeDiff } from '../utils/diff';
 import { ScanIcon, ClearIcon, ClipboardIcon } from './Icons';
 import type { InputCommand, HistoryEntry } from '../types';
@@ -13,7 +13,11 @@ interface InputAreaProps {
   autoSaveHistory: boolean;
 }
 
-export const InputArea: React.FC<InputAreaProps> = ({
+export interface InputAreaHandle {
+  resetDiffState: () => void;
+}
+
+export const InputArea = forwardRef<InputAreaHandle, InputAreaProps>(({
   encryptionReady,
   text,
   setText,
@@ -21,10 +25,17 @@ export const InputArea: React.FC<InputAreaProps> = ({
   onAddHistory,
   onOpenScanner,
   autoSaveHistory,
-}) => {
+}, ref) => {
   const lastSentRef = useRef('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const charCountRef = useRef(0);
+
+  // Expose resetDiffState to parent (used when PC focus changes)
+  useImperativeHandle(ref, () => ({
+    resetDiffState: () => {
+      lastSentRef.current = text;
+    },
+  }), [text]);
 
   const sendDiff = useCallback((newText: string) => {
     const diff = computeDiff(lastSentRef.current, newText);
@@ -183,4 +194,4 @@ export const InputArea: React.FC<InputAreaProps> = ({
       </div>
     </div>
   );
-};
+});

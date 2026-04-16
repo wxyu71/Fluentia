@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
-import { ScanIcon, CloseIcon } from './Icons';
+import { ScanIcon, CloseIcon, KeyboardIcon } from './Icons';
 import type { ConnectionInfo } from '../types';
 
 interface QRScannerProps {
@@ -34,7 +34,17 @@ export const QRScanner: React.FC<QRScannerProps> = ({ onScan, overlay = false, o
         },
         (decodedText) => {
           try {
-            const data = JSON.parse(decodedText) as ConnectionInfo;
+            let data: ConnectionInfo;
+            if (decodedText.startsWith('F1|')) {
+              // Compact format: F1|token|key or F1|token|key|serverUrl
+              const parts = decodedText.split('|');
+              const wsUrl = parts.length >= 5 ? parts[3]
+                : window.location.origin.replace(/^http/, 'ws') + '/ws';
+              data = { s: wsUrl, t: parts[1], k: parts[2] };
+            } else {
+              // Legacy JSON format
+              data = JSON.parse(decodedText) as ConnectionInfo;
+            }
             if (data.s && data.t && data.k) {
               scanner.stop().catch(() => {});
               scannerRef.current = null;
@@ -44,7 +54,7 @@ export const QRScanner: React.FC<QRScannerProps> = ({ onScan, overlay = false, o
               setError('Invalid QR code format');
             }
           } catch {
-            setError('QR code is not valid JSON');
+            setError('QR code is not valid');
           }
         },
         () => { /* ignore scan failures */ }
@@ -194,38 +204,119 @@ export const QRScanner: React.FC<QRScannerProps> = ({ onScan, overlay = false, o
 };
 
 const ManualConnect: React.FC<{ onConnect: (info: ConnectionInfo) => void }> = ({ onConnect }) => {
-  const [jsonInput, setJsonInput] = useState('');
-  const [error, setError] = useState('');
+  const [code, setCode] = useState('');
+  const [status, setStatus] = useState('');
+  const [verifyId, setVerifyId] = useState('');
+  const [waiting, setWaiting] = useState(false);
+  const wsRef = useRef<WebSocket | null>(null);
 
-  const handleConnect = () => {
-    setError('');
-    try {
-      const data = JSON.parse(jsonInput) as ConnectionInfo;
-      if (data.s && data.t && data.k) {
-        onConnect(data);
-      } else {
-        setError('Missing required fields: s, t, k');
-      }
-    } catch {
-      setError('Invalid JSON');
+  const handleSubmit = () => {
+    const trimmed = code.trim().toUpperCase();
+    if (trimmed.length < 6) {
+      setStatus('Code must be at least 6 characters');
+      return;
     }
+    setStatus('Connecting...');
+    setWaiting(true);
+
+    // Connect to server and send device code
+    const wsUrl = window.location.origin.replace(/^http/, 'ws') + '/ws';
+    const ws = new WebSocket(wsUrl);
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+      ws.send(JSON.stringify({
+        type: 'device_code_join',
+        deviceCode: trimmed,
+        userAgent: navigator.userAgent.slice(0, 100),
+        deviceId: localStorage.getItem('fluentia_device_id') || 'unknown',
+      }));
+    };
+
+    ws.onmessage = (e) => {
+      try {
+        const msg = JSON.parse(e.data);
+        if (msg.type === 'device_code_pending' && msg.verifyId) {
+          setVerifyId(msg.verifyId);
+          setStatus('Waiting for PC approval...');
+        } else if (msg.type === 'joined' && msg.approved) {
+          // Success! Build ConnectionInfo
+          ws.close();
+          const info: ConnectionInfo = {
+            s: wsUrl,
+            t: msg.token,
+            k: msg.publicKey || '',
+          };
+          onConnect(info);
+        } else if (msg.type === 'error') {
+          setStatus(msg.error || 'Connection failed');
+          setWaiting(false);
+          ws.close();
+        }
+      } catch { /* ignore */ }
+    };
+
+    ws.onerror = () => {
+      setStatus('Connection failed');
+      setWaiting(false);
+    };
+
+    ws.onclose = () => {
+      wsRef.current = null;
+    };
   };
 
+  useEffect(() => {
+    return () => { wsRef.current?.close(); };
+  }, []);
+
   return (
-    <div style={{ textAlign: 'left' }}>
-      <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 8 }}>
-        Paste the connection key from your PC:
+    <div style={{ textAlign: 'center' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 12 }}>
+        <KeyboardIcon size={18} color="var(--accent)" />
+        <span style={{ fontSize: 14, fontWeight: 600 }}>Enter Device Code</span>
+      </div>
+      <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 12 }}>
+        Enter the 8-character code shown on your PC
       </p>
       <input
         className="glass-input"
-        value={jsonInput}
-        onChange={(e) => setJsonInput(e.target.value)}
-        placeholder='Paste connection key...'
-        style={{ fontSize: 13, marginBottom: 8 }}
+        value={code}
+        onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8))}
+        placeholder='e.g. A3F7K9B2'
+        disabled={waiting}
+        maxLength={8}
+        style={{
+          fontSize: 22,
+          fontFamily: 'monospace',
+          textAlign: 'center',
+          letterSpacing: '0.2em',
+          fontWeight: 700,
+          marginBottom: 8,
+        }}
+        autoFocus
       />
-      {error && <div style={{ color: 'var(--danger)', fontSize: 12, marginBottom: 8 }}>{error}</div>}
-      <button className="glass-btn accent full-width" style={{ fontSize: 13 }} onClick={handleConnect} disabled={!jsonInput}>
-        Connect
+      {verifyId && (
+        <div className="glass glass-xs" style={{
+          padding: '8px 16px',
+          marginBottom: 8,
+          fontSize: 13,
+          color: 'var(--accent)',
+        }}>
+          Verification ID: <strong style={{ fontFamily: 'monospace' }}>{verifyId}</strong>
+          <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
+            Confirm this matches the ID shown on your PC
+          </div>
+        </div>
+      )}
+      {status && <div style={{ color: waiting ? 'var(--text-secondary)' : 'var(--danger)', fontSize: 12, marginBottom: 8 }}>{status}</div>}
+      <button
+        className="glass-btn accent full-width"
+        style={{ fontSize: 14 }}
+        onClick={handleSubmit}
+        disabled={!code.trim() || waiting}
+      >
+        {waiting ? 'Waiting...' : 'Connect'}
       </button>
     </div>
   );

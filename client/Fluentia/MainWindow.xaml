@@ -63,12 +63,17 @@
                                HorizontalAlignment="Center" VerticalAlignment="Center"
                                x:Name="TitleLabel" MouseLeftButtonDown="Title_DevTap"/>
 
-                    <!-- Connection key button (right) -->
-                    <Button x:Name="CopyKeyBtn" HorizontalAlignment="Right" VerticalAlignment="Center"
-                            Click="CopyKey_Click" Visibility="Collapsed"
-                            Style="{StaticResource SecondaryButton}"
-                            Content="Copy Key" FontSize="11" Padding="8,4"
-                            ToolTip="Copy connection key for manual pairing"/>
+                    <!-- Device code display (right) -->
+                    <StackPanel x:Name="DeviceCodePanel" Orientation="Horizontal" VerticalAlignment="Center"
+                                HorizontalAlignment="Right" Visibility="Collapsed">
+                        <TextBlock Text="Code: " FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"
+                                   VerticalAlignment="Center"/>
+                        <TextBlock x:Name="DeviceCodeText" Text="" FontSize="13" FontWeight="Bold"
+                                   Foreground="{DynamicResource AccentBrush}" FontFamily="Consolas"
+                                   VerticalAlignment="Center" Cursor="Hand"
+                                   MouseLeftButtonDown="DeviceCode_Click"
+                                   ToolTip="Click to copy device code"/>
+                    </StackPanel>
                 </Grid>
             </Border>
 

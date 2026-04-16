@@ -17,6 +17,14 @@ const (
 	MsgPing        = "ping"
 	MsgPong        = "pong"
 	MsgError       = "error"
+
+	// Device code auth
+	MsgDeviceCodeRequest  = "device_code_request"
+	MsgDeviceCodeCreated  = "device_code_created"
+	MsgDeviceCodeJoin     = "device_code_join"
+	MsgDeviceCodePending  = "device_code_pending"  // sent to PC: mobile wants to join, show confirmation
+	MsgDeviceCodeConfirm  = "device_code_confirm"   // PC confirms
+	MsgDeviceCodeReject   = "device_code_reject"    // PC rejects
 )
 
 // Message is the universal message envelope for all WebSocket communication.
@@ -31,4 +39,10 @@ type Message struct {
 	Error     string `json:"error,omitempty"`
 	Version   string `json:"version,omitempty"`
 	Seq       *int   `json:"seq,omitempty"`
+
+	// Device code auth fields
+	DeviceCode string `json:"deviceCode,omitempty"`
+	VerifyID   string `json:"verifyId,omitempty"`  // UUID shown on both sides for visual confirmation
+	UserAgent  string `json:"userAgent,omitempty"`
+	Approved   bool   `json:"approved,omitempty"`
 }

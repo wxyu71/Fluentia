@@ -44,6 +44,23 @@ public class WsMessage
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? Seq { get; set; }
 
+    // Device code auth
+    [JsonPropertyName("deviceCode")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? DeviceCode { get; set; }
+
+    [JsonPropertyName("verifyId")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? VerifyId { get; set; }
+
+    [JsonPropertyName("userAgent")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? UserAgent { get; set; }
+
+    [JsonPropertyName("approved")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool Approved { get; set; }
+
     public string Serialize() => JsonSerializer.Serialize(this);
 
     public static WsMessage? Deserialize(string json) =>
@@ -88,4 +105,11 @@ public static class MsgTypes
     public const string Ping = "ping";
     public const string Pong = "pong";
     public const string Error = "error";
+
+    // Device code auth
+    public const string DeviceCodeRequest = "device_code_request";
+    public const string DeviceCodeCreated = "device_code_created";
+    public const string DeviceCodePending = "device_code_pending";
+    public const string DeviceCodeConfirm = "device_code_confirm";
+    public const string DeviceCodeReject = "device_code_reject";
 }

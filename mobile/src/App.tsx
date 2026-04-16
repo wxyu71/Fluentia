@@ -1,6 +1,7 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useLayoutEffect } from 'react';
 import { Header } from './components/Header';
 import { InputArea } from './components/InputArea';
+import type { InputAreaHandle } from './components/InputArea';
 import { QRScanner } from './components/QRScanner';
 import { History } from './components/History';
 import { KeyboardIcon, HistoryIcon, WarningIcon } from './components/Icons';
@@ -44,6 +45,7 @@ export const App: React.FC = () => {
     disconnect,
     sendEncrypted,
     lastError,
+    onPcCommand,
   } = useWebSocket(deviceId);
 
   const [activeTab, setActiveTab] = useState<AppTab>('input');
@@ -51,6 +53,17 @@ export const App: React.FC = () => {
   const [settings, setSettings] = useState<AppSettings>(loadSettings);
   const [inputText, setInputText] = useState('');
   const [scannerOverlay, setScannerOverlay] = useState(false);
+  const inputAreaRef = useRef<InputAreaHandle>(null);
+
+  // Handle PC → mobile commands (e.g. focus_change → reset diff state)
+  useEffect(() => {
+    onPcCommand.current = (cmd) => {
+      if (cmd.type === 'focus_change') {
+        inputAreaRef.current?.resetDiffState();
+      }
+    };
+    return () => { onPcCommand.current = null; };
+  }, [onPcCommand]);
 
   // Swipe state
   const touchStartRef = useRef<{ x: number; y: number; t: number } | null>(null);
@@ -60,6 +73,22 @@ export const App: React.FC = () => {
 
   const isConnected = connectionState === 'connected' && peerConnected;
 
+  // Fix mobile keyboard occlusion: track visualViewport height
+  useLayoutEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const update = () => {
+      document.documentElement.style.setProperty('--app-height', `${vv.height}px`);
+    };
+    update();
+    vv.addEventListener('resize', update);
+    vv.addEventListener('scroll', update);
+    return () => {
+      vv.removeEventListener('resize', update);
+      vv.removeEventListener('scroll', update);
+    };
+  }, []);
+
   const handleScan = useCallback((info: ConnectionInfo) => {
     // Persist connection info for auto-reconnect
     localStorage.setItem(CONN_KEY, JSON.stringify(info));
@@ -67,6 +96,20 @@ export const App: React.FC = () => {
     setActiveTab('input');
     setScannerOverlay(false);
   }, [connect]);
+
+  // Auto-reconnect from localStorage on mount (survives page refresh)
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(CONN_KEY);
+      if (raw) {
+        const info = JSON.parse(raw) as ConnectionInfo;
+        if (info.s && info.t && info.k) {
+          connect(info);
+        }
+      }
+    } catch { /* ignore */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Auto-reconnect on visibility change (15-minute tolerance)
   useEffect(() => {
@@ -232,6 +275,7 @@ export const App: React.FC = () => {
           >
             <div className="swipe-page">
               <InputArea
+                ref={inputAreaRef}
                 encryptionReady={encryptionReady}
                 text={inputText}
                 setText={setInputText}

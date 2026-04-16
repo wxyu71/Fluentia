@@ -38,6 +38,27 @@ public partial class MainWindow : Window
     [DllImport("user32.dll")]
     private static extern bool DestroyIcon(IntPtr handle);
 
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    // Foreground window change detection
+    private delegate void WinEventDelegate(IntPtr hWinEventHook, uint eventType, IntPtr hwnd,
+        int idObject, int idChild, uint dwEventThread, uint dwmsEventTime);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr SetWinEventHook(uint eventMin, uint eventMax, IntPtr hmodWinEventProc,
+        WinEventDelegate lpfnWinEventProc, uint idProcess, uint idThread, uint dwFlags);
+
+    [DllImport("user32.dll")]
+    private static extern bool UnhookWinEvent(IntPtr hWinEventHook);
+
+    private const uint EVENT_SYSTEM_FOREGROUND = 3;
+    private const uint WINEVENT_OUTOFCONTEXT = 0;
+
+    private WinEventDelegate? _winEventDelegate;
+    private IntPtr _winEventHook;
+    private IntPtr _lastForegroundWindow;
+
     public MainWindow()
     {
         InitializeComponent();
@@ -58,6 +79,27 @@ public partial class MainWindow : Window
         // Show traffic-light icons on hover
         MouseEnter += (_, _) => ShowTrafficIcons(true);
         MouseLeave += (_, _) => ShowTrafficIcons(false);
+
+        // Foreground window change detection — notify mobile to reset diff state
+        _lastForegroundWindow = GetForegroundWindow();
+        _winEventDelegate = OnForegroundWindowChanged;
+        _winEventHook = SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND,
+            IntPtr.Zero, _winEventDelegate, 0, 0, WINEVENT_OUTOFCONTEXT);
+    }
+
+    private void OnForegroundWindowChanged(IntPtr hWinEventHook, uint eventType, IntPtr hwnd,
+        int idObject, int idChild, uint dwEventThread, uint dwmsEventTime)
+    {
+        if (hwnd == _lastForegroundWindow) return;
+        _lastForegroundWindow = hwnd;
+
+        // Notify mobile to reset diff tracking when PC focus changes
+        if (_mobileConnected && _roomManager.EncryptionReady)
+        {
+            var cmd = System.Text.Json.JsonSerializer.Serialize(new { type = "focus_change" });
+            _ = _roomManager.SendToMobileAsync(cmd);
+            if (_devMode) Dispatcher.BeginInvoke(() => AppendLog("Focus changed → sync reset sent"));
+        }
     }
 
     private void ShowTrafficIcons(bool show)
@@ -152,13 +194,42 @@ public partial class MainWindow : Window
 
     private void SetupRoomManagerEvents()
     {
-        _roomManager.OnRoomCreated += (token) => Dispatcher.Invoke(() =>
+        _roomManager.OnRoomCreated += (token) => Dispatcher.Invoke(async () =>
         {
             UpdateQRCode();
             ShowQrArea(true);
             _qrCreatedAt = DateTime.Now;
             _qrTimer?.Start();
-            CopyKeyBtn.Visibility = Visibility.Visible;
+            // Request device code for manual pairing
+            await _roomManager.RequestDeviceCode();
+        });
+
+        _roomManager.OnDeviceCodeCreated += (code) => Dispatcher.Invoke(() =>
+        {
+            DeviceCodePanel.Visibility = Visibility.Visible;
+            DeviceCodeText.Text = code;
+            if (_devMode) AppendLog($"Device code: {code}");
+        });
+
+        _roomManager.OnDeviceCodePending += (code, verifyId, userAgent) => Dispatcher.Invoke(() =>
+        {
+            // Show confirmation dialog with verification ID
+            Show();
+            Activate();
+            var result = MessageBox.Show(
+                $"A device wants to connect:\n\nDevice: {userAgent}\nVerification ID: {verifyId}\n\nDo you approve this connection?",
+                "Fluentia — Connection Request",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+
+            if (result == MessageBoxResult.Yes)
+            {
+                _ = _roomManager.ConfirmDeviceCode(code);
+            }
+            else
+            {
+                _ = _roomManager.RejectDeviceCode(code);
+            }
         });
 
         _roomManager.OnMobileConnected += (deviceId) => Dispatcher.Invoke(() =>
@@ -167,6 +238,7 @@ public partial class MainWindow : Window
             SetStatus("Mobile connected", true);
             // Blur the QR and collapse
             QrBlurOverlay.Visibility = Visibility.Visible;
+            SetTrayIconColor(disconnected: false);
             if (_devMode) AppendLog($"Mobile {deviceId[..Math.Min(8, deviceId.Length)]}... connected");
         });
 
@@ -179,6 +251,10 @@ public partial class MainWindow : Window
             UpdateQRCode();
             _qrCreatedAt = DateTime.Now;
             _qrTimer?.Start();
+            // Auto-show window and change tray icon to disconnected state
+            SetTrayIconColor(disconnected: true);
+            Show();
+            Activate();
         });
 
         _roomManager.OnEncryptionReady += () => Dispatcher.Invoke(() =>
@@ -263,20 +339,71 @@ public partial class MainWindow : Window
         }
 
         using var qrGenerator = new QRCodeGenerator();
-        using var qrCodeData = qrGenerator.CreateQrCode(qrData, QRCodeGenerator.ECCLevel.M);
-        using var qrCode = new BitmapByteQRCode(qrCodeData);
-        var qrBytes = qrCode.GetGraphic(10, "#000000", "#FFFFFF");
+        using var qrCodeData = qrGenerator.CreateQrCode(qrData, QRCodeGenerator.ECCLevel.H);
 
-        using var ms = new MemoryStream(qrBytes);
-        var bitmap = new BitmapImage();
-        bitmap.BeginInit();
-        bitmap.CacheOption = BitmapCacheOption.OnLoad;
-        bitmap.StreamSource = ms;
-        bitmap.EndInit();
-        bitmap.Freeze();
+        // Telegram-style QR: render with rounded modules and accent color
+        var modules = qrCodeData.ModuleMatrix;
+        int size = modules.Count;
+        int moduleSize = 8; // px per module
+        int canvasSize = size * moduleSize;
+        int margin = moduleSize * 2;
+        int totalSize = canvasSize + margin * 2;
 
-        QrCodeImage.Source = bitmap;
-        QrHintText.Text = $"Scan with Fluentia mobile\nRoom: {_roomManager.CurrentToken?[..8]}...";
+        var dv = new DrawingVisual();
+        using (var dc = dv.RenderOpen())
+        {
+            // White background with rounded corners
+            dc.DrawRoundedRectangle(Brushes.White, null,
+                new Rect(0, 0, totalSize, totalSize), 16, 16);
+
+            var accentBrush = new SolidColorBrush(Color.FromRgb(10, 132, 255));
+            var darkBrush = new SolidColorBrush(Color.FromRgb(30, 30, 32));
+            double r = moduleSize * 0.38; // rounded dot radius
+
+            for (int row = 0; row < size; row++)
+            {
+                for (int col = 0; col < size; col++)
+                {
+                    if (!modules[row][col]) continue;
+
+                    double cx = margin + col * moduleSize + moduleSize / 2.0;
+                    double cy = margin + row * moduleSize + moduleSize / 2.0;
+
+                    // Finder patterns (top-left, top-right, bottom-left 7x7 blocks) use dark color
+                    bool isFinder = (row < 7 && col < 7) ||
+                                    (row < 7 && col >= size - 7) ||
+                                    (row >= size - 7 && col < 7);
+
+                    var brush = isFinder ? darkBrush : accentBrush;
+                    dc.DrawEllipse(brush, null, new Point(cx, cy), r, r);
+                }
+            }
+
+            // Center logo area: clear a circle and draw "F" logo
+            double logoRadius = totalSize * 0.12;
+            double centerX = totalSize / 2.0;
+            double centerY = totalSize / 2.0;
+            dc.DrawEllipse(Brushes.White, null, new Point(centerX, centerY), logoRadius + 4, logoRadius + 4);
+            dc.DrawEllipse(accentBrush, null, new Point(centerX, centerY), logoRadius, logoRadius);
+
+            var ft = new FormattedText("F",
+                System.Globalization.CultureInfo.InvariantCulture,
+                FlowDirection.LeftToRight,
+                new Typeface(new FontFamily("Segoe UI"), FontStyles.Normal, FontWeights.Bold, FontStretches.Normal),
+                logoRadius * 1.2,
+                Brushes.White,
+                VisualTreeHelper.GetDpi(this).PixelsPerDip);
+            dc.DrawText(ft, new Point(centerX - ft.Width / 2, centerY - ft.Height / 2));
+        }
+
+        var rtb = new RenderTargetBitmap(totalSize, totalSize, 96, 96, PixelFormats.Pbgra32);
+        rtb.Render(dv);
+        rtb.Freeze();
+
+        QrCodeImage.Source = rtb;
+        QrCodeImage.Width = 280;
+        QrCodeImage.Height = 280;
+        QrHintText.Text = $"Scan with Fluentia mobile\nRoom: {_roomManager.CurrentToken}";
     }
 
     private void SetStatus(string text, bool connected)
@@ -373,16 +500,16 @@ public partial class MainWindow : Window
         ShowQrArea(true);
     }
 
-    // Copy connection key for manual pairing
-    private void CopyKey_Click(object sender, RoutedEventArgs e)
+    // Copy device code to clipboard
+    private void DeviceCode_Click(object sender, MouseButtonEventArgs e)
     {
-        var qrData = _roomManager.GetQRData();
-        if (qrData != null)
+        var code = DeviceCodeText.Text;
+        if (!string.IsNullOrEmpty(code))
         {
             try
             {
-                Clipboard.SetText(qrData);
-                SetStatus("Connection key copied", true);
+                Clipboard.SetText(code);
+                SetStatus("Device code copied", true);
             }
             catch { /* clipboard busy */ }
         }
@@ -438,9 +565,41 @@ public partial class MainWindow : Window
         Activate();
     }
 
+    private void SetTrayIconColor(bool disconnected)
+    {
+        if (_trayIcon == null) return;
+
+        var accentColor = disconnected
+            ? System.Drawing.Color.FromArgb(255, 100, 100) // red
+            : System.Drawing.Color.FromArgb(10, 132, 255); // accent blue
+
+        using var bmp = new System.Drawing.Bitmap(32, 32, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+        using (var g = System.Drawing.Graphics.FromImage(bmp))
+        {
+            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            g.Clear(System.Drawing.Color.Transparent);
+            g.FillEllipse(new System.Drawing.SolidBrush(accentColor), 0, 0, 31, 31);
+            g.DrawString("F",
+                new System.Drawing.Font("Segoe UI", 16f, System.Drawing.FontStyle.Bold),
+                System.Drawing.Brushes.White,
+                new System.Drawing.PointF(6f, 2f));
+        }
+        var hIcon = bmp.GetHicon();
+        var icon = System.Drawing.Icon.FromHandle(hIcon);
+        using var ms = new MemoryStream();
+        icon.Save(ms);
+        ms.Position = 0;
+        var newIcon = new System.Drawing.Icon(ms);
+        DestroyIcon(hIcon);
+
+        _trayIcon.Icon = newIcon;
+        _trayIcon.ToolTipText = disconnected ? "Fluentia — Disconnected" : "Fluentia";
+    }
+
     private void Exit_Click(object sender, RoutedEventArgs e)
     {
         _qrTimer?.Stop();
+        if (_winEventHook != IntPtr.Zero) UnhookWinEvent(_winEventHook);
         _roomManager.Dispose();
         _trayIcon?.Dispose();
         Application.Current.Shutdown();
