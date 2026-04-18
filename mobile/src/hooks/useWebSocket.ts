@@ -14,7 +14,6 @@ interface UseWebSocketReturn {
   disconnect: () => void;
   sendEncrypted: (cmd: InputCommand) => void;
   lastError: string | null;
-  onPcCommand: React.MutableRefObject<((cmd: { type: string }) => void) | null>;
 }
 
 export function useWebSocket(deviceId: string): UseWebSocketReturn {
@@ -30,7 +29,6 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
   const reconnectTimerRef = useRef<number | null>(null);
   const intentionalCloseRef = useRef(false);
   const connectionStateRef = useRef<ConnectionState>('disconnected');
-  const pcCommandRef = useRef<((cmd: { type: string }) => void) | null>(null);
 
   const cleanup = useCallback(() => {
     if (reconnectTimerRef.current !== null) {
@@ -146,14 +144,27 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
 
       case 'peer_joined':
         setPeerConnected(true);
+        // If PC rejoined (after brief disconnect), re-establish encryption.
+        if (msg.role === 'pc' && wsRef.current?.readyState === WebSocket.OPEN) {
+          setEncryptionReady(false);
+          cryptoRef.current.reset();
+          if (connInfoRef.current) {
+            cryptoRef.current.setPeerPublicKey(connInfoRef.current.k);
+          }
+          const keyMsg: WsMessage = {
+            type: 'key_exchange',
+            publicKey: cryptoRef.current.getPublicKeyBase64(),
+          };
+          wsRef.current.send(JSON.stringify(keyMsg));
+        }
         break;
 
       case 'peer_left':
         setPeerConnected(false);
         setEncryptionReady(false);
-        // If PC explicitly terminated the session (role === 'pc'), stop reconnecting
-        // so we don't loop with a stale session token.
-        if (msg.role === 'pc') {
+        // If PC temporarily disconnected (grace period active), stay connected and wait.
+        // If PC permanently left (session destroyed), stop reconnecting.
+        if (msg.role === 'pc' && msg.error !== 'temporary') {
           intentionalCloseRef.current = true;
           connInfoRef.current = null;
           setConnectionState('disconnected');
@@ -198,8 +209,6 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
             const parsed = JSON.parse(plaintext);
             if (parsed.type === 'pc_ratchet_init' && parsed.seed) {
               cryptoRef.current.initRecvRatchet(parsed.seed);
-            } else if (pcCommandRef.current) {
-              pcCommandRef.current(parsed);
             }
           } catch {
             // Non-parseable encrypted messages are ignored
@@ -285,6 +294,5 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
     disconnect,
     sendEncrypted,
     lastError,
-    onPcCommand: pcCommandRef,
   };
 }

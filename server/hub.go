@@ -127,16 +127,16 @@ func (h *Hub) Unregister(c *Client) {
 	session := c.session
 	if c.role == "pc" {
 		session.PC = nil
-		// PC disconnected → destroy session, kick mobile
+		// Grace period: keep session alive for 30s so PC can rejoin.
+		// Notify mobile that PC is temporarily gone.
 		if session.Mobile != nil {
-			mobile := session.Mobile
-			session.Mobile = nil
-			mobile.session = nil
-			delete(h.clients, mobile)
-			mobile.SendAndClose(Message{Type: MsgPeerLeft, Role: "pc"})
+			session.Mobile.SendMessage(Message{Type: MsgPeerLeft, Role: "pc", Error: "temporary"})
 		}
-		delete(h.sessions, session.Token)
-		log.Printf("Session %s destroyed (PC disconnected)", session.Token)
+		token := session.Token
+		session.GraceTimer = time.AfterFunc(30*time.Second, func() {
+			h.expireSession(token)
+		})
+		log.Printf("Session %s: PC disconnected, grace period started (30s)", token)
 	} else if c.role == "mobile" {
 		session.Mobile = nil
 		if session.PC != nil {
@@ -147,10 +147,35 @@ func (h *Hub) Unregister(c *Client) {
 	c.session = nil
 }
 
+// expireSession destroys a session after the grace period if PC hasn't rejoined.
+func (h *Hub) expireSession(token string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	session, ok := h.sessions[token]
+	if !ok {
+		return // already destroyed
+	}
+	// If PC has rejoined during the grace period, don't destroy.
+	if session.PC != nil {
+		return
+	}
+	// Grace period expired — destroy session and kick mobile.
+	if session.Mobile != nil {
+		mobile := session.Mobile
+		session.Mobile = nil
+		mobile.session = nil
+		delete(h.clients, mobile)
+		mobile.SendAndClose(Message{Type: MsgPeerLeft, Role: "pc"})
+	}
+	delete(h.sessions, token)
+	log.Printf("Session %s destroyed (PC grace period expired)", token)
+}
+
 // HandleMessage is called from a client's ReadPump goroutine.
 func (h *Hub) HandleMessage(c *Client, msg Message) {
 	// Version check for handshake messages
-	if msg.Type == MsgCreateSession || msg.Type == MsgJoinSession {
+	if msg.Type == MsgCreateSession || msg.Type == MsgJoinSession || msg.Type == MsgRejoinSession {
 		if msg.Version != "" && msg.Version != ProtocolVersion {
 			c.SendMessage(Message{
 				Type:    MsgError,
@@ -164,6 +189,8 @@ func (h *Hub) HandleMessage(c *Client, msg Message) {
 	switch msg.Type {
 	case MsgCreateSession:
 		h.handleCreateSession(c)
+	case MsgRejoinSession:
+		h.handleRejoinSession(c, msg)
 	case MsgJoinSession:
 		h.handleJoinSession(c, msg)
 	case MsgKeyExchange, MsgEncrypted:
@@ -190,6 +217,10 @@ func (h *Hub) handleCreateSession(c *Client) {
 	// Destroy existing session owned by this client
 	if c.session != nil {
 		oldSession := c.session
+		if oldSession.GraceTimer != nil {
+			oldSession.GraceTimer.Stop()
+			oldSession.GraceTimer = nil
+		}
 		if oldSession.Mobile != nil {
 			mobile := oldSession.Mobile
 			oldSession.Mobile = nil
@@ -207,6 +238,50 @@ func (h *Hub) handleCreateSession(c *Client) {
 
 	log.Printf("Session created: %s", session.Token)
 	c.SendMessage(Message{Type: MsgSessionCreated, Token: session.Token, Version: ProtocolVersion})
+}
+
+// handleRejoinSession lets PC reclaim an existing session within the grace period.
+func (h *Hub) handleRejoinSession(c *Client, msg Message) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if msg.Token == "" {
+		c.SendMessage(Message{Type: MsgError, Error: "token required for rejoin"})
+		return
+	}
+
+	session, ok := h.sessions[msg.Token]
+	if !ok {
+		// Session expired or was destroyed — tell PC to create a new one.
+		c.SendMessage(Message{Type: MsgError, Error: "session not found"})
+		return
+	}
+
+	if session.PC != nil {
+		// Session already has a PC — can't rejoin.
+		c.SendMessage(Message{Type: MsgError, Error: "session already has a PC"})
+		return
+	}
+
+	// Cancel the grace timer.
+	if session.GraceTimer != nil {
+		session.GraceTimer.Stop()
+		session.GraceTimer = nil
+	}
+
+	// Reclaim the session.
+	c.role = "pc"
+	c.session = session
+	session.PC = c
+
+	log.Printf("Session %s: PC rejoined", session.Token)
+	c.SendMessage(Message{Type: MsgRejoined, Token: session.Token, Version: ProtocolVersion})
+
+	// Notify both sides about each other.
+	if session.Mobile != nil {
+		session.Mobile.SendMessage(Message{Type: MsgPeerJoined, Role: "pc"})
+		c.SendMessage(Message{Type: MsgPeerJoined, Role: "mobile", DeviceID: session.Mobile.deviceID})
+	}
 }
 
 func (h *Hub) handleJoinSession(c *Client, msg Message) {

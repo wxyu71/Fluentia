@@ -66,7 +66,22 @@ public class RoomManager : IDisposable
         _ws.OnConnected += () =>
         {
             OnStatusChanged?.Invoke("Connected to server");
-            _ = _ws.SendAsync(new WsMessage { Type = MsgTypes.CreateSession, Version = MsgTypes.ProtocolVersion });
+            // If we have an existing token, try to rejoin (grace period).
+            // Otherwise, create a new session.
+            if (_currentToken != null)
+            {
+                _rejoinPending = true;
+                _ = _ws.SendAsync(new WsMessage
+                {
+                    Type = MsgTypes.RejoinSession,
+                    Token = _currentToken,
+                    Version = MsgTypes.ProtocolVersion,
+                });
+            }
+            else
+            {
+                _ = _ws.SendAsync(new WsMessage { Type = MsgTypes.CreateSession, Version = MsgTypes.ProtocolVersion });
+            }
         };
 
         _ws.OnDisconnected += (reason) =>
@@ -80,7 +95,9 @@ public class RoomManager : IDisposable
     public async Task ConnectAsync(string serverUrl)
     {
         _serverUrl = serverUrl;
-        _crypto.Reset();
+        // Don't reset crypto — we want to keep keys for rejoin.
+        // Crypto is only reset when we create a truly new session (RefreshSession or first connect).
+        if (_currentToken == null) _crypto.Reset();
         OnStatusChanged?.Invoke("Connecting...");
         // Fetch server config (non-blocking — best effort)
         _ = FetchServerConfigAsync(serverUrl);
@@ -164,6 +181,8 @@ public class RoomManager : IDisposable
         return JsonSerializer.Serialize(data);
     }
 
+    private bool _rejoinPending; // true while waiting for rejoin_session response
+
     private void HandleMessage(WsMessage msg)
     {
         switch (msg.Type)
@@ -176,8 +195,18 @@ public class RoomManager : IDisposable
                     return;
                 }
                 _currentToken = msg.Token;
+                _rejoinPending = false;
                 OnSessionCreated?.Invoke(msg.Token!);
                 OnStatusChanged?.Invoke($"Session ready: {msg.Token?[..8]}...");
+                break;
+
+            case MsgTypes.Rejoined:
+                // Successfully reclaimed session within grace period.
+                _rejoinPending = false;
+                OnStatusChanged?.Invoke($"Reconnected to session: {msg.Token?[..8]}...");
+                // Token is the same, crypto keys are the same — mobile is still connected.
+                // If mobile is connected, server will send peer_joined.
+                // If mobile was disconnected, PC keeps waiting.
                 break;
 
             case MsgTypes.PeerJoined:
@@ -209,6 +238,15 @@ public class RoomManager : IDisposable
                 break;
 
             case MsgTypes.Error:
+                // If rejoin failed (session expired/not found), fall back to creating a new session.
+                if (_rejoinPending)
+                {
+                    _rejoinPending = false;
+                    _currentToken = null;
+                    _crypto.Reset();
+                    _ = _ws.SendAsync(new WsMessage { Type = MsgTypes.CreateSession, Version = MsgTypes.ProtocolVersion });
+                    break;
+                }
                 OnError?.Invoke(msg.Error ?? "Unknown error");
                 break;
         }

@@ -161,8 +161,7 @@ public static class TextInjector
     }
 
     /// <summary>
-    /// Select-all (Ctrl+A) then type the new text — used for full text replacement
-    /// when mobile cursor moved to the middle of text (text_sync command).
+    /// Select-all (Ctrl+A) then type the new text — full text replacement.
     /// </summary>
     public static void ReplaceAllText(string text)
     {

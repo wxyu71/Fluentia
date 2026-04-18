@@ -9,6 +9,8 @@ const (
 	MsgSessionCreated = "session_created"
 	MsgJoinSession    = "join_session"
 	MsgJoined         = "joined"
+	MsgRejoinSession  = "rejoin_session"  // PC reclaims session after brief disconnect
+	MsgRejoined       = "rejoined"        // Server confirms rejoin
 	MsgPeerJoined     = "peer_joined"
 	MsgPeerLeft       = "peer_left"
 	MsgPreempted      = "preempted"

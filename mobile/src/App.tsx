@@ -44,7 +44,6 @@ export const App: React.FC = () => {
     disconnect,
     sendEncrypted,
     lastError,
-    onPcCommand,
   } = useWebSocket(deviceId);
 
   const [activeTab, setActiveTab] = useState<AppTab>('input');

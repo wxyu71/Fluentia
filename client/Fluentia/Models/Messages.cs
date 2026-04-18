@@ -113,11 +113,6 @@ public class InputCommand
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool IsLast { get; set; }
 
-    // IME / voice composing preview
-    [JsonPropertyName("composingText")]
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string? ComposingText { get; set; }
-
     public string Serialize() => JsonSerializer.Serialize(this);
 
     public static InputCommand? Deserialize(string json) =>
@@ -131,6 +126,8 @@ public static class MsgTypes
     public const string SessionCreated   = "session_created";
     public const string JoinSession      = "join_session";
     public const string Joined           = "joined";
+    public const string RejoinSession    = "rejoin_session";
+    public const string Rejoined         = "rejoined";
     public const string PeerJoined       = "peer_joined";
     public const string PeerLeft         = "peer_left";
     public const string Preempted        = "preempted";
