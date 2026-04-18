@@ -80,8 +80,7 @@
             <!-- Main Content -->
             <Grid Grid.Row="1" Margin="20,0,20,20">
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>  <!-- Server URL -->
-                    <RowDefinition Height="Auto"/>  <!-- Connect -->
+                    <RowDefinition Height="Auto"/>  <!-- Server URL + Connect -->
                     <RowDefinition Height="Auto"/>  <!-- QR area -->
                     <RowDefinition Height="Auto"/>  <!-- Status -->
                     <RowDefinition Height="Auto"/>  <!-- Action row: New Session + Settings -->
@@ -89,20 +88,25 @@
                     <RowDefinition Height="*"/>     <!-- Log (dev only) -->
                 </Grid.RowDefinitions>
 
-                <!-- Server URL -->
+                <!-- Server URL + Connect (inline) -->
                 <StackPanel Grid.Row="0" Margin="0,0,0,12">
                     <TextBlock Text="Server URL" FontSize="12"
                                Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,6"/>
-                    <TextBox x:Name="ServerUrlBox" Text="wss://f.106918.xyz/ws"
-                             Style="{StaticResource DarkTextBox}"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBox Grid.Column="0" x:Name="ServerUrlBox" Text="wss://f.106918.xyz/ws"
+                                 Style="{StaticResource DarkTextBox}" Margin="0,0,8,0"/>
+                        <Button Grid.Column="1" x:Name="ConnectBtn" Content="Connect"
+                                Style="{StaticResource AccentButton}" Click="Connect_Click"
+                                Padding="16,8" MinWidth="80"/>
+                    </Grid>
                 </StackPanel>
 
-                <!-- Connect Button -->
-                <Button Grid.Row="1" x:Name="ConnectBtn" Content="Connect"
-                        Style="{StaticResource AccentButton}" Click="Connect_Click" Margin="0,0,0,12"/>
-
                 <!-- QR Code Area (collapsible) -->
-                <Border Grid.Row="2" x:Name="QrContainer"
+                <Border Grid.Row="1" x:Name="QrContainer"
                         Background="{DynamicResource BgInputBrush}"
                         CornerRadius="16" Padding="16" Margin="0,0,0,12"
                         HorizontalAlignment="Center" Visibility="Collapsed">
@@ -138,13 +142,13 @@
                 </Border>
 
                 <!-- QR expand button (shown when QR is collapsed) -->
-                <Button Grid.Row="2" x:Name="QrExpandBtn" Visibility="Collapsed"
+                <Button Grid.Row="1" x:Name="QrExpandBtn" Visibility="Collapsed"
                         Style="{StaticResource SecondaryButton}" Click="QrExpand_Click"
                         Content="Show QR Code" Margin="0,0,0,12" HorizontalAlignment="Center"
                         Padding="16,8"/>
 
                 <!-- Status -->
-                <Border Grid.Row="3" Background="{DynamicResource BgInputBrush}"
+                <Border Grid.Row="2" Background="{DynamicResource BgInputBrush}"
                         CornerRadius="10" Padding="12,10" Margin="0,0,0,10">
                     <StackPanel Orientation="Horizontal">
                         <Ellipse x:Name="StatusDot" Width="8" Height="8" Margin="0,0,10,0">
@@ -158,7 +162,7 @@
                 </Border>
 
                 <!-- Action Row: New Session + Settings -->
-                <Grid Grid.Row="4" Margin="0,0,0,10">
+                <Grid Grid.Row="3" Margin="0,0,0,10">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="8"/>
@@ -171,7 +175,7 @@
                 </Grid>
 
                 <!-- Settings Panel (collapsible) -->
-                <Border Grid.Row="5" x:Name="SettingsPanel" Visibility="Collapsed"
+                <Border Grid.Row="4" x:Name="SettingsPanel" Visibility="Collapsed"
                         Background="{DynamicResource BgInputBrush}" CornerRadius="12"
                         Padding="14,12" Margin="0,0,0,10">
                     <StackPanel>
@@ -200,7 +204,7 @@
                 </Border>
 
                 <!-- Log area (dev mode only) -->
-                <Border Grid.Row="6" x:Name="LogContainer" Visibility="Collapsed"
+                <Border Grid.Row="5" x:Name="LogContainer" Visibility="Collapsed"
                         Background="{DynamicResource BgInputBrush}" CornerRadius="10" Padding="8">
                     <ScrollViewer VerticalScrollBarVisibility="Auto">
                         <TextBlock x:Name="LogText" FontSize="11" FontFamily="Consolas"

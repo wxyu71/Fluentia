@@ -1,6 +1,6 @@
 import React, { useRef, useCallback } from 'react';
 import { computeDiff } from '../utils/diff';
-import { ScanIcon, ClearIcon, ClipboardIcon } from './Icons';
+import { ScanIcon, ClipboardIcon } from './Icons';
 import { FileTransfer } from './FileTransfer';
 import type { InputCommand, HistoryEntry } from '../types';
 
@@ -126,22 +126,6 @@ export const InputArea: React.FC<InputAreaProps> = ({
     }
   }, [text, commitParagraph]);
 
-  const handleClear = useCallback(() => {
-    if (text.trim() && autoSaveHistory) {
-      onAddHistory({
-        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-        text: text.trim(),
-        timestamp: Date.now(),
-      });
-    }
-    if (encryptionReady && lastSentRef.current.length > 0) {
-      onSendCommand({ type: 'diff', count: lastSentRef.current.length, text: '' });
-    }
-    setText('');
-    lastSentRef.current = '';
-    textareaRef.current?.focus();
-  }, [text, autoSaveHistory, onAddHistory, encryptionReady, onSendCommand, setText]);
-
   const handleCopyToClipboard = useCallback(() => {
     if (!text.trim() || !encryptionReady) return;
     onSendCommand({ type: 'clipboard', text: text.trim() });
@@ -250,18 +234,6 @@ export const InputArea: React.FC<InputAreaProps> = ({
         }}>
           {text.length > 0 ? `${text.length} chars · Enter ↵ sends` : ''}
         </div>
-      </div>
-
-      <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-        <button
-          className="glass-btn full-width"
-          disabled={!text}
-          onClick={handleClear}
-          style={{ gap: 6 }}
-        >
-          <ClearIcon size={14} />
-          Clear{autoSaveHistory ? ' & Save' : ''}
-        </button>
       </div>
     </div>
   );

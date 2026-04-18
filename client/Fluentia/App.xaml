@@ -4,7 +4,7 @@
              StartupUri="MainWindow.xaml"
              ShutdownMode="OnExplicitShutdown">
     <Application.Resources>
-        <!-- ══ Apple-inspired Dark Theme (default) ══ -->
+        <!-- ══ Theme Colors (overridden at runtime by App.xaml.cs) ══ -->
         <Color x:Key="BgDark">#FF000000</Color>
         <Color x:Key="BgPanel">#FF1C1C1E</Color>
         <Color x:Key="BgInput">#FF2C2C2E</Color>
@@ -15,6 +15,7 @@
         <Color x:Key="BorderColor">#FF38383A</Color>
         <Color x:Key="Success">#FF30D158</Color>
         <Color x:Key="Danger">#FFFF453A</Color>
+        <Color x:Key="SecondaryHover">#FF3A3A3C</Color>
 
         <SolidColorBrush x:Key="BgDarkBrush" Color="{StaticResource BgDark}"/>
         <SolidColorBrush x:Key="BgPanelBrush" Color="{StaticResource BgPanel}"/>
@@ -103,7 +104,7 @@
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="border" Property="Background">
                                     <Setter.Value>
-                                        <SolidColorBrush Color="#FF3A3A3C"/>
+                                        <SolidColorBrush Color="{DynamicResource SecondaryHover}"/>
                                     </Setter.Value>
                                 </Setter>
                             </Trigger>

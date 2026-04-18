@@ -234,7 +234,7 @@ public partial class MainWindow : Window
         var sec = remaining % 60;
         QrTimerText.Text = $"{min}:{sec:D2}";
         QrTimerText.Foreground = remaining < 30
-            ? new SolidColorBrush(Color.FromRgb(255, 69, 58))
+            ? new SolidColorBrush((Color)FindResource("Danger"))
             : (Brush)FindResource("TextSecondaryBrush");
     }
 
@@ -547,9 +547,7 @@ public partial class MainWindow : Window
     private void SetStatus(string text, bool connected)
     {
         StatusText.Text = text;
-        StatusDot.Fill = new SolidColorBrush(connected
-            ? Color.FromRgb(48, 209, 88)
-            : Color.FromRgb(255, 69, 58));
+        StatusDot.Fill = new SolidColorBrush((Color)FindResource(connected ? "Success" : "Danger"));
     }
 
     private void AppendLog(string text)
