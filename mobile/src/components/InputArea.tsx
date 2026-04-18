@@ -95,7 +95,9 @@ export const InputArea: React.FC<InputAreaProps> = ({
     }
 
     setText(raw);
-    if (encryptionReady && !isComposingRef.current) {
+    // Always send diffs in real-time, including during IME/voice composition,
+    // so that voice recognition results stream character-by-character to the PC.
+    if (encryptionReady) {
       sendDiff(raw);
     }
   }, [encryptionReady, sendDiff, setText, commitParagraph, onSendCommand, autoSaveHistory, onAddHistory]);
@@ -106,16 +108,15 @@ export const InputArea: React.FC<InputAreaProps> = ({
 
   const handleCompositionEnd = useCallback((e: React.CompositionEvent<HTMLTextAreaElement>) => {
     isComposingRef.current = false;
+    // Some IMEs (especially voice) may insert newlines at compositionend.
+    // Trigger handleInput to process them.
     const raw = e.currentTarget.value;
     if (raw.includes('\n')) {
       handleInput({ currentTarget: { value: raw } } as React.FormEvent<HTMLTextAreaElement>);
-      return;
     }
-    setText(raw);
-    if (encryptionReady) {
-      sendDiff(raw);
-    }
-  }, [encryptionReady, sendDiff, setText, handleInput]);
+    // Normal composition end: handleInput already sent the diff in real-time,
+    // so no additional work needed here.
+  }, [handleInput]);
 
   /** Enter key → commit paragraph (keyboard users). */
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {

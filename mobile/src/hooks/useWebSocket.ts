@@ -254,6 +254,25 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
     }
   }, []);
 
+  // When mobile browser returns from background, check WS health and reconnect if needed.
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (!connInfoRef.current) return;
+      if (intentionalCloseRef.current) return;
+      if (connectionStateRef.current === 'preempted') return;
+
+      const ws = wsRef.current;
+      if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
+        // WS died while in background — reconnect immediately
+        reconnectAttemptRef.current = 0;
+        connectWs(connInfoRef.current);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [connectWs]);
+
   useEffect(() => {
     return () => cleanup();
   }, [cleanup]);

@@ -104,6 +104,33 @@ public partial class MainWindow : Window
         _winEventDelegate = OnForegroundWindowChanged;
         _winEventHook = SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND,
             IntPtr.Zero, _winEventDelegate, 0, 0, WINEVENT_OUTOFCONTEXT);
+
+        // Auto-connect to server on startup
+        Loaded += async (_, _) => await AutoConnectAsync();
+    }
+
+    private async Task AutoConnectAsync()
+    {
+        var url = ServerUrlBox.Text.Trim();
+        if (string.IsNullOrEmpty(url)) return;
+
+        ConnectBtn.IsEnabled = false;
+        ConnectBtn.Content = "Connecting...";
+        try
+        {
+            await _roomManager.ConnectAsync(url);
+            SetStatus("Connected", false);
+        }
+        catch (Exception ex)
+        {
+            SetStatus("Auto-connect failed, click Connect to retry", false);
+            if (_devMode) AppendLog($"Auto-connect error: {ex.Message}");
+        }
+        finally
+        {
+            ConnectBtn.IsEnabled = true;
+            ConnectBtn.Content = "Connect";
+        }
     }
 
     private void OnForegroundWindowChanged(IntPtr hWinEventHook, uint eventType, IntPtr hwnd,
@@ -643,6 +670,7 @@ public partial class MainWindow : Window
         {
             await _roomManager.ConnectAsync(url);
             SetStatus("Connected", false);
+            PersistSettings(); // save server URL for auto-connect next launch
         }
         catch (Exception ex)
         {
@@ -714,6 +742,12 @@ public partial class MainWindow : Window
                     if (!string.IsNullOrEmpty(p) && Directory.Exists(p))
                         _fileSavePath = p;
                 }
+                if (doc.RootElement.TryGetProperty("serverUrl", out var urlEl))
+                {
+                    var u = urlEl.GetString();
+                    if (!string.IsNullOrEmpty(u))
+                        ServerUrlBox.Text = u;
+                }
             }
         }
         catch { /* use defaults */ }
@@ -725,7 +759,11 @@ public partial class MainWindow : Window
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(SettingsFile)!);
-            var json = System.Text.Json.JsonSerializer.Serialize(new { savePath = _fileSavePath });
+            var json = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                savePath = _fileSavePath,
+                serverUrl = ServerUrlBox.Text.Trim(),
+            });
             File.WriteAllText(SettingsFile, json);
         }
         catch { /* best-effort */ }
