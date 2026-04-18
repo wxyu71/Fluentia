@@ -1,7 +1,6 @@
 import React, { useState, useCallback, useRef, useEffect, useLayoutEffect } from 'react';
 import { Header } from './components/Header';
 import { InputArea } from './components/InputArea';
-import type { InputAreaHandle } from './components/InputArea';
 import { QRScanner } from './components/QRScanner';
 import { History } from './components/History';
 import { KeyboardIcon, HistoryIcon, WarningIcon } from './components/Icons';
@@ -54,19 +53,6 @@ export const App: React.FC = () => {
   const [inputText, setInputText] = useState('');
   const [scannerOverlay, setScannerOverlay] = useState(false);
   const [fileTransferEnabled, setFileTransferEnabled] = useState(false);
-  const inputAreaRef = useRef<InputAreaHandle>(null);
-
-  // Handle PC → mobile commands (focus_change = pause, focus_regained = resume)
-  useEffect(() => {
-    onPcCommand.current = (cmd) => {
-      if (cmd.type === 'focus_change') {
-        inputAreaRef.current?.pauseSync();
-      } else if (cmd.type === 'focus_regained') {
-        inputAreaRef.current?.resumeSync();
-      }
-    };
-    return () => { onPcCommand.current = null; };
-  }, [onPcCommand]);
 
   // Swipe state
   const touchStartRef = useRef<{ x: number; y: number; t: number } | null>(null);
@@ -283,7 +269,6 @@ export const App: React.FC = () => {
           >
             <div className="swipe-page">
               <InputArea
-                ref={inputAreaRef}
                 encryptionReady={encryptionReady}
                 text={inputText}
                 setText={setInputText}

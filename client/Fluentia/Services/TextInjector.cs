@@ -100,6 +100,12 @@ public static class TextInjector
         Inject(list.ToArray());
     }
 
+    /// <summary>Send a single Enter keystroke (VK_RETURN).</summary>
+    public static void SendEnter()
+    {
+        Inject(new[] { MakeVkInput(0x0D, false), MakeVkInput(0x0D, true) });
+    }
+
     /// <summary>
     /// Atomically apply a diff: send N backspaces followed by unicode text
     /// in a single SendInput call so they cannot be interleaved with other events.

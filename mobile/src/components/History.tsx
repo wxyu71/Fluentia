@@ -16,7 +16,9 @@ export const History: React.FC<HistoryProps> = ({
   autoSaveHistory, onToggleAutoSave,
 }) => {
   const handleResend = (entry: HistoryEntry) => {
-    onResend({ type: 'text_commit', text: entry.text });
+    // Send the text as a diff (insert), then an enter to commit it
+    onResend({ type: 'diff', text: entry.text, count: 0 });
+    onResend({ type: 'enter' });
   };
 
   const formatTime = (ts: number) => {

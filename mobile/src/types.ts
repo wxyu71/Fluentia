@@ -30,14 +30,11 @@ export interface TextDiff {
 
 // Encrypted inner message (after decryption)
 export interface InputCommand {
-  type: 'diff' | 'text_commit' | 'backspace' | 'clear' | 'ratchet_init' | 'clipboard'
-      | 'composing'    // IME/voice composing preview — shown in PC overlay, NOT injected
-      | 'text_sync'    // full text replacement (when cursor is mid-text)
+  type: 'diff' | 'enter' | 'backspace' | 'clear' | 'ratchet_init' | 'clipboard'
       | 'file_start' | 'file_chunk' | 'file_abort';
   text?: string;
   count?: number;
   seed?: string;
-  composingText?: string; // the in-progress composing text (not yet committed)
   // file transfer fields
   fileName?: string;
   fileSize?: number;     // total bytes

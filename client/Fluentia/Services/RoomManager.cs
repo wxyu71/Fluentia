@@ -186,8 +186,8 @@ public class RoomManager : IDisposable
                 break;
 
             case MsgTypes.PeerLeft:
-                _crypto.Reset();
-                // Re-generate key pair but keep the room
+                // Don't reset crypto — keep our keypair so mobile can reconnect
+                // with the same QR-authenticated key and re-establish encryption.
                 OnMobileDisconnected?.Invoke();
                 OnStatusChanged?.Invoke("Mobile disconnected");
                 break;

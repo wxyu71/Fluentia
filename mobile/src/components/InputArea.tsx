@@ -1,6 +1,6 @@
-import React, { useRef, useCallback, useImperativeHandle, forwardRef } from 'react';
+import React, { useRef, useCallback } from 'react';
 import { computeDiff } from '../utils/diff';
-import { ScanIcon, ClearIcon, ClipboardIcon, AttachIcon } from './Icons';
+import { ScanIcon, ClearIcon, ClipboardIcon } from './Icons';
 import { FileTransfer } from './FileTransfer';
 import type { InputCommand, HistoryEntry } from '../types';
 
@@ -15,14 +15,17 @@ interface InputAreaProps {
   fileTransferEnabled?: boolean;
 }
 
-export interface InputAreaHandle {
-  /** Called when PC focus changes AWAY from target window — pause sync, keep lastSentRef intact */
-  pauseSync: () => void;
-  /** Called when PC focus returns to a text window — resume sync and immediately flush pending diff */
-  resumeSync: () => void;
-}
-
-export const InputArea = forwardRef<InputAreaHandle, InputAreaProps>(({
+/**
+ * Paragraph-model InputArea.
+ *
+ * Mobile textarea holds only the CURRENT paragraph (no newlines).
+ * Keystrokes are diffed against the last-sent state and sent to PC in real time.
+ * When the user presses Enter (or voice input inserts a newline):
+ *   1. Current paragraph is committed → diff + 'enter' command sent to PC.
+ *   2. Optionally saved to history.
+ *   3. Textarea clears and diff state resets for the next paragraph.
+ */
+export const InputArea: React.FC<InputAreaProps> = ({
   encryptionReady,
   text,
   setText,
@@ -31,88 +34,96 @@ export const InputArea = forwardRef<InputAreaHandle, InputAreaProps>(({
   onOpenScanner,
   autoSaveHistory,
   fileTransferEnabled = false,
-}, ref) => {
+}) => {
   const lastSentRef = useRef('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const charCountRef = useRef(0);
-  const syncPausedRef = useRef(false);   // true while PC focus is on another window
-  const isComposingRef = useRef(false);  // true during IME composition
-  const composingTextRef = useRef('');   // current composing text (for overlay on PC)
+  const isComposingRef = useRef(false);
   const fileTransferRef = useRef<{ open: () => void }>(null);
 
-  // sendDiff must be declared BEFORE useImperativeHandle so the handle closure can reference it
+  /** Send diff between lastSentRef and newText. */
   const sendDiff = useCallback((newText: string) => {
-    if (syncPausedRef.current) return; // don't send while PC focus is elsewhere
     const diff = computeDiff(lastSentRef.current, newText);
     if (diff.backspace > 0 || diff.insert) {
       onSendCommand({ type: 'diff', count: diff.backspace, text: diff.insert || '' });
     }
     lastSentRef.current = newText;
-    charCountRef.current += (diff.insert?.length || 0);
   }, [onSendCommand]);
 
-  // Expose pause/resume to parent
-  useImperativeHandle(ref, () => ({
-    pauseSync: () => {
-      // Pause: keep lastSentRef pointing to last confirmed PC state (do NOT reset it).
-      syncPausedRef.current = true;
-    },
-    resumeSync: () => {
-      syncPausedRef.current = false;
-      // After a focus switch the PC text state is unknown (some keystrokes may have
-      // landed in the wrong window). Always send a full text_sync to reset PC state.
-      if (encryptionReady && !isComposingRef.current) {
-        const currentText = textareaRef.current?.value ?? '';
-        onSendCommand({ type: 'text_sync', text: currentText });
-        lastSentRef.current = currentText;
-      }
-    },
-  }), [encryptionReady, sendDiff]);
+  /** Commit a paragraph: flush diff, send Enter, save history, reset. */
+  const commitParagraph = useCallback((paragraphText: string) => {
+    if (paragraphText !== lastSentRef.current) {
+      sendDiff(paragraphText);
+    }
+    onSendCommand({ type: 'enter' });
+    if (paragraphText.trim() && autoSaveHistory) {
+      onAddHistory({
+        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+        text: paragraphText.trim(),
+        timestamp: Date.now(),
+      });
+    }
+    setText('');
+    lastSentRef.current = '';
+  }, [sendDiff, onSendCommand, autoSaveHistory, onAddHistory, setText]);
 
   const handleInput = useCallback((e: React.FormEvent<HTMLTextAreaElement>) => {
-    const newText = e.currentTarget.value;
-    setText(newText);
-    // Skip diff during IME composition — compositionEnd handles the final commit.
-    if (encryptionReady && !isComposingRef.current) {
-      const el = e.currentTarget;
-      const cursorAtEnd = el.selectionStart === newText.length;
-      if (!cursorAtEnd && newText.length > 0) {
-        // Cursor is in the middle of text — send full replacement so PC stays in sync
-        // regardless of where its cursor is.
-        onSendCommand({ type: 'text_sync', text: newText });
-        lastSentRef.current = newText;
-      } else {
-        sendDiff(newText);
+    const raw = e.currentTarget.value;
+
+    // Voice input or keyboard may insert newlines → each newline = paragraph commit.
+    if (raw.includes('\n')) {
+      const parts = raw.split('\n');
+      for (let i = 0; i < parts.length - 1; i++) {
+        if (i === 0) {
+          commitParagraph(parts[i]);
+        } else {
+          if (parts[i]) sendDiff(parts[i]);
+          onSendCommand({ type: 'enter' });
+          if (parts[i].trim() && autoSaveHistory) {
+            onAddHistory({
+              id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+              text: parts[i].trim(),
+              timestamp: Date.now(),
+            });
+          }
+          lastSentRef.current = '';
+        }
       }
+      const remainder = parts[parts.length - 1];
+      setText(remainder);
+      if (remainder) sendDiff(remainder);
+      return;
     }
-  }, [encryptionReady, sendDiff, setText, onSendCommand]);
+
+    setText(raw);
+    if (encryptionReady && !isComposingRef.current) {
+      sendDiff(raw);
+    }
+  }, [encryptionReady, sendDiff, setText, commitParagraph, onSendCommand, autoSaveHistory, onAddHistory]);
 
   const handleCompositionStart = useCallback(() => {
     isComposingRef.current = true;
-    composingTextRef.current = '';
   }, []);
-
-  const handleCompositionUpdate = useCallback((e: React.CompositionEvent<HTMLTextAreaElement>) => {
-    composingTextRef.current = e.data ?? '';
-    // Send composing preview to PC — it shows in a floating overlay without injecting
-    if (encryptionReady) {
-      onSendCommand({ type: 'composing', composingText: e.data ?? '' });
-    }
-  }, [encryptionReady, onSendCommand]);
 
   const handleCompositionEnd = useCallback((e: React.CompositionEvent<HTMLTextAreaElement>) => {
     isComposingRef.current = false;
-    composingTextRef.current = '';
-    // Clear composing overlay on PC
-    if (encryptionReady) {
-      onSendCommand({ type: 'composing', composingText: '' });
+    const raw = e.currentTarget.value;
+    if (raw.includes('\n')) {
+      handleInput({ currentTarget: { value: raw } } as React.FormEvent<HTMLTextAreaElement>);
+      return;
     }
-    const newText = e.currentTarget.value;
-    setText(newText);
+    setText(raw);
     if (encryptionReady) {
-      sendDiff(newText);
+      sendDiff(raw);
     }
-  }, [encryptionReady, sendDiff, setText, onSendCommand]);
+  }, [encryptionReady, sendDiff, setText, handleInput]);
+
+  /** Enter key → commit paragraph (keyboard users). */
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey && !isComposingRef.current) {
+      e.preventDefault();
+      commitParagraph(text);
+    }
+  }, [text, commitParagraph]);
 
   const handleClear = useCallback(() => {
     if (text.trim() && autoSaveHistory) {
@@ -122,11 +133,11 @@ export const InputArea = forwardRef<InputAreaHandle, InputAreaProps>(({
         timestamp: Date.now(),
       });
     }
+    if (encryptionReady && lastSentRef.current.length > 0) {
+      onSendCommand({ type: 'diff', count: lastSentRef.current.length, text: '' });
+    }
     setText('');
     lastSentRef.current = '';
-    if (encryptionReady) {
-      onSendCommand({ type: 'clear' });
-    }
     textareaRef.current?.focus();
   }, [text, autoSaveHistory, onAddHistory, encryptionReady, onSendCommand, setText]);
 
@@ -137,10 +148,8 @@ export const InputArea = forwardRef<InputAreaHandle, InputAreaProps>(({
 
   return (
     <div className="input-page" style={{ padding: '0 20px' }}>
-      {/* Spacer — pushes content to bottom for thumb reach */}
       <div style={{ flex: 1, minHeight: 40 }} />
 
-      {/* Encryption hint */}
       {!encryptionReady && (
         <div className="glass glass-xs" style={{
           padding: '10px 16px',
@@ -153,7 +162,6 @@ export const InputArea = forwardRef<InputAreaHandle, InputAreaProps>(({
         </div>
       )}
 
-      {/* Toolbar: scan icon + clipboard + attach */}
       {encryptionReady && (
         <div style={{
           display: 'flex',
@@ -181,7 +189,6 @@ export const InputArea = forwardRef<InputAreaHandle, InputAreaProps>(({
             Scan
           </button>
           <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-            {/* File / photo attach — only shown when server enables file transfer */}
             {fileTransferEnabled && (
               <FileTransfer
                 ref={fileTransferRef}
@@ -214,17 +221,16 @@ export const InputArea = forwardRef<InputAreaHandle, InputAreaProps>(({
         </div>
       )}
 
-      {/* Main textarea — large, positioned for thumb reach */}
       <div style={{ position: 'relative' }}>
         <textarea
           ref={textareaRef}
           className="glass-input"
           value={text}
           onInput={handleInput}
+          onKeyDown={handleKeyDown}
           onCompositionStart={handleCompositionStart}
-          onCompositionUpdate={handleCompositionUpdate}
           onCompositionEnd={handleCompositionEnd}
-          placeholder={encryptionReady ? 'Start typing or use voice input...' : 'Connect to PC first...'}
+          placeholder={encryptionReady ? 'Type or use voice input… Enter ↵ sends.' : 'Connect to PC first...'}
           disabled={!encryptionReady}
           autoFocus={encryptionReady}
           style={{
@@ -241,11 +247,10 @@ export const InputArea = forwardRef<InputAreaHandle, InputAreaProps>(({
           fontSize: 11,
           color: 'var(--text-tertiary)',
         }}>
-          {text.length} chars
+          {text.length > 0 ? `${text.length} chars · Enter ↵ sends` : ''}
         </div>
       </div>
 
-      {/* Clear button */}
       <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
         <button
           className="glass-btn full-width"
@@ -259,4 +264,4 @@ export const InputArea = forwardRef<InputAreaHandle, InputAreaProps>(({
       </div>
     </div>
   );
-});
+};

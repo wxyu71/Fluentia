@@ -79,17 +79,20 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
         const msg: WsMessage = JSON.parse(event.data);
         handleMessage(msg);
       } catch {
-        console.error('Failed to parse message');
+        // ignore parse errors
       }
     };
 
     ws.onclose = () => {
+      // Guard: if this WS has been replaced by a newer connection, ignore its close event.
+      if (wsRef.current !== ws) return;
+
       if (intentionalCloseRef.current) {
         setConnectionState('disconnected');
         connectionStateRef.current = 'disconnected';
         return;
       }
-      // Auto-reconnect — use ref to avoid stale closure over connectionState
+      // Auto-reconnect
       if (
         connInfoRef.current &&
         connectionStateRef.current !== 'preempted' &&
@@ -110,7 +113,8 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
     };
 
     ws.onerror = () => {
-      setLastError('Connection error');
+      // Only set error if this is still the current WS
+      if (wsRef.current === ws) setLastError('Connection error');
     };
   }, [deviceId, cleanup]);
 

@@ -109,7 +109,7 @@
                     <Grid>
                         <!-- QR content -->
                         <StackPanel x:Name="QrContent" HorizontalAlignment="Center">
-                            <Image x:Name="QrCodeImage" Width="260" Height="260"
+                            <Image x:Name="QrCodeImage" Width="340" Height="340"
                                    RenderOptions.BitmapScalingMode="NearestNeighbor"/>
                             <!-- Timer countdown -->
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,8,0,0">

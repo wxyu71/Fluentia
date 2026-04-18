@@ -46,9 +46,6 @@ public partial class MainWindow : Window
     // Mobile connection state for QR collapse/blur
     private bool _mobileConnected;
 
-    // Composing text overlay (IME / voice pending chars)
-    private ComposingOverlay? _composingOverlay;
-
     // In-progress file transfers: transferId → (header cmd, accumulated chunks)
     private readonly Dictionary<string, (InputCommand Header, List<byte[]> Chunks)> _fileTransfers = new();
 
@@ -113,32 +110,9 @@ public partial class MainWindow : Window
         int idObject, int idChild, uint dwEventThread, uint dwmsEventTime)
     {
         if (hwnd == _lastForegroundWindow) return;
-        var prev = _lastForegroundWindow;
         _lastForegroundWindow = hwnd;
-
-        if (!_mobileConnected || !_roomManager.EncryptionReady) return;
-
-        // When focus moves to a NEW window, notify mobile to pause sync.
-        // When focus returns to the previous window (user switched back), notify to resume.
-        // We detect "return" by checking if the new window handle is the one we were on before prev.
-        // Simplified rule: always send focus_change. Send focus_regained with a short delay
-        // after the window settles, so mobile can resume and flush buffered text.
-        _ = Task.Run(async () =>
-        {
-            var cmd = System.Text.Json.JsonSerializer.Serialize(new { type = "focus_change" });
-            await _roomManager.SendToMobileAsync(cmd);
-            if (_devMode) Dispatcher.BeginInvoke(() => AppendLog($"Focus → new window"));
-
-            // After 400ms of settling, send focus_regained so mobile flushes any buffered diff
-            await Task.Delay(400);
-            if (_lastForegroundWindow == hwnd) // focus didn't change again
-            {
-                var regained = System.Text.Json.JsonSerializer.Serialize(new { type = "focus_regained" });
-                await _roomManager.SendToMobileAsync(regained);
-                if (_devMode) Dispatcher.BeginInvoke(() => AppendLog("Focus settled → resume sync"));
-            }
-        });
-        _ = prev; // suppress unused warning
+        // Foreground-window tracking kept for diagnostics only (no messages sent to mobile).
+        if (_devMode) Dispatcher.BeginInvoke(() => AppendLog($"Focus → 0x{hwnd:X}"));
     }
 
     private void ShowTrafficIcons(bool show)
@@ -214,11 +188,17 @@ public partial class MainWindow : Window
 
     private void QrTimer_Tick(object? sender, EventArgs e)
     {
+        // Don't refresh the QR (which destroys the session) while a mobile is connected
+        if (_mobileConnected)
+        {
+            _qrTimer?.Stop();
+            return;
+        }
+
         var elapsed = (DateTime.Now - _qrCreatedAt).TotalSeconds;
         var remaining = QR_VALIDITY_SECONDS - (int)elapsed;
         if (remaining <= 0)
         {
-            // Refresh QR
             _qrTimer?.Stop();
             _ = _roomManager.RefreshSession();
             return;
@@ -333,35 +313,13 @@ public partial class MainWindow : Window
     {
         switch (cmd.Type)
         {
-            case "composing":
-                // Show IME / voice pending chars in floating overlay
-                if (!string.IsNullOrEmpty(cmd.ComposingText))
-                {
-                    Dispatcher.Invoke(() =>
-                    {
-                        _composingOverlay ??= new ComposingOverlay();
-                        _composingOverlay.ShowComposing(cmd.ComposingText);
-                    });
-                }
-                else
-                {
-                    Dispatcher.Invoke(() => _composingOverlay?.HideComposing());
-                }
-                break;
-
-            case "text_sync":
-                // Full text replacement (triggered when mobile cursor is not at end)
-                if (cmd.Text != null)
-                    TextInjector.ReplaceAllText(cmd.Text);
-                break;
-
             case "diff":
                 TextInjector.ApplyDiff(cmd.Count, cmd.Text ?? "");
                 break;
 
-            case "text_commit":
-                if (!string.IsNullOrEmpty(cmd.Text))
-                    TextInjector.TypeText(cmd.Text);
+            case "enter":
+                // Paragraph committed — inject Enter keystroke into the active window
+                TextInjector.SendEnter();
                 break;
 
             case "backspace":
@@ -518,8 +476,8 @@ public partial class MainWindow : Window
         var modules = qrCodeData.ModuleMatrix;
         int size = modules.Count;
 
-        // Choose module size so the final image fills ~280px
-        const int targetPx = 280;
+        // Choose module size so the final image fills ~340px
+        const int targetPx = 340;
         int moduleSize = Math.Max(4, targetPx / (size + 4)); // 4-module quiet zone
         int margin = moduleSize * 2;                          // 2-module quiet zone each side
         int canvasSize = size * moduleSize;
