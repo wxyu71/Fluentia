@@ -5,7 +5,7 @@ Cross-device wireless input — use your phone as a wireless keyboard for your P
 ## Features
 
 - **End-to-end encryption** — X25519 key exchange + XSalsa20-Poly1305, bidirectional ratchet (forward + backward secrecy)
-- **QR code pairing** — scan to connect, 5-minute auto-refresh
+- **QR code pairing** — scan to connect, with reusable sessions that can stay valid for days
 - **Voice & text input** — real-time injection at cursor position via SendInput API
 - **Clipboard sync** — send text from phone directly to PC clipboard
 - **File transfer** — encrypted file sharing between devices (configurable size limit)
@@ -47,6 +47,8 @@ All settings via environment variables in `docker-compose.yml`:
 | `IP_WHITELIST` | `false` | Enable IP-based access control |
 | `ALLOWED_IPS` | — | Comma-separated IPs/CIDRs |
 | `MAX_FILE_MB` | `100` | Max file size (-1=disabled, 0=unlimited) |
+| `SESSION_MAX_AGE_DAYS` | `7` | How long a session token can be reused before a new session is required |
+| `MOBILE_EXPIRY_SECS` | `60` | How long the desktop waits before surfacing itself after the phone disconnects |
 
 ## Architecture
 

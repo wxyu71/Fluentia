@@ -19,6 +19,7 @@ type ServerConfig struct {
 	AllowedIPs    []string // if non-empty, only these IPs may connect
 	MaxFileMB     int      // -1=disabled, 0=unlimited, N=N MB
 	MobileExpiry  int      // seconds after mobile disconnects before PC shows window (default 60)
+	SessionMaxAge int      // how long a session token remains reusable, in days
 	PrivateMode   bool     // require SecretPath
 	IPWhitelist   bool     // enforce AllowedIPs
 }
@@ -29,6 +30,7 @@ func loadConfig() ServerConfig {
 		StaticDir:    envOr("STATIC_DIR", "./static"),
 		MaxFileMB:    envInt("MAX_FILE_MB", -1),
 		MobileExpiry: envInt("MOBILE_EXPIRY_SECS", 60),
+		SessionMaxAge: envInt("SESSION_MAX_AGE_DAYS", 7),
 	}
 
 	cfg.SecretPath = os.Getenv("SECRET_PATH")
@@ -126,7 +128,7 @@ func isAllowed(ip string, allowed []string) bool {
 
 func main() {
 	cfg := loadConfig()
-	hub := NewHub()
+	hub := NewHub(cfg.SessionMaxAge)
 	hub.MaxFileMB = cfg.MaxFileMB
 
 	mux := http.NewServeMux()
@@ -156,7 +158,8 @@ func main() {
 		maxMB := cfg.MaxFileMB
 		w.Write([]byte(`{"version":"` + ProtocolVersion + `","fileTransfer":` +
 			strconv.FormatBool(fileEnabled) + `,"maxFileMB":` + strconv.Itoa(maxMB) +
-			`,"mobileExpirySecs":` + strconv.Itoa(cfg.MobileExpiry) + `}`))
+			`,"mobileExpirySecs":` + strconv.Itoa(cfg.MobileExpiry) +
+			`,"sessionMaxAgeDays":` + strconv.Itoa(cfg.SessionMaxAge) + `}`))
 	})
 
 	// Serve mobile web static files

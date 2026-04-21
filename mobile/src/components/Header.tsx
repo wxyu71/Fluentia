@@ -6,16 +6,21 @@ interface HeaderProps {
   connectionState: ConnectionState;
   peerConnected: boolean;
   encryptionReady: boolean;
+  pendingStatus?: string | null;
 }
 
-export const Header: React.FC<HeaderProps> = ({ connectionState, peerConnected, encryptionReady }) => {
+export const Header: React.FC<HeaderProps> = ({ connectionState, peerConnected, encryptionReady, pendingStatus }) => {
   const statusText = (): string => {
+    if (pendingStatus && connectionState !== 'preempted' && !encryptionReady) {
+      return pendingStatus;
+    }
+
     switch (connectionState) {
       case 'connected':
         if (encryptionReady && peerConnected) return 'Encrypted';
-        if (peerConnected) return 'Key Exchange...';
+        if (peerConnected) return 'Key exchange';
         return 'Waiting for PC';
-      case 'connecting': return 'Connecting...';
+      case 'connecting': return 'Connecting';
       case 'preempted': return 'Preempted';
       default: return 'Not Connected';
     }

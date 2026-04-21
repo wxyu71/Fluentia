@@ -34,6 +34,17 @@ public class CryptoService
         _peerPublicKey = Convert.FromBase64String(base64Key);
     }
 
+    public void ResetPeerState()
+    {
+        _peerPublicKey = null;
+        _recvChainKey = null;
+        _expectedSeq = 0;
+        _ratchetReady = false;
+        _sendChainKey = null;
+        _sendSeq = 0;
+        _sendRatchetReady = false;
+    }
+
     /// <summary>
     /// Initialize the receive ratchet from the seed sent by mobile.
     /// </summary>
@@ -144,13 +155,7 @@ public class CryptoService
     public void Reset()
     {
         _keyPair = PublicKeyBox.GenerateKeyPair();
-        _peerPublicKey = null;
-        _recvChainKey = null;
-        _expectedSeq = 0;
-        _ratchetReady = false;
-        _sendChainKey = null;
-        _sendSeq = 0;
-        _sendRatchetReady = false;
+        ResetPeerState();
     }
 
     private static byte[] Kdf(byte[] key, string label)

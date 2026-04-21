@@ -34,6 +34,7 @@ public class WebSocketService : IDisposable
         Dispose(disposeUrl: false);
         _cts = new CancellationTokenSource();
         _webSocket = new ClientWebSocket();
+        _webSocket.Options.KeepAliveInterval = TimeSpan.FromSeconds(15);
 
         try
         {

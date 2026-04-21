@@ -1,216 +1,496 @@
 <Window x:Class="Fluentia.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         Title="Fluentia"
-        Width="480" Height="720"
-        MinWidth="400" MinHeight="500"
+        Width="560" Height="760"
+        MinWidth="500" MinHeight="640"
         WindowStartupLocation="CenterScreen"
-        Background="{DynamicResource BgDarkBrush}"
+        Background="Transparent"
         WindowStyle="None"
         AllowsTransparency="True"
         ResizeMode="CanResizeWithGrip">
 
-    <WindowChrome.WindowChrome>
-        <WindowChrome CaptionHeight="0" ResizeBorderThickness="6" GlassFrameThickness="0"/>
-    </WindowChrome.WindowChrome>
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="0" ResizeBorderThickness="7" GlassFrameThickness="0" CornerRadius="0"/>
+    </shell:WindowChrome.WindowChrome>
 
-    <Border CornerRadius="12" Background="{DynamicResource BgPanelBrush}"
-            BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0.5">
-        <Grid>
+    <Border CornerRadius="24"
+            Background="{DynamicResource BgDarkBrush}"
+            BorderBrush="{DynamicResource DividerBrush}"
+            BorderThickness="1"
+            Effect="{DynamicResource CardShadow}">
+        <Grid ClipToBounds="True">
             <Grid.RowDefinitions>
-                <RowDefinition Height="40"/>  <!-- Custom title bar -->
-                <RowDefinition Height="*"/>   <!-- Content -->
+                <RowDefinition Height="52"/>
+                <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
 
-            <!-- Custom Title Bar (macOS-style) -->
-            <Border Grid.Row="0" Background="Transparent" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown"
+            <Border Grid.Row="0"
+                    Background="Transparent"
+                    MouseLeftButtonDown="TitleBar_MouseLeftButtonDown"
                     MouseLeftButtonUp="TitleBar_MouseLeftButtonUp">
-                <Grid Margin="14,0">
-                    <!-- Traffic light buttons (left) -->
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Left">
-                        <!-- Close → minimize to tray -->
+                <Grid Margin="18,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <Border x:Name="BtnClose" Width="14" Height="14" CornerRadius="7"
                                 Background="#FF5F57" Margin="0,0,8,0" Cursor="Hand"
                                 MouseLeftButtonDown="TrafficClose_Click"
-                                ToolTip="Hide to tray">
-                            <Path Data="M4,4 L10,10 M10,4 L4,10" Stroke="#4D0000" StrokeThickness="1.2"
-                                  HorizontalAlignment="Center" VerticalAlignment="Center"
-                                  Visibility="Collapsed" x:Name="CloseX"/>
+                                ToolTip="Hide to notification area">
+                            <Path x:Name="CloseX"
+                                  Data="M4,4 L10,10 M10,4 L4,10"
+                                  Stroke="#4D0000"
+                                  StrokeThickness="1.2"
+                                  HorizontalAlignment="Center"
+                                  VerticalAlignment="Center"
+                                  Visibility="Collapsed"/>
                         </Border>
-                        <!-- Minimize -->
                         <Border x:Name="BtnMinimize" Width="14" Height="14" CornerRadius="7"
                                 Background="#FEBC2E" Margin="0,0,8,0" Cursor="Hand"
                                 MouseLeftButtonDown="TrafficMinimize_Click"
                                 ToolTip="Minimize">
-                            <Path Data="M3,7 L11,7" Stroke="#995700" StrokeThickness="1.2"
-                                  HorizontalAlignment="Center" VerticalAlignment="Center"
-                                  Visibility="Collapsed" x:Name="MinLine"/>
+                            <Path x:Name="MinLine"
+                                  Data="M3,7 L11,7"
+                                  Stroke="#995700"
+                                  StrokeThickness="1.2"
+                                  HorizontalAlignment="Center"
+                                  VerticalAlignment="Center"
+                                  Visibility="Collapsed"/>
                         </Border>
-                        <!-- Maximize / Restore -->
                         <Border x:Name="BtnMaximize" Width="14" Height="14" CornerRadius="7"
                                 Background="#28C840" Cursor="Hand"
                                 MouseLeftButtonDown="TrafficMaximize_Click"
-                                ToolTip="Maximize">
-                            <Path Data="M3,7 L7,3 L11,7 L7,11 Z" Stroke="#006500" StrokeThickness="1"
-                                  HorizontalAlignment="Center" VerticalAlignment="Center"
-                                  Visibility="Collapsed" x:Name="MaxDiamond"/>
+                                ToolTip="Maximize or restore">
+                            <Path x:Name="MaxDiamond"
+                                  Data="M3,7 L7,3 L11,7 L7,11 Z"
+                                  Stroke="#006500"
+                                  StrokeThickness="1"
+                                  HorizontalAlignment="Center"
+                                  VerticalAlignment="Center"
+                                  Visibility="Collapsed"/>
                         </Border>
                     </StackPanel>
 
-                    <!-- Title (center) -->
-                    <TextBlock Text="Fluentia" FontSize="13" FontWeight="SemiBold"
-                               Foreground="{DynamicResource TextSecondaryBrush}"
-                               HorizontalAlignment="Center" VerticalAlignment="Center"
-                               x:Name="TitleLabel" MouseLeftButtonDown="Title_DevTap"/>
-
-                    <!-- Device code display (right) -->
-                    <StackPanel x:Name="DeviceCodePanel" Orientation="Horizontal" VerticalAlignment="Center"
-                                HorizontalAlignment="Right" Visibility="Collapsed">
-                        <TextBlock Text="Code: " FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"
-                                   VerticalAlignment="Center"/>
-                        <TextBlock x:Name="DeviceCodeText" Text="" FontSize="13" FontWeight="Bold"
-                                   Foreground="{DynamicResource AccentBrush}" FontFamily="Consolas"
-                                   VerticalAlignment="Center" Cursor="Hand"
-                                   MouseLeftButtonDown="DeviceCode_Click"
-                                   ToolTip="Click to copy device code"/>
+                    <StackPanel Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <TextBlock x:Name="TitleLabel"
+                                   Text="Fluentia"
+                                   FontSize="14"
+                                   FontFamily="Segoe UI Variable Display"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextPrimaryBrush}"
+                                   HorizontalAlignment="Center"
+                                   MouseLeftButtonDown="Title_DevTap"/>
+                        <TextBlock Text="Windows relay"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource TextTertiaryBrush}"
+                                   HorizontalAlignment="Center"/>
                     </StackPanel>
+
+                    <Button Grid.Column="2"
+                            x:Name="SettingsTitleButton"
+                            Style="{StaticResource IconButton}"
+                            Click="Settings_Click"
+                            ToolTip="Open settings">
+                        <TextBlock FontFamily="Segoe Fluent Icons"
+                                   Text="&#xE713;"
+                                   FontSize="18"
+                                   Foreground="{DynamicResource TextPrimaryBrush}"
+                                   VerticalAlignment="Center"
+                                   HorizontalAlignment="Center"/>
+                    </Button>
                 </Grid>
             </Border>
 
-            <!-- Main Content -->
-            <Grid Grid.Row="1" Margin="20,0,20,20">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>  <!-- Server URL + Connect -->
-                    <RowDefinition Height="Auto"/>  <!-- QR area -->
-                    <RowDefinition Height="Auto"/>  <!-- Status -->
-                    <RowDefinition Height="Auto"/>  <!-- Action row: New Session + Settings -->
-                    <RowDefinition Height="Auto"/>  <!-- Settings panel (collapsible) -->
-                    <RowDefinition Height="*"/>     <!-- Log (dev only) -->
-                </Grid.RowDefinitions>
+            <Grid Grid.Row="1" ClipToBounds="True">
+                <Border x:Name="SettingsScrim"
+                        Visibility="Collapsed"
+                        Opacity="0"
+                        Background="{DynamicResource OverlayBrush}"
+                        MouseLeftButtonDown="SettingsScrim_MouseLeftButtonDown"/>
 
-                <!-- Server URL + Connect (inline) -->
-                <StackPanel Grid.Row="0" Margin="0,0,0,12">
-                    <TextBlock Text="Server URL" FontSize="12"
-                               Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,6"/>
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <TextBox Grid.Column="0" x:Name="ServerUrlBox" Text="wss://f.106918.xyz/ws"
-                                 Style="{StaticResource DarkTextBox}" Margin="0,0,8,0"/>
-                        <Button Grid.Column="1" x:Name="ConnectBtn" Content="Connect"
-                                Style="{StaticResource AccentButton}" Click="Connect_Click"
-                                Padding="16,8" MinWidth="80"/>
-                    </Grid>
-                </StackPanel>
+                <Grid x:Name="MainContentHost">
+                    <Grid.RenderTransform>
+                        <TransformGroup>
+                            <ScaleTransform x:Name="MainContentScaleTransform" ScaleX="1" ScaleY="1"/>
+                            <TranslateTransform x:Name="MainContentTranslateTransform" X="0"/>
+                        </TransformGroup>
+                    </Grid.RenderTransform>
 
-                <!-- QR Code Area (collapsible) -->
-                <Border Grid.Row="1" x:Name="QrContainer"
-                        Background="{DynamicResource BgInputBrush}"
-                        CornerRadius="16" Padding="16" Margin="0,0,0,12"
-                        HorizontalAlignment="Center" Visibility="Collapsed">
-                    <Grid>
-                        <!-- QR content -->
-                        <StackPanel x:Name="QrContent" HorizontalAlignment="Center">
-                            <Image x:Name="QrCodeImage" Width="340" Height="340"
-                                   RenderOptions.BitmapScalingMode="NearestNeighbor"/>
-                            <!-- Timer countdown -->
-                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,8,0,0">
-                                <TextBlock x:Name="QrTimerText" Text="5:00"
-                                           FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"/>
-                            </StackPanel>
-                <!-- QR hint -->
-                            <TextBlock x:Name="QrHintText" Text=""
-                                       FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"
-                                       HorizontalAlignment="Center" Margin="0,4,0,0"
-                                       TextAlignment="Center"/>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel Margin="24,10,24,24">
+                            <Border Background="{DynamicResource BgPanelBrush}"
+                                    BorderBrush="{DynamicResource DividerBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="24"
+                                    Padding="22"
+                                    Margin="0,0,0,18">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel>
+                                        <TextBlock Text="Secure desktop pairing"
+                                                   FontSize="24"
+                                                   FontFamily="Segoe UI Variable Display"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                        <TextBlock x:Name="ConnectionHintText"
+                                                   Text="Connect to your relay server to prepare a reusable session."
+                                                   FontSize="13"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                   Margin="0,8,0,0"
+                                                   TextWrapping="Wrap"/>
+                                        <StackPanel Orientation="Horizontal" Margin="0,18,0,0" VerticalAlignment="Center">
+                                            <Ellipse x:Name="StatusDot" Width="10" Height="10" Margin="0,0,10,0">
+                                                <Ellipse.Fill>
+                                                    <SolidColorBrush Color="{StaticResource Danger}"/>
+                                                </Ellipse.Fill>
+                                            </Ellipse>
+                                            <TextBlock x:Name="StatusText"
+                                                       Text="Not connected"
+                                                       FontSize="13"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                        </StackPanel>
+                                    </StackPanel>
+
+                                    <Button Grid.Column="1"
+                                            x:Name="NewSessionBtn"
+                                            Content="New Session"
+                                            Style="{StaticResource SecondaryButton}"
+                                            Click="Refresh_Click"
+                                            Padding="16,10"
+                                            Margin="18,0,0,0"
+                                            VerticalAlignment="Top"/>
+                                </Grid>
+                            </Border>
+
+                            <Border Background="{DynamicResource BgPanelBrush}"
+                                    BorderBrush="{DynamicResource DividerBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="22"
+                                    Padding="22"
+                                    Margin="0,0,0,18">
+                                <StackPanel>
+                                    <TextBlock Text="Connection"
+                                               FontSize="18"
+                                               FontFamily="Segoe UI Variable Display"
+                                               FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                    <TextBlock Text="Server URL"
+                                               FontSize="12"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"
+                                               Margin="0,14,0,8"/>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="12"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox Grid.Column="0"
+                                                 x:Name="ServerUrlBox"
+                                                 Text="wss://f.106918.xyz/ws"
+                                                 Style="{StaticResource DarkTextBox}"/>
+                                        <Button Grid.Column="2"
+                                                x:Name="ConnectBtn"
+                                                Content="Connect"
+                                                Style="{StaticResource AccentButton}"
+                                                Click="Connect_Click"
+                                                MinWidth="108"/>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Background="{DynamicResource BgPanelBrush}"
+                                    BorderBrush="{DynamicResource DividerBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="22"
+                                    Padding="22"
+                                    Margin="0,0,0,18">
+                                <StackPanel>
+                                    <Grid Margin="0,0,0,14">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel>
+                                            <TextBlock Text="Pairing"
+                                                       FontSize="18"
+                                                       FontFamily="Segoe UI Variable Display"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                            <TextBlock Text="Scan the QR code or enter the short code on your phone."
+                                                       FontSize="12"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                                       Margin="0,4,0,0"/>
+                                        </StackPanel>
+                                        <Button Grid.Column="1"
+                                                x:Name="QrExpandBtn"
+                                                Content="Show QR Code"
+                                                Style="{StaticResource SecondaryButton}"
+                                                Visibility="Collapsed"
+                                                Click="QrExpand_Click"
+                                                Padding="14,10"/>
+                                    </Grid>
+
+                                    <Border x:Name="PairingNoticeCard"
+                                            Background="{DynamicResource BgInputBrush}"
+                                            BorderBrush="{DynamicResource DividerBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="18"
+                                            Padding="18"
+                                            Margin="0,0,0,14"
+                                            Visibility="Collapsed">
+                                        <StackPanel>
+                                            <TextBlock x:Name="PairingNoticeTitle"
+                                                       Text="Ready"
+                                                       FontSize="15"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                            <TextBlock x:Name="PairingNoticeText"
+                                                       Text=""
+                                                       FontSize="12"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                                       Margin="0,6,0,0"
+                                                       TextWrapping="Wrap"/>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Border x:Name="DeviceCodePanel"
+                                            Background="{DynamicResource AccentSoftBrush}"
+                                            BorderBrush="{DynamicResource DividerBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="18"
+                                            Padding="18"
+                                            Margin="0,0,0,14"
+                                            Visibility="Collapsed"
+                                            Cursor="Hand"
+                                            MouseLeftButtonDown="DeviceCode_Click"
+                                            ToolTip="Copy device code">
+                                        <StackPanel>
+                                            <TextBlock Text="Connection Code"
+                                                       FontSize="12"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                            <TextBlock x:Name="DeviceCodeText"
+                                                       Margin="0,10,0,0"
+                                                       FontSize="30"
+                                                       FontFamily="Consolas"
+                                                       FontWeight="Bold"
+                                                       Foreground="{DynamicResource AccentBrush}"
+                                                       TextAlignment="Center"/>
+                                            <TextBlock Text="Visible only while no phone is connected"
+                                                       FontSize="11"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                                       TextAlignment="Center"
+                                                       Margin="0,8,0,0"/>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Border x:Name="QrContainer"
+                                            Background="{DynamicResource BgInputBrush}"
+                                            BorderBrush="{DynamicResource DividerBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="22"
+                                            Padding="18"
+                                            HorizontalAlignment="Stretch"
+                                            Visibility="Collapsed">
+                                        <StackPanel HorizontalAlignment="Center">
+                                            <Image x:Name="QrCodeImage"
+                                                   Width="320"
+                                                   Height="320"
+                                                   RenderOptions.BitmapScalingMode="NearestNeighbor"/>
+                                            <TextBlock x:Name="QrTimerText"
+                                                       Text=""
+                                                       FontSize="12"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                                       Margin="0,12,0,0"
+                                                       HorizontalAlignment="Center"/>
+                                            <TextBlock x:Name="QrHintText"
+                                                       Text=""
+                                                       FontSize="11"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                                       TextAlignment="Center"
+                                                       Margin="0,6,0,0"
+                                                       HorizontalAlignment="Center"/>
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
+                            </Border>
+
+                            <Border x:Name="LogContainer"
+                                    Visibility="Collapsed"
+                                    Background="{DynamicResource BgPanelBrush}"
+                                    BorderBrush="{DynamicResource DividerBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="18"
+                                    Padding="16">
+                                <StackPanel>
+                                    <TextBlock Text="Diagnostics"
+                                               FontSize="14"
+                                               FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="0,10,0,0">
+                                        <TextBlock x:Name="LogText"
+                                                   FontSize="11"
+                                                   FontFamily="Consolas"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                   TextWrapping="Wrap"/>
+                                    </ScrollViewer>
+                                </StackPanel>
+                            </Border>
                         </StackPanel>
-
-                        <!-- Blur overlay when connected -->
-                        <Border x:Name="QrBlurOverlay" Background="#80000000" CornerRadius="12"
-                                Visibility="Collapsed" Cursor="Hand"
-                                MouseLeftButtonDown="QrBlur_Click">
-                            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
-                                <TextBlock Text="Connected" FontSize="15" FontWeight="SemiBold"
-                                           Foreground="White" HorizontalAlignment="Center"/>
-                                <TextBlock Text="Click to reveal QR" FontSize="11"
-                                           Foreground="#AAA" HorizontalAlignment="Center" Margin="0,4,0,0"/>
-                            </StackPanel>
-                        </Border>
-                    </Grid>
-                </Border>
-
-                <!-- QR expand button (shown when QR is collapsed) -->
-                <Button Grid.Row="1" x:Name="QrExpandBtn" Visibility="Collapsed"
-                        Style="{StaticResource SecondaryButton}" Click="QrExpand_Click"
-                        Content="Show QR Code" Margin="0,0,0,12" HorizontalAlignment="Center"
-                        Padding="16,8"/>
-
-                <!-- Status -->
-                <Border Grid.Row="2" Background="{DynamicResource BgInputBrush}"
-                        CornerRadius="10" Padding="12,10" Margin="0,0,0,10">
-                    <StackPanel Orientation="Horizontal">
-                        <Ellipse x:Name="StatusDot" Width="8" Height="8" Margin="0,0,10,0">
-                            <Ellipse.Fill>
-                                <SolidColorBrush Color="{StaticResource Danger}"/>
-                            </Ellipse.Fill>
-                        </Ellipse>
-                        <TextBlock x:Name="StatusText" Text="Not connected"
-                                   FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"/>
-                    </StackPanel>
-                </Border>
-
-                <!-- Action Row: New Session + Settings -->
-                <Grid Grid.Row="3" Margin="0,0,0,10">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="8"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <Button Grid.Column="0" Content="New Session" Style="{StaticResource SecondaryButton}"
-                            Click="Refresh_Click"/>
-                    <Button Grid.Column="2" Content="⚙" Style="{StaticResource SecondaryButton}"
-                            Click="Settings_Click" Width="38" FontSize="14" ToolTip="Settings"/>
+                    </ScrollViewer>
                 </Grid>
 
-                <!-- Settings Panel (collapsible) -->
-                <Border Grid.Row="4" x:Name="SettingsPanel" Visibility="Collapsed"
-                        Background="{DynamicResource BgInputBrush}" CornerRadius="12"
-                        Padding="14,12" Margin="0,0,0,10">
-                    <StackPanel>
-                        <TextBlock Text="SETTINGS" FontSize="11" FontWeight="SemiBold"
-                                   Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,10"/>
+                <Border x:Name="SettingsPanel"
+                        Width="340"
+                        HorizontalAlignment="Right"
+                        Background="{DynamicResource BgPanelBrush}"
+                        BorderBrush="{DynamicResource DividerBrush}"
+                        BorderThickness="1,0,0,0"
+                        Visibility="Collapsed">
+                    <Border.RenderTransform>
+                        <TranslateTransform x:Name="SettingsPanelTranslateTransform" X="360"/>
+                    </Border.RenderTransform>
 
-                        <!-- File save path -->
-                        <TextBlock Text="Save received files to:" FontSize="12"
-                                   Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,0,0,6"/>
+                    <Grid Margin="26,24,26,24">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="8"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <TextBox Grid.Column="0" x:Name="SavePathBox"
-                                     Style="{StaticResource DarkTextBox}" FontSize="12"/>
-                            <Button Grid.Column="2" Content="Browse" Click="BrowseSavePath_Click"
-                                    Style="{StaticResource SecondaryButton}" Padding="10,6" FontSize="12"/>
+                            <StackPanel>
+                                <TextBlock Text="Settings"
+                                           FontSize="22"
+                                           FontFamily="Segoe UI Variable Display"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                <TextBlock Text="Desktop behavior and file handling"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           Margin="0,6,0,0"/>
+                            </StackPanel>
+                            <Button Grid.Column="1"
+                                    Style="{StaticResource IconButton}"
+                                    Click="CloseSettings_Click"
+                                    ToolTip="Close settings">
+                                <TextBlock FontFamily="Segoe Fluent Icons"
+                                           Text="&#xE711;"
+                                           FontSize="16"
+                                           Foreground="{DynamicResource TextPrimaryBrush}"
+                                           VerticalAlignment="Center"
+                                           HorizontalAlignment="Center"/>
+                            </Button>
                         </Grid>
 
-                        <Button Content="Save Settings" Click="SaveSettings_Click"
-                                Style="{StaticResource AccentButton}" Margin="0,10,0,0"
-                                Padding="12,7" HorizontalAlignment="Right"/>
-                    </StackPanel>
-                </Border>
+                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Margin="0,22,0,18">
+                            <StackPanel>
+                                <Border Background="{DynamicResource BgInputBrush}"
+                                        BorderBrush="{DynamicResource DividerBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="18"
+                                        Padding="18"
+                                        Margin="0,0,0,14">
+                                    <StackPanel>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel>
+                                                <TextBlock Text="Close button behavior"
+                                                           FontSize="14"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                                <TextBlock Text="When enabled, closing the window hides Fluentia to the notification area."
+                                                           FontSize="12"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                                           Margin="0,6,0,0"
+                                                           TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                            <CheckBox x:Name="CloseToTrayToggle"
+                                                      Grid.Column="1"
+                                                      Style="{StaticResource SwitchCheckBoxStyle}"
+                                                      VerticalAlignment="Top"/>
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
 
-                <!-- Log area (dev mode only) -->
-                <Border Grid.Row="5" x:Name="LogContainer" Visibility="Collapsed"
-                        Background="{DynamicResource BgInputBrush}" CornerRadius="10" Padding="8">
-                    <ScrollViewer VerticalScrollBarVisibility="Auto">
-                        <TextBlock x:Name="LogText" FontSize="11" FontFamily="Consolas"
-                                   Foreground="{DynamicResource TextSecondaryBrush}"
-                                   TextWrapping="Wrap"/>
-                    </ScrollViewer>
+                                <Border Background="{DynamicResource BgInputBrush}"
+                                        BorderBrush="{DynamicResource DividerBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="18"
+                                        Padding="18"
+                                        Margin="0,0,0,14">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel>
+                                            <TextBlock Text="Launch at Windows startup"
+                                                       FontSize="14"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                            <TextBlock Text="Start Fluentia automatically after you sign in to Windows."
+                                                       FontSize="12"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                                       Margin="0,6,0,0"
+                                                       TextWrapping="Wrap"/>
+                                        </StackPanel>
+                                        <CheckBox x:Name="LaunchAtStartupToggle"
+                                                  Grid.Column="1"
+                                                  Style="{StaticResource SwitchCheckBoxStyle}"
+                                                  VerticalAlignment="Top"/>
+                                    </Grid>
+                                </Border>
+
+                                <Border Background="{DynamicResource BgInputBrush}"
+                                        BorderBrush="{DynamicResource DividerBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="18"
+                                        Padding="18">
+                                    <StackPanel>
+                                        <TextBlock Text="Received files"
+                                                   FontSize="14"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                        <TextBlock Text="Choose where incoming files are written on this PC."
+                                                   FontSize="12"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                   Margin="0,6,0,0"
+                                                   TextWrapping="Wrap"/>
+                                        <TextBox x:Name="SavePathBox"
+                                                 Margin="0,14,0,0"
+                                                 Style="{StaticResource DarkTextBox}"/>
+                                        <Button Content="Browse"
+                                                Margin="0,12,0,0"
+                                                Style="{StaticResource SecondaryButton}"
+                                                Click="BrowseSavePath_Click"
+                                                HorizontalAlignment="Left"/>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                        </ScrollViewer>
+
+                        <Button Grid.Row="2"
+                                Content="Save Settings"
+                                Style="{StaticResource AccentButton}"
+                                Click="SaveSettings_Click"/>
+                    </Grid>
                 </Border>
             </Grid>
         </Grid>

@@ -37,8 +37,8 @@
         </Style>
     </Window.Resources>
 
-    <Border CornerRadius="20" Background="#1C1C1E"
-            BorderBrush="#3A3A3C" BorderThickness="1"
+        <Border CornerRadius="20" Background="{DynamicResource BgPanelBrush}"
+            BorderBrush="{DynamicResource DividerBrush}" BorderThickness="1"
             Effect="{DynamicResource CardShadow}">
         <StackPanel Margin="28,24,28,24">
 
@@ -50,7 +50,7 @@
                 </Grid.ColumnDefinitions>
 
                 <!-- Shield icon (drawn in code-behind) -->
-                <Ellipse Width="40" Height="40" Fill="#0A84FF" VerticalAlignment="Top"/>
+                <Ellipse Width="40" Height="40" Fill="{DynamicResource AccentBrush}" VerticalAlignment="Top"/>
                 <TextBlock Grid.Column="0" Text="🔒" FontSize="20"
                            HorizontalAlignment="Center" VerticalAlignment="Center"
                            Width="40" TextAlignment="Center"/>
@@ -58,38 +58,38 @@
                 <StackPanel Grid.Column="1" Margin="14,0,0,0">
                     <TextBlock Text="Connection Request"
                                FontSize="17" FontWeight="Bold"
-                               Foreground="White"/>
+                               Foreground="{DynamicResource TextPrimaryBrush}"/>
                     <TextBlock Text="A device wants to pair with your PC"
-                               FontSize="12" Foreground="#8E8E93"
+                               FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"
                                Margin="0,3,0,0"/>
                 </StackPanel>
             </Grid>
 
             <!-- Verification ID (prominent) -->
-            <Border Background="#2C2C2E" CornerRadius="14" Padding="16,14" Margin="0,0,0,14">
+            <Border Background="{DynamicResource BgInputBrush}" CornerRadius="14" Padding="16,14" Margin="0,0,0,14">
                 <StackPanel>
                     <TextBlock Text="VERIFICATION ID" FontSize="11" FontWeight="SemiBold"
-                               Foreground="#8E8E93" Margin="0,0,0,6"/>
+                               Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,6"/>
                     <TextBlock x:Name="VerifyIdText" Text=""
                                FontSize="28" FontWeight="Bold" FontFamily="Consolas"
-                               Foreground="#0A84FF" TextAlignment="Center"/>
+                               Foreground="{DynamicResource AccentBrush}" TextAlignment="Center"/>
                     <TextBlock Text="Must match the code on your phone"
-                               FontSize="11" Foreground="#8E8E93"
+                               FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"
                                TextAlignment="Center" Margin="0,6,0,0"/>
                 </StackPanel>
             </Border>
 
             <!-- Device info (secondary) -->
-            <Border Background="#2C2C2E" CornerRadius="14" Padding="14,10" Margin="0,0,0,20">
+            <Border Background="{DynamicResource BgInputBrush}" CornerRadius="14" Padding="14,10" Margin="0,0,0,20">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
-                    <TextBlock Text="Device" FontSize="12" Foreground="#8E8E93"
+                    <TextBlock Text="Device" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"
                                VerticalAlignment="Top" Width="56"/>
                     <TextBlock x:Name="UserAgentText" Grid.Column="1" Text=""
-                               FontSize="12" Foreground="#EBEBF5"
+                               FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}"
                                TextWrapping="Wrap"/>
                 </Grid>
             </Border>
@@ -103,12 +103,12 @@
                 </Grid.ColumnDefinitions>
 
                 <Button x:Name="RejectBtn" Grid.Column="0" Content="Reject"
-                        Background="#3A3A3C" Foreground="#FF453A"
+                    Background="{DynamicResource BgInputBrush}" Foreground="{DynamicResource DangerBrush}"
                         Style="{StaticResource ActionBtn}"
                         Click="Reject_Click"/>
 
                 <Button x:Name="ApproveBtn" Grid.Column="2" Content="Approve"
-                        Background="#0A84FF" Foreground="White"
+                    Background="{DynamicResource AccentBrush}" Foreground="White"
                         Style="{StaticResource ActionBtn}"
                         Click="Approve_Click"/>
             </Grid>

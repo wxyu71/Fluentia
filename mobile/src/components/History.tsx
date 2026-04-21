@@ -23,7 +23,7 @@ export const History: React.FC<HistoryProps> = ({
 
   const formatTime = (ts: number) => {
     const d = new Date(ts);
-    return d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+    return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
   };
 
   return (
@@ -74,7 +74,7 @@ export const History: React.FC<HistoryProps> = ({
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {[...entries].reverse().map((entry) => (
-              <div key={entry.id} className="glass glass-sm" style={{
+              <div key={entry.id} className="glass glass-sm history-item" style={{
                 padding: 14,
                 display: 'flex',
                 flexDirection: 'column',

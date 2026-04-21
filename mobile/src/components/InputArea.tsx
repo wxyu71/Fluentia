@@ -1,4 +1,4 @@
-import React, { useRef, useCallback } from 'react';
+import React, { useEffect, useRef, useCallback, useState } from 'react';
 import { computeDiff } from '../utils/diff';
 import { ScanIcon, ClipboardIcon } from './Icons';
 import { FileTransfer } from './FileTransfer';
@@ -13,18 +13,11 @@ interface InputAreaProps {
   onOpenScanner: () => void;
   autoSaveHistory: boolean;
   fileTransferEnabled?: boolean;
+  pendingStatus: string | null;
+  onCancelPendingConnection: () => void;
+  inputResetVersion: number;
 }
 
-/**
- * Paragraph-model InputArea.
- *
- * Mobile textarea holds only the CURRENT paragraph (no newlines).
- * Keystrokes are diffed against the last-sent state and sent to PC in real time.
- * When the user presses Enter (or voice input inserts a newline):
- *   1. Current paragraph is committed → diff + 'enter' command sent to PC.
- *   2. Optionally saved to history.
- *   3. Textarea clears and diff state resets for the next paragraph.
- */
 export const InputArea: React.FC<InputAreaProps> = ({
   encryptionReady,
   text,
@@ -34,13 +27,21 @@ export const InputArea: React.FC<InputAreaProps> = ({
   onOpenScanner,
   autoSaveHistory,
   fileTransferEnabled = false,
+  pendingStatus,
+  onCancelPendingConnection,
+  inputResetVersion,
 }) => {
   const lastSentRef = useRef('');
+  const textRef = useRef(text);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isComposingRef = useRef(false);
   const fileTransferRef = useRef<{ open: () => void }>(null);
+  const [resetNotice, setResetNotice] = useState(false);
 
-  /** Send diff between lastSentRef and newText. */
+  useEffect(() => {
+    textRef.current = text;
+  }, [text]);
+
   const sendDiff = useCallback((newText: string) => {
     const diff = computeDiff(lastSentRef.current, newText);
     if (diff.backspace > 0 || diff.insert) {
@@ -49,58 +50,74 @@ export const InputArea: React.FC<InputAreaProps> = ({
     lastSentRef.current = newText;
   }, [onSendCommand]);
 
-  /** Commit a paragraph: flush diff, send Enter, save history, reset. */
+  const addHistoryEntry = useCallback((paragraphText: string) => {
+    if (!paragraphText.trim() || !autoSaveHistory) return;
+    onAddHistory({
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      text: paragraphText.trim(),
+      timestamp: Date.now(),
+    });
+  }, [autoSaveHistory, onAddHistory]);
+
   const commitParagraph = useCallback((paragraphText: string) => {
-    if (paragraphText !== lastSentRef.current) {
-      sendDiff(paragraphText);
+    const normalized = paragraphText.replace(/\r/g, '');
+    if (normalized !== lastSentRef.current) {
+      sendDiff(normalized);
     }
+
     onSendCommand({ type: 'enter' });
-    if (paragraphText.trim() && autoSaveHistory) {
-      onAddHistory({
-        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-        text: paragraphText.trim(),
-        timestamp: Date.now(),
-      });
-    }
+    addHistoryEntry(normalized);
     setText('');
+    textRef.current = '';
     lastSentRef.current = '';
-  }, [sendDiff, onSendCommand, autoSaveHistory, onAddHistory, setText]);
 
-  const handleInput = useCallback((e: React.FormEvent<HTMLTextAreaElement>) => {
-    const raw = e.currentTarget.value;
+    if (textareaRef.current) {
+      textareaRef.current.value = '';
+    }
+  }, [addHistoryEntry, onSendCommand, sendDiff, setText]);
 
-    // Voice input or keyboard may insert newlines → each newline = paragraph commit.
-    if (raw.includes('\n')) {
-      const parts = raw.split('\n');
-      for (let i = 0; i < parts.length - 1; i++) {
-        if (i === 0) {
-          commitParagraph(parts[i]);
-        } else {
-          if (parts[i]) sendDiff(parts[i]);
-          onSendCommand({ type: 'enter' });
-          if (parts[i].trim() && autoSaveHistory) {
-            onAddHistory({
-              id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-              text: parts[i].trim(),
-              timestamp: Date.now(),
-            });
-          }
-          lastSentRef.current = '';
+  const processTextValue = useCallback((rawValue: string, source?: HTMLTextAreaElement | null) => {
+    const normalized = rawValue.replace(/\r/g, '');
+
+    if (normalized.includes('\n')) {
+      const segments = normalized.split('\n');
+      const completed = segments.slice(0, -1);
+
+      for (const segment of completed) {
+        if (segment !== lastSentRef.current) {
+          sendDiff(segment);
         }
+        onSendCommand({ type: 'enter' });
+        addHistoryEntry(segment);
+        lastSentRef.current = '';
       }
-      const remainder = parts[parts.length - 1];
+
+      const remainder = segments[segments.length - 1] ?? '';
+      if (source) {
+        source.value = remainder;
+      }
       setText(remainder);
-      if (remainder) sendDiff(remainder);
+      textRef.current = remainder;
+      if (remainder) {
+        sendDiff(remainder);
+      } else {
+        lastSentRef.current = '';
+      }
       return;
     }
 
-    setText(raw);
-    // Always send diffs in real-time, including during IME/voice composition,
-    // so that voice recognition results stream character-by-character to the PC.
+    if (normalized === textRef.current) return;
+
+    setText(normalized);
+    textRef.current = normalized;
     if (encryptionReady) {
-      sendDiff(raw);
+      sendDiff(normalized);
     }
-  }, [encryptionReady, sendDiff, setText, commitParagraph, onSendCommand, autoSaveHistory, onAddHistory]);
+  }, [addHistoryEntry, encryptionReady, onSendCommand, sendDiff, setText]);
+
+  const handleInput = useCallback((e: React.FormEvent<HTMLTextAreaElement>) => {
+    processTextValue(e.currentTarget.value, e.currentTarget);
+  }, [processTextValue]);
 
   const handleCompositionStart = useCallback(() => {
     isComposingRef.current = true;
@@ -108,28 +125,38 @@ export const InputArea: React.FC<InputAreaProps> = ({
 
   const handleCompositionEnd = useCallback((e: React.CompositionEvent<HTMLTextAreaElement>) => {
     isComposingRef.current = false;
-    // Some IMEs (especially voice) may insert newlines at compositionend.
-    // Trigger handleInput to process them.
-    const raw = e.currentTarget.value;
-    if (raw.includes('\n')) {
-      handleInput({ currentTarget: { value: raw } } as React.FormEvent<HTMLTextAreaElement>);
-    }
-    // Normal composition end: handleInput already sent the diff in real-time,
-    // so no additional work needed here.
-  }, [handleInput]);
+    processTextValue(e.currentTarget.value, e.currentTarget);
+  }, [processTextValue]);
 
-  /** Enter key → commit paragraph (keyboard users). */
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey && !isComposingRef.current) {
       e.preventDefault();
-      commitParagraph(text);
+      commitParagraph(textRef.current);
     }
-  }, [text, commitParagraph]);
+  }, [commitParagraph]);
 
   const handleCopyToClipboard = useCallback(() => {
     if (!text.trim() || !encryptionReady) return;
     onSendCommand({ type: 'clipboard', text: text.trim() });
   }, [text, encryptionReady, onSendCommand]);
+
+  useEffect(() => {
+    if (inputResetVersion === 0) return;
+
+    setText('');
+    textRef.current = '';
+    lastSentRef.current = '';
+    if (textareaRef.current) {
+      textareaRef.current.value = '';
+    }
+    setResetNotice(true);
+
+    const timer = window.setTimeout(() => {
+      setResetNotice(false);
+    }, 2200);
+
+    return () => window.clearTimeout(timer);
+  }, [inputResetVersion, setText]);
 
   return (
     <div className="input-page" style={{ padding: '0 20px' }}>
@@ -137,13 +164,34 @@ export const InputArea: React.FC<InputAreaProps> = ({
 
       {!encryptionReady && (
         <div className="glass glass-xs" style={{
-          padding: '10px 16px',
-          textAlign: 'center',
-          color: 'var(--warning)',
-          fontSize: 13,
+          padding: '16px 18px',
           marginBottom: 12,
+          textAlign: 'left',
         }}>
-          Waiting for encrypted connection...
+          <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>
+            {pendingStatus || 'Waiting for encrypted connection'}
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>
+            You can go back if the phone stays stuck on key exchange.
+          </div>
+          <button
+            className="glass-btn"
+            style={{ fontSize: 12, padding: '8px 14px', marginTop: 12 }}
+            onClick={onCancelPendingConnection}
+          >
+            Cancel and go back
+          </button>
+        </div>
+      )}
+
+      {resetNotice && encryptionReady && (
+        <div className="glass glass-xs" style={{
+          padding: '10px 16px',
+          marginBottom: 12,
+          fontSize: 13,
+          color: 'var(--warning)',
+        }}>
+          PC focus changed. Start a new line for the new app.
         </div>
       )}
 
@@ -215,7 +263,7 @@ export const InputArea: React.FC<InputAreaProps> = ({
           onKeyDown={handleKeyDown}
           onCompositionStart={handleCompositionStart}
           onCompositionEnd={handleCompositionEnd}
-          placeholder={encryptionReady ? 'Type or use voice input… Enter ↵ sends.' : 'Connect to PC first...'}
+          placeholder={encryptionReady ? 'Type or use voice input. Enter sends.' : 'Connect to a PC first.'}
           disabled={!encryptionReady}
           autoFocus={encryptionReady}
           style={{
@@ -232,7 +280,7 @@ export const InputArea: React.FC<InputAreaProps> = ({
           fontSize: 11,
           color: 'var(--text-tertiary)',
         }}>
-          {text.length > 0 ? `${text.length} chars · Enter ↵ sends` : ''}
+          {text.length > 0 ? `${text.length} chars · Enter sends` : ''}
         </div>
       </div>
     </div>

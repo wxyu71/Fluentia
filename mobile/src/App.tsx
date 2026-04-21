@@ -44,6 +44,8 @@ export const App: React.FC = () => {
     disconnect,
     sendEncrypted,
     lastError,
+    pendingStatus,
+    inputResetVersion,
   } = useWebSocket(deviceId);
 
   const [activeTab, setActiveTab] = useState<AppTab>('input');
@@ -60,6 +62,11 @@ export const App: React.FC = () => {
   const [isSwiping, setIsSwiping] = useState(false);
 
   const isConnected = connectionState === 'connected' && peerConnected;
+
+  useEffect(() => {
+    if (inputResetVersion === 0) return;
+    setInputText('');
+  }, [inputResetVersion]);
 
   // Fix mobile keyboard occlusion: track visualViewport height
   useLayoutEffect(() => {
@@ -152,6 +159,13 @@ export const App: React.FC = () => {
     });
   }, []);
 
+  const handleCancelPendingConnection = useCallback(() => {
+    disconnect();
+    localStorage.removeItem(CONN_KEY);
+    setInputText('');
+    setScannerOverlay(false);
+  }, [disconnect]);
+
   // Swipe gesture handlers
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     const touch = e.touches[0];
@@ -192,7 +206,7 @@ export const App: React.FC = () => {
     : `-${tabIndex * 50}%`;
 
   // Show full-page scanner when not connected (input tab)
-  const showFullScanner = !isConnected && !encryptionReady && activeTab === 'input';
+  const showFullScanner = connectionState === 'disconnected' && !encryptionReady && activeTab === 'input';
 
   return (
     <div
@@ -220,6 +234,7 @@ export const App: React.FC = () => {
         connectionState={connectionState}
         peerConnected={peerConnected}
         encryptionReady={encryptionReady}
+        pendingStatus={pendingStatus}
       />
 
       {/* Error banner */}
@@ -276,6 +291,9 @@ export const App: React.FC = () => {
                 onOpenScanner={() => setScannerOverlay(true)}
                 autoSaveHistory={settings.autoSaveHistory}
                 fileTransferEnabled={fileTransferEnabled}
+                pendingStatus={pendingStatus}
+                onCancelPendingConnection={handleCancelPendingConnection}
+                inputResetVersion={inputResetVersion}
               />
             </div>
             <div className="swipe-page">

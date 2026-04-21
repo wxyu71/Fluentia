@@ -15,6 +15,7 @@ type DeviceCodeEntry struct {
 	Session   *Session
 	PC        *Client
 	CreatedAt time.Time
+	ExpiresAt time.Time
 	Pending   *Client // mobile client waiting for confirmation
 	VerifyID  string  // matching ID for visual confirmation
 }
@@ -26,18 +27,25 @@ type Hub struct {
 	deviceCodes map[string]*DeviceCodeEntry // code → entry
 	mu          sync.RWMutex
 	MaxFileMB   int
+	SessionMaxAge time.Duration
 
 	// Rate limiting for device code attempts
 	codeAttempts map[string][]time.Time // IP → timestamps
 	rateMu       sync.Mutex
 }
 
-func NewHub() *Hub {
+
+func NewHub(sessionMaxAgeDays int) *Hub {
+	if sessionMaxAgeDays <= 0 {
+		sessionMaxAgeDays = 7
+	}
+
 	return &Hub{
 		sessions:     make(map[string]*Session),
 		clients:      make(map[*Client]bool),
 		deviceCodes:  make(map[string]*DeviceCodeEntry),
 		codeAttempts: make(map[string][]time.Time),
+		SessionMaxAge: time.Duration(sessionMaxAgeDays) * 24 * time.Hour,
 	}
 }
 
@@ -59,8 +67,19 @@ func (h *Hub) GenerateDeviceCode(session *Session, pc *Client) string {
 		Session:   session,
 		PC:        pc,
 		CreatedAt: time.Now(),
+		ExpiresAt: session.ExpiresAt,
 	}
 	return code
+}
+
+func (h *Hub) sessionExpiredLocked(session *Session) bool {
+	if session == nil {
+		return true
+	}
+	if session.ExpiresAt.IsZero() {
+		return false
+	}
+	return time.Now().After(session.ExpiresAt)
 }
 
 // CheckDeviceCodeRateLimit returns true if the IP is rate-limited.
@@ -231,12 +250,12 @@ func (h *Hub) handleCreateSession(c *Client) {
 		delete(h.sessions, oldSession.Token)
 	}
 
-	session := NewSession(c)
+	session := NewSession(c, h.SessionMaxAge)
 	c.session = session
 	c.role = "pc"
 	h.sessions[session.Token] = session
 
-	log.Printf("Session created: %s", session.Token)
+	log.Printf("Session created: %s (expires %s)", session.Token, session.ExpiresAt.Format(time.RFC3339))
 	c.SendMessage(Message{Type: MsgSessionCreated, Token: session.Token, Version: ProtocolVersion})
 }
 
@@ -254,6 +273,11 @@ func (h *Hub) handleRejoinSession(c *Client, msg Message) {
 	if !ok {
 		// Session expired or was destroyed — tell PC to create a new one.
 		c.SendMessage(Message{Type: MsgError, Error: "session not found"})
+		return
+	}
+	if h.sessionExpiredLocked(session) {
+		delete(h.sessions, session.Token)
+		c.SendMessage(Message{Type: MsgError, Error: "session expired, create a new session"})
 		return
 	}
 
@@ -296,6 +320,11 @@ func (h *Hub) handleJoinSession(c *Client, msg Message) {
 	session, ok := h.sessions[msg.Token]
 	if !ok {
 		c.SendMessage(Message{Type: MsgError, Error: "session not found"})
+		return
+	}
+	if h.sessionExpiredLocked(session) {
+		delete(h.sessions, session.Token)
+		c.SendMessage(Message{Type: MsgError, Error: "session expired, scan a new code"})
 		return
 	}
 
@@ -358,6 +387,15 @@ func (h *Hub) handleDeviceCodeRequest(c *Client) {
 		c.SendMessage(Message{Type: MsgError, Error: "create a session first"})
 		return
 	}
+
+	h.mu.RLock()
+	expired := h.sessionExpiredLocked(c.session)
+	h.mu.RUnlock()
+	if expired {
+		c.SendMessage(Message{Type: MsgError, Error: "session expired, create a new session"})
+		return
+	}
+
 	code := h.GenerateDeviceCode(c.session, c)
 	c.SendMessage(Message{Type: MsgDeviceCodeCreated, DeviceCode: code})
 	log.Printf("Device code %s created for session %s", code, c.session.Token)
@@ -385,7 +423,7 @@ func (h *Hub) handleDeviceCodeJoin(c *Client, msg Message) {
 	defer h.mu.Unlock()
 
 	entry, ok := h.deviceCodes[code]
-	if !ok || time.Since(entry.CreatedAt) > 5*time.Minute {
+	if !ok || time.Now().After(entry.ExpiresAt) || h.sessionExpiredLocked(entry.Session) {
 		if ok {
 			delete(h.deviceCodes, code)
 		}

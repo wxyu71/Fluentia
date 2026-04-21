@@ -13,8 +13,10 @@ public class RoomManager : IDisposable
     private string? _currentToken;
     private string? _serverUrl;
     private int _mobileExpirySecs = 60; // default; overridden by server /api/config
+    private int _sessionMaxAgeDays = 7;
     private bool _fileTransferEnabled = false; // controlled by server MAX_FILE_MB
     private int _maxFileMB = 0;
+    private bool _encryptionConfirmed;
 
     public event Action<string>? OnSessionCreated;     // token
     public event Action<string>? OnMobileConnected;    // deviceId
@@ -25,20 +27,23 @@ public class RoomManager : IDisposable
     public event Action<string>? OnError;
     public event Action<string>? OnDeviceCodeCreated;  // code
     public event Action<string, string, string>? OnDeviceCodePending; // code, verifyId, userAgent
+    public event Action<bool>? OnServerConnectionChanged;
 
     public string? CurrentToken => _currentToken;
     public string? ServerUrl => _serverUrl;
-    public bool EncryptionReady => _crypto.IsReady;
+    public bool EncryptionReady => _encryptionConfirmed;
     public int MobileExpirySecs => _mobileExpirySecs;
+    public int SessionMaxAgeDays => _sessionMaxAgeDays;
     public bool FileTransferEnabled => _fileTransferEnabled;
     public int MaxFileMB => _maxFileMB;
+    public bool IsConnected => _ws.IsConnected;
 
     /// <summary>
     /// Send an encrypted command from PC to mobile.
     /// </summary>
     public async Task SendToMobileAsync(string jsonPayload)
     {
-        if (!_crypto.IsReady || !_ws.IsConnected) return;
+        if (!_encryptionConfirmed || !_ws.IsConnected) return;
 
         try
         {
@@ -65,6 +70,7 @@ public class RoomManager : IDisposable
 
         _ws.OnConnected += () =>
         {
+            OnServerConnectionChanged?.Invoke(true);
             OnStatusChanged?.Invoke("Connected to server");
             // If we have an existing token, try to rejoin (grace period).
             // Otherwise, create a new session.
@@ -86,6 +92,7 @@ public class RoomManager : IDisposable
 
         _ws.OnDisconnected += (reason) =>
         {
+            OnServerConnectionChanged?.Invoke(false);
             OnStatusChanged?.Invoke($"Disconnected: {reason}");
         };
 
@@ -97,7 +104,11 @@ public class RoomManager : IDisposable
         _serverUrl = serverUrl;
         // Don't reset crypto — we want to keep keys for rejoin.
         // Crypto is only reset when we create a truly new session (RefreshSession or first connect).
-        if (_currentToken == null) _crypto.Reset();
+        if (_currentToken == null)
+        {
+            _crypto.Reset();
+            _encryptionConfirmed = false;
+        }
         OnStatusChanged?.Invoke("Connecting...");
         // Fetch server config (non-blocking — best effort)
         _ = FetchServerConfigAsync(serverUrl);
@@ -118,6 +129,8 @@ public class RoomManager : IDisposable
             using var doc = System.Text.Json.JsonDocument.Parse(json);
             if (doc.RootElement.TryGetProperty("mobileExpirySecs", out var expEl))
                 _mobileExpirySecs = expEl.GetInt32();
+            if (doc.RootElement.TryGetProperty("sessionMaxAgeDays", out var maxAgeEl))
+                _sessionMaxAgeDays = maxAgeEl.GetInt32();
             if (doc.RootElement.TryGetProperty("fileTransfer", out var ftEl))
                 _fileTransferEnabled = ftEl.GetBoolean();
             if (doc.RootElement.TryGetProperty("maxFileMB", out var mbEl))
@@ -129,6 +142,7 @@ public class RoomManager : IDisposable
     public async Task RefreshSession()
     {
         _crypto.Reset();
+        _encryptionConfirmed = false;
         if (_ws.IsConnected)
         {
             await _ws.SendAsync(new WsMessage { Type = MsgTypes.CreateSession, Version = MsgTypes.ProtocolVersion });
@@ -195,6 +209,7 @@ public class RoomManager : IDisposable
                     return;
                 }
                 _currentToken = msg.Token;
+                _encryptionConfirmed = false;
                 _rejoinPending = false;
                 OnSessionCreated?.Invoke(msg.Token!);
                 OnStatusChanged?.Invoke($"Session ready: {msg.Token?[..8]}...");
@@ -211,12 +226,15 @@ public class RoomManager : IDisposable
 
             case MsgTypes.PeerJoined:
                 OnMobileConnected?.Invoke(msg.DeviceId ?? "unknown");
+                _encryptionConfirmed = false;
                 OnStatusChanged?.Invoke($"Mobile connected: {msg.DeviceId?[..8]}...");
                 break;
 
             case MsgTypes.PeerLeft:
                 // Don't reset crypto — keep our keypair so mobile can reconnect
                 // with the same QR-authenticated key and re-establish encryption.
+                _crypto.ResetPeerState();
+                _encryptionConfirmed = false;
                 OnMobileDisconnected?.Invoke();
                 OnStatusChanged?.Invoke("Mobile disconnected");
                 break;
@@ -244,6 +262,7 @@ public class RoomManager : IDisposable
                     _rejoinPending = false;
                     _currentToken = null;
                     _crypto.Reset();
+                    _encryptionConfirmed = false;
                     _ = _ws.SendAsync(new WsMessage { Type = MsgTypes.CreateSession, Version = MsgTypes.ProtocolVersion });
                     break;
                 }
@@ -256,9 +275,10 @@ public class RoomManager : IDisposable
     {
         if (msg.PublicKey == null) return;
 
+        _crypto.ResetPeerState();
         _crypto.SetPeerPublicKey(msg.PublicKey);
-        OnEncryptionReady?.Invoke();
-        OnStatusChanged?.Invoke("E2E encryption established 🔒");
+        _encryptionConfirmed = false;
+        OnStatusChanged?.Invoke("Key exchange complete");
 
         // Send our public key back as confirmation
         _ = _ws.SendAsync(new WsMessage
@@ -291,7 +311,7 @@ public class RoomManager : IDisposable
                 if (cmd.Type == "ratchet_init" && cmd.Seed != null)
                 {
                     _crypto.InitRatchet(cmd.Seed);
-                    OnStatusChanged?.Invoke("Forward secrecy established");
+                    OnStatusChanged?.Invoke("Secure channel pending confirmation");
 
                     // Initialize PC's send ratchet for backward security
                     var pcSeed = _crypto.InitSendRatchet();
@@ -304,9 +324,20 @@ public class RoomManager : IDisposable
                         Payload = payload,
                         Nonce = nonce,
                     });
-                    OnStatusChanged?.Invoke("Bidirectional secrecy established");
                     return;
                 }
+
+                if (cmd.Type == "handshake_ack")
+                {
+                    if (!_encryptionConfirmed)
+                    {
+                        _encryptionConfirmed = true;
+                        OnEncryptionReady?.Invoke();
+                        OnStatusChanged?.Invoke("E2E encryption established");
+                    }
+                    return;
+                }
+
                 OnInputCommand?.Invoke(cmd);
             }
         }

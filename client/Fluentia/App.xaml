@@ -4,65 +4,86 @@
              StartupUri="MainWindow.xaml"
              ShutdownMode="OnExplicitShutdown">
     <Application.Resources>
-        <!-- ══ Theme Colors (overridden at runtime by App.xaml.cs) ══ -->
-        <Color x:Key="BgDark">#FF000000</Color>
-        <Color x:Key="BgPanel">#FF1C1C1E</Color>
-        <Color x:Key="BgInput">#FF2C2C2E</Color>
+        <Color x:Key="BgDark">#FF0B0E14</Color>
+        <Color x:Key="BgPanel">#FF121822</Color>
+        <Color x:Key="BgInput">#FF1A2230</Color>
         <Color x:Key="Accent">#FF0A84FF</Color>
-        <Color x:Key="AccentHover">#FF409CFF</Color>
-        <Color x:Key="TextPrimary">#FFF5F5F7</Color>
-        <Color x:Key="TextSecondary">#FF86868B</Color>
-        <Color x:Key="BorderColor">#FF38383A</Color>
+        <Color x:Key="AccentHover">#FF3F96FF</Color>
+        <Color x:Key="TextPrimary">#FFF5F7FA</Color>
+        <Color x:Key="TextSecondary">#FFACB6C5</Color>
+        <Color x:Key="TextTertiary">#FF7B8798</Color>
+        <Color x:Key="BorderColor">#FF273244</Color>
+        <Color x:Key="DividerColor">#20304050</Color>
+        <Color x:Key="AccentSoft">#330A84FF</Color>
+        <Color x:Key="OverlayColor">#8A05070B</Color>
         <Color x:Key="Success">#FF30D158</Color>
         <Color x:Key="Danger">#FFFF453A</Color>
-        <Color x:Key="SecondaryHover">#FF3A3A3C</Color>
+        <Color x:Key="SecondaryHover">#FF202A39</Color>
 
         <SolidColorBrush x:Key="BgDarkBrush" Color="{StaticResource BgDark}"/>
         <SolidColorBrush x:Key="BgPanelBrush" Color="{StaticResource BgPanel}"/>
         <SolidColorBrush x:Key="BgInputBrush" Color="{StaticResource BgInput}"/>
         <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource Accent}"/>
+        <SolidColorBrush x:Key="AccentSoftBrush" Color="{StaticResource AccentSoft}"/>
         <SolidColorBrush x:Key="TextPrimaryBrush" Color="{StaticResource TextPrimary}"/>
         <SolidColorBrush x:Key="TextSecondaryBrush" Color="{StaticResource TextSecondary}"/>
+        <SolidColorBrush x:Key="TextTertiaryBrush" Color="{StaticResource TextTertiary}"/>
         <SolidColorBrush x:Key="BorderBrush" Color="{StaticResource BorderColor}"/>
+        <SolidColorBrush x:Key="DividerBrush" Color="{StaticResource DividerColor}"/>
+        <SolidColorBrush x:Key="OverlayBrush" Color="{StaticResource OverlayColor}"/>
+        <SolidColorBrush x:Key="SuccessBrush" Color="{StaticResource Success}"/>
+        <SolidColorBrush x:Key="DangerBrush" Color="{StaticResource Danger}"/>
 
-        <!-- TextBox style -->
+        <DropShadowEffect x:Key="CardShadow"
+                          BlurRadius="28"
+                          Color="#40000000"
+                          ShadowDepth="0"
+                          Opacity="0.28"/>
+
         <Style x:Key="DarkTextBox" TargetType="TextBox">
             <Setter Property="Background" Value="{DynamicResource BgInputBrush}"/>
             <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Padding" Value="10,8"/>
-            <Setter Property="FontSize" Value="13"/>
-            <Setter Property="CaretBrush" Value="{DynamicResource TextPrimaryBrush}"/>
+            <Setter Property="Padding" Value="14,11"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontFamily" Value="Segoe UI Variable Text"/>
+            <Setter Property="CaretBrush" Value="{DynamicResource AccentBrush}"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="TextBox">
-                        <Border Background="{TemplateBinding Background}"
+                        <Border x:Name="InputBorder"
+                                Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="8">
+                                CornerRadius="14">
                             <ScrollViewer x:Name="PART_ContentHost" Margin="2"/>
                         </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="InputBorder" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
         </Style>
 
-        <!-- Accent button — Apple Blue -->
         <Style x:Key="AccentButton" TargetType="Button">
             <Setter Property="Background" Value="{DynamicResource AccentBrush}"/>
             <Setter Property="Foreground" Value="White"/>
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Padding" Value="16,10"/>
+            <Setter Property="Padding" Value="18,11"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="FontFamily" Value="Segoe UI Variable Text"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Border x:Name="border"
                                 Background="{TemplateBinding Background}"
-                                CornerRadius="10"
+                                CornerRadius="14"
                                 Padding="{TemplateBinding Padding}">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
@@ -74,8 +95,11 @@
                                     </Setter.Value>
                                 </Setter>
                             </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="border" Property="Opacity" Value="0.86"/>
+                            </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="border" Property="Opacity" Value="0.4"/>
+                                <Setter TargetName="border" Property="Opacity" Value="0.42"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -83,30 +107,77 @@
             </Setter>
         </Style>
 
-        <!-- Secondary button -->
         <Style x:Key="SecondaryButton" TargetType="Button">
             <Setter Property="Background" Value="{DynamicResource BgInputBrush}"/>
             <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
             <Setter Property="FontSize" Value="13"/>
-            <Setter Property="Padding" Value="16,10"/>
+            <Setter Property="Padding" Value="16,11"/>
             <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource DividerBrush}"/>
+            <Setter Property="FontFamily" Value="Segoe UI Variable Text"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Border x:Name="border"
                                 Background="{TemplateBinding Background}"
-                                CornerRadius="10"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="14"
                                 Padding="{TemplateBinding Padding}">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="border" Property="Background">
-                                    <Setter.Value>
-                                        <SolidColorBrush Color="{DynamicResource SecondaryHover}"/>
-                                    </Setter.Value>
-                                </Setter>
+                                <Setter TargetName="border" Property="Background" Value="{DynamicResource SecondaryHover}"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="border" Property="Opacity" Value="0.86"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="border" Property="Opacity" Value="0.42"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="IconButton" TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
+            <Setter Property="Width" Value="42"/>
+            <Setter Property="Height" Value="42"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="FontSize" Value="16"/>
+        </Style>
+
+        <Style x:Key="SwitchCheckBoxStyle" TargetType="CheckBox">
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="CheckBox">
+                        <Grid Width="48" Height="28">
+                            <Border x:Name="Track"
+                                    CornerRadius="14"
+                                    Background="{DynamicResource BgInputBrush}"
+                                    BorderBrush="{DynamicResource DividerBrush}"
+                                    BorderThickness="1"/>
+                            <Ellipse x:Name="Thumb"
+                                     Width="22"
+                                     Height="22"
+                                     Margin="3,0,0,0"
+                                     HorizontalAlignment="Left"
+                                     VerticalAlignment="Center"
+                                     Fill="White"/>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Track" Property="Background" Value="{DynamicResource AccentBrush}"/>
+                                <Setter TargetName="Track" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                                <Setter TargetName="Thumb" Property="Margin" Value="23,0,0,0"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Track" Property="Opacity" Value="0.45"/>
+                                <Setter TargetName="Thumb" Property="Opacity" Value="0.45"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>

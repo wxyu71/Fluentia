@@ -38,7 +38,7 @@ export const QRScanner: React.FC<QRScannerProps> = ({ onScan, overlay = false, o
             if (decodedText.startsWith('F1|')) {
               // Compact format: F1|token|key or F1|token|key|serverUrl
               const parts = decodedText.split('|');
-              const wsUrl = parts.length >= 5 ? parts[3]
+              const wsUrl = parts.length >= 4 ? parts[3]
                 : window.location.origin.replace(/^http/, 'ws') + '/ws';
               data = { s: wsUrl, t: parts[1], k: parts[2] };
             } else {
@@ -204,7 +204,6 @@ export const QRScanner: React.FC<QRScannerProps> = ({ onScan, overlay = false, o
 };
 
 const ManualConnect: React.FC<{ onConnect: (info: ConnectionInfo) => void }> = ({ onConnect }) => {
-  // 8 individual character slots
   const [chars, setChars] = useState<string[]>(Array(8).fill(''));
   const [status, setStatus] = useState('');
   const [verifyId, setVerifyId] = useState('');
@@ -218,82 +217,17 @@ const ManualConnect: React.FC<{ onConnect: (info: ConnectionInfo) => void }> = (
     if (idx >= 0 && idx < 8) inputRefs.current[idx]?.focus();
   };
 
-  const handleKeyDown = useCallback((idx: number, e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Backspace') {
-      e.preventDefault();
-      if (chars[idx]) {
-        // Clear current box
-        setChars(prev => { const n = [...prev]; n[idx] = ''; return n; });
-      } else {
-        // Move back and clear previous
-        if (idx > 0) {
-          setChars(prev => { const n = [...prev]; n[idx - 1] = ''; return n; });
-          focusBox(idx - 1);
-        }
-      }
-    } else if (e.key === 'ArrowLeft') {
-      e.preventDefault();
-      focusBox(idx - 1);
-    } else if (e.key === 'ArrowRight') {
-      e.preventDefault();
-      focusBox(idx + 1);
-    } else if (e.key === 'Enter') {
-      e.preventDefault();
-      const code = getCode();
-      if (code.length === 8) handleSubmit(code);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chars]);
-
-  const handleInput = useCallback((idx: number, e: React.ChangeEvent<HTMLInputElement>) => {
-    // Take only alphanumeric, uppercase
-    const raw = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
-    if (!raw) return;
-
-    if (raw.length > 1) {
-      // Paste: distribute from current position
-      const newChars = [...chars];
-      let pos = idx;
-      for (const ch of raw) {
-        if (pos >= 8) break;
-        newChars[pos] = ch;
-        pos++;
-      }
-      setChars(newChars);
-      focusBox(Math.min(pos, 7));
-      return;
-    }
-
-    // Single char
-    const newChars = [...chars];
-    newChars[idx] = raw[0];
-    setChars(newChars);
-    if (idx < 7) focusBox(idx + 1);
-    // Auto-submit when all filled
-    const fullCode = newChars.join('');
-    if (fullCode.length === 8 && !newChars.includes('')) {
-      setTimeout(() => handleSubmit(fullCode), 80);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chars]);
-
-  const handlePaste = useCallback((e: React.ClipboardEvent<HTMLInputElement>) => {
-    e.preventDefault();
-    const pasted = e.clipboardData.getData('text').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
-    const newChars = [...chars];
-    for (let i = 0; i < 8; i++) newChars[i] = pasted[i] || '';
-    setChars(newChars);
-    const nextEmpty = newChars.findIndex(c => !c);
-    focusBox(nextEmpty === -1 ? 7 : nextEmpty);
-    if (pasted.length === 8) {
-      setTimeout(() => handleSubmit(pasted), 80);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chars]);
+  const cancelPending = useCallback(() => {
+    wsRef.current?.close();
+    wsRef.current = null;
+    setWaiting(false);
+    setVerifyId('');
+    setStatus('');
+  }, []);
 
   const handleSubmit = useCallback((code: string) => {
     if (code.length !== 8 || waiting) return;
-    setStatus('Connecting...');
+    setStatus('Connecting');
     setWaiting(true);
 
     const wsUrl = window.location.origin.replace(/^http/, 'ws') + '/ws';
@@ -314,7 +248,7 @@ const ManualConnect: React.FC<{ onConnect: (info: ConnectionInfo) => void }> = (
         const msg = JSON.parse(e.data as string);
         if (msg.type === 'device_code_pending' && msg.verifyId) {
           setVerifyId(msg.verifyId);
-          setStatus('Waiting for PC approval...');
+          setStatus('Waiting for approval on your PC');
         } else if (msg.type === 'joined' && msg.approved) {
           ws.close();
           const info: ConnectionInfo = { s: wsUrl, t: msg.token, k: msg.publicKey || '' };
@@ -324,34 +258,145 @@ const ManualConnect: React.FC<{ onConnect: (info: ConnectionInfo) => void }> = (
           setWaiting(false);
           ws.close();
         }
-      } catch { /* ignore */ }
+      } catch {
+        // Ignore malformed messages.
+      }
     };
 
-    ws.onerror = () => { setStatus('Connection failed'); setWaiting(false); };
-    ws.onclose = () => { wsRef.current = null; };
-  }, [waiting, onConnect]);
+    ws.onerror = () => {
+      setStatus('Connection failed');
+      setWaiting(false);
+    };
 
-  useEffect(() => { return () => { wsRef.current?.close(); }; }, []);
+    ws.onclose = () => {
+      wsRef.current = null;
+    };
+  }, [onConnect, waiting]);
 
-  // Render
+  const handleKeyDown = useCallback((idx: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Backspace') {
+      e.preventDefault();
+      if (chars[idx]) {
+        setChars((prev) => {
+          const next = [...prev];
+          next[idx] = '';
+          return next;
+        });
+      } else if (idx > 0) {
+        setChars((prev) => {
+          const next = [...prev];
+          next[idx - 1] = '';
+          return next;
+        });
+        focusBox(idx - 1);
+      }
+    } else if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      focusBox(idx - 1);
+    } else if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      focusBox(idx + 1);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const code = getCode();
+      if (code.length === 8) handleSubmit(code);
+    }
+  }, [chars, handleSubmit]);
+
+  const handleInput = useCallback((idx: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (!raw) return;
+
+    if (raw.length > 1) {
+      const newChars = [...chars];
+      let pos = idx;
+      for (const ch of raw) {
+        if (pos >= 8) break;
+        newChars[pos] = ch;
+        pos += 1;
+      }
+      setChars(newChars);
+      focusBox(Math.min(pos, 7));
+
+      const pastedCode = newChars.join('');
+      if (!newChars.includes('')) {
+        window.setTimeout(() => handleSubmit(pastedCode), 80);
+      }
+      return;
+    }
+
+    const newChars = [...chars];
+    newChars[idx] = raw[0];
+    setChars(newChars);
+    if (idx < 7) focusBox(idx + 1);
+
+    const fullCode = newChars.join('');
+    if (!newChars.includes('')) {
+      window.setTimeout(() => handleSubmit(fullCode), 80);
+    }
+  }, [chars, handleSubmit]);
+
+  const handlePaste = useCallback((e: React.ClipboardEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    const pasted = e.clipboardData.getData('text').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
+    const newChars = Array.from({ length: 8 }, (_, index) => pasted[index] || '');
+    setChars(newChars);
+    const nextEmpty = newChars.findIndex((char) => !char);
+    focusBox(nextEmpty === -1 ? 7 : nextEmpty);
+    if (pasted.length === 8) {
+      window.setTimeout(() => handleSubmit(pasted), 80);
+    }
+  }, [handleSubmit]);
+
+  useEffect(() => () => { wsRef.current?.close(); }, []);
+
   const boxStyle = (filled: boolean): React.CSSProperties => ({
-    width: 36,
-    height: 44,
-    borderRadius: 10,
+    width: '100%',
+    minWidth: 0,
+    height: 'clamp(42px, 10vw, 50px)',
+    borderRadius: 12,
     background: filled ? 'var(--glass-bg, rgba(255,255,255,0.12))' : 'rgba(255,255,255,0.06)',
-    border: `2px solid ${filled ? 'var(--accent)' : 'rgba(255,255,255,0.2)'}`,
-    color: 'var(--text)',
-    fontSize: 20,
+    border: `1.5px solid ${filled ? 'var(--accent)' : 'var(--separator)'}`,
+    color: 'var(--text-primary)',
+    fontSize: 'clamp(18px, 5vw, 21px)',
     fontWeight: 700,
-    fontFamily: 'monospace',
-    textAlign: 'center' as const,
+    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+    textAlign: 'center',
     outline: 'none',
     caretColor: 'transparent',
-    transition: 'border-color 0.15s',
+    transition: 'border-color 0.15s ease, background 0.15s ease',
     WebkitAppearance: 'none',
-    // Disable browser autocomplete UI inside the box
     padding: 0,
   });
+
+  const groupStyle: React.CSSProperties = {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+    gap: 'clamp(4px, 1.8vw, 8px)',
+    flex: '1 1 0',
+    minWidth: 0,
+  };
+
+  const renderSlot = (index: number) => (
+    <input
+      key={index}
+      ref={(el) => { inputRefs.current[index] = el; }}
+      type="text"
+      inputMode="text"
+      autoComplete="off"
+      autoCorrect="off"
+      autoCapitalize="characters"
+      spellCheck={false}
+      maxLength={2}
+      value={chars[index]}
+      disabled={waiting}
+      style={boxStyle(!!chars[index])}
+      onFocus={(e) => e.target.select()}
+      onChange={(e) => handleInput(index, e)}
+      onKeyDown={(e) => handleKeyDown(index, e)}
+      onPaste={handlePaste}
+    />
+  );
 
   return (
     <div style={{ textAlign: 'center' }}>
@@ -363,39 +408,28 @@ const ManualConnect: React.FC<{ onConnect: (info: ConnectionInfo) => void }> = (
         Enter the 8-character code shown on your PC
       </p>
 
-      {/* 8-box input: 4 boxes · dot · 4 boxes */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginBottom: 16 }}>
-        {Array.from({ length: 8 }, (_, i) => (
-          <React.Fragment key={i}>
-            {i === 4 && (
-              <span style={{
-                fontSize: 20,
-                fontWeight: 700,
-                color: 'var(--text-secondary)',
-                lineHeight: 1,
-                userSelect: 'none',
-                marginBottom: 2,
-              }}>·</span>
-            )}
-            <input
-              ref={el => { inputRefs.current[i] = el; }}
-              type="text"
-              inputMode="text"
-              autoComplete="off"
-              autoCorrect="off"
-              autoCapitalize="characters"
-              spellCheck={false}
-              maxLength={2}  // allow 2 for composition; we trim in handler
-              value={chars[i]}
-              disabled={waiting}
-              style={boxStyle(!!chars[i])}
-              onFocus={e => e.target.select()}
-              onChange={e => handleInput(i, e)}
-              onKeyDown={e => handleKeyDown(i, e)}
-              onPaste={handlePaste}
-            />
-          </React.Fragment>
-        ))}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 'clamp(6px, 2vw, 12px)',
+        width: 'min(100%, 360px)',
+        margin: '0 auto 16px',
+      }}>
+        <div style={groupStyle}>
+          {[0, 1, 2, 3].map(renderSlot)}
+        </div>
+        <span style={{
+          fontSize: 18,
+          fontWeight: 700,
+          color: 'var(--text-secondary)',
+          userSelect: 'none',
+          flexShrink: 0,
+        }}>
+          ·
+        </span>
+        <div style={groupStyle}>
+          {[4, 5, 6, 7].map(renderSlot)}
+        </div>
       </div>
 
       {verifyId && (
@@ -405,7 +439,7 @@ const ManualConnect: React.FC<{ onConnect: (info: ConnectionInfo) => void }> = (
           fontSize: 13,
         }}>
           <div style={{ color: 'var(--text-secondary)', marginBottom: 4 }}>Verification ID</div>
-          <div style={{ fontSize: 20, fontWeight: 700, fontFamily: 'monospace', color: 'var(--accent)', letterSpacing: '0.15em' }}>
+          <div style={{ fontSize: 20, fontWeight: 700, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace', color: 'var(--accent)', letterSpacing: '0.15em' }}>
             {verifyId}
           </div>
           <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4 }}>
@@ -416,7 +450,7 @@ const ManualConnect: React.FC<{ onConnect: (info: ConnectionInfo) => void }> = (
 
       {status && (
         <div style={{
-          color: waiting && !status.includes('failed') ? 'var(--text-secondary)' : 'var(--danger)',
+          color: waiting && !status.toLowerCase().includes('failed') ? 'var(--text-secondary)' : 'var(--danger)',
           fontSize: 12,
           marginBottom: 10,
         }}>
@@ -424,14 +458,25 @@ const ManualConnect: React.FC<{ onConnect: (info: ConnectionInfo) => void }> = (
         </div>
       )}
 
-      <button
-        className="glass-btn accent full-width"
-        style={{ fontSize: 14 }}
-        onClick={() => handleSubmit(getCode())}
-        disabled={getCode().length !== 8 || chars.includes('') || waiting}
-      >
-        {waiting ? 'Waiting for approval…' : 'Connect'}
-      </button>
+      <div style={{ display: 'flex', gap: 10 }}>
+        <button
+          className="glass-btn accent full-width"
+          style={{ fontSize: 14 }}
+          onClick={() => handleSubmit(getCode())}
+          disabled={getCode().length !== 8 || chars.includes('') || waiting}
+        >
+          {waiting ? 'Waiting for approval' : 'Connect'}
+        </button>
+        {waiting && (
+          <button
+            className="glass-btn"
+            style={{ fontSize: 14, paddingInline: 16 }}
+            onClick={cancelPending}
+          >
+            Cancel
+          </button>
+        )}
+      </div>
     </div>
   );
 };

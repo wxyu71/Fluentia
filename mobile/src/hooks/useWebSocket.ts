@@ -3,8 +3,9 @@ import { CryptoService } from '../utils/crypto';
 import type { WsMessage, ConnectionState, InputCommand, ConnectionInfo } from '../types';
 import { PROTOCOL_VERSION } from '../types';
 
-const RECONNECT_DELAY = 3000;
-const MAX_RECONNECT_ATTEMPTS = 300; // ~15 minutes at 3s intervals
+const RECONNECT_DELAY = 1200;
+const MAX_RECONNECT_ATTEMPTS = 300;
+const HANDSHAKE_TIMEOUT_MS = 12000;
 
 interface UseWebSocketReturn {
   connectionState: ConnectionState;
@@ -14,6 +15,8 @@ interface UseWebSocketReturn {
   disconnect: () => void;
   sendEncrypted: (cmd: InputCommand) => void;
   lastError: string | null;
+  pendingStatus: string | null;
+  inputResetVersion: number;
 }
 
 export function useWebSocket(deviceId: string): UseWebSocketReturn {
@@ -21,84 +24,295 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
   const [peerConnected, setPeerConnected] = useState(false);
   const [encryptionReady, setEncryptionReady] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
+  const [pendingStatus, setPendingStatus] = useState<string | null>(null);
+  const [inputResetVersion, setInputResetVersion] = useState(0);
 
   const wsRef = useRef<WebSocket | null>(null);
   const cryptoRef = useRef<CryptoService>(new CryptoService());
   const connInfoRef = useRef<ConnectionInfo | null>(null);
   const reconnectAttemptRef = useRef(0);
   const reconnectTimerRef = useRef<number | null>(null);
+  const handshakeTimerRef = useRef<number | null>(null);
   const intentionalCloseRef = useRef(false);
   const connectionStateRef = useRef<ConnectionState>('disconnected');
+  const encryptionReadyRef = useRef(false);
 
-  const cleanup = useCallback(() => {
+  const setEncryptionState = useCallback((ready: boolean) => {
+    encryptionReadyRef.current = ready;
+    setEncryptionReady(ready);
+    if (ready) {
+      setPendingStatus(null);
+    }
+  }, []);
+
+  const clearReconnectTimer = useCallback(() => {
     if (reconnectTimerRef.current !== null) {
       clearTimeout(reconnectTimerRef.current);
       reconnectTimerRef.current = null;
     }
+  }, []);
+
+  const clearHandshakeTimer = useCallback(() => {
+    if (handshakeTimerRef.current !== null) {
+      clearTimeout(handshakeTimerRef.current);
+      handshakeTimerRef.current = null;
+    }
+  }, []);
+
+  const closeSocket = useCallback((reason: string) => {
+    const ws = wsRef.current;
+    wsRef.current = null;
+    if (!ws) return;
+
+    try {
+      ws.close(1000, reason);
+    } catch {
+      // Ignore close errors for stale sockets.
+    }
+  }, []);
+
+  const failHandshake = useCallback((message: string) => {
+    if (encryptionReadyRef.current) return;
+
+    intentionalCloseRef.current = true;
+    clearReconnectTimer();
+    clearHandshakeTimer();
+    closeSocket('handshake-timeout');
+    setPeerConnected(false);
+    setEncryptionState(false);
+    setPendingStatus(null);
+    setLastError(message);
+    setConnectionState('disconnected');
+    connectionStateRef.current = 'disconnected';
+  }, [clearHandshakeTimer, clearReconnectTimer, closeSocket, setEncryptionState]);
+
+  const startHandshakeTimeout = useCallback((message: string) => {
+    clearHandshakeTimer();
+    handshakeTimerRef.current = window.setTimeout(() => {
+      failHandshake(message);
+    }, HANDSHAKE_TIMEOUT_MS);
+  }, [clearHandshakeTimer, failHandshake]);
+
+  const cleanup = useCallback((clearConnectionInfo = false) => {
+    clearReconnectTimer();
+    clearHandshakeTimer();
     if (wsRef.current) {
       intentionalCloseRef.current = true;
-      wsRef.current.close();
-      wsRef.current = null;
+      closeSocket('cleanup');
     }
     setPeerConnected(false);
-    setEncryptionReady(false);
+    setEncryptionState(false);
+    setPendingStatus(null);
+    if (clearConnectionInfo) {
+      connInfoRef.current = null;
+    }
+  }, [clearHandshakeTimer, clearReconnectTimer, closeSocket, setEncryptionState]);
+
+  const sendEncryptedPayload = useCallback((plaintext: string) => {
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return false;
+    if (!cryptoRef.current.isReady()) return false;
+
+    try {
+      let msg: WsMessage;
+      if (cryptoRef.current.isRatchetReady()) {
+        const { payload, nonce, seq } = cryptoRef.current.encryptRatcheted(plaintext);
+        msg = { type: 'encrypted', payload, nonce, seq };
+      } else {
+        const { payload, nonce } = cryptoRef.current.encrypt(plaintext);
+        msg = { type: 'encrypted', payload, nonce };
+      }
+      ws.send(JSON.stringify(msg));
+      return true;
+    } catch (err) {
+      console.error('Encryption error:', err);
+      return false;
+    }
   }, []);
+
+  const handleMessage = useCallback((msg: WsMessage) => {
+    switch (msg.type) {
+      case 'joined':
+        if (msg.version && msg.version !== PROTOCOL_VERSION) {
+          setLastError(`Protocol mismatch: mobile ${PROTOCOL_VERSION}, server ${msg.version}. Please update.`);
+          intentionalCloseRef.current = true;
+          closeSocket('protocol-mismatch');
+          setConnectionState('disconnected');
+          connectionStateRef.current = 'disconnected';
+          return;
+        }
+
+        setConnectionState('connected');
+        connectionStateRef.current = 'connected';
+        setPeerConnected(true);
+        setPendingStatus('Key exchange');
+        startHandshakeTimeout('Secure pairing timed out. Go back and reconnect.');
+
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({
+            type: 'key_exchange',
+            publicKey: cryptoRef.current.getPublicKeyBase64(),
+          } satisfies WsMessage));
+        }
+        break;
+
+      case 'peer_joined':
+        setPeerConnected(true);
+        if (msg.role === 'pc' && wsRef.current?.readyState === WebSocket.OPEN) {
+          setEncryptionState(false);
+          setPendingStatus('Key exchange');
+          startHandshakeTimeout('Secure pairing timed out. Go back and reconnect.');
+          cryptoRef.current.reset();
+          if (connInfoRef.current) {
+            cryptoRef.current.setPeerPublicKey(connInfoRef.current.k);
+          }
+          wsRef.current.send(JSON.stringify({
+            type: 'key_exchange',
+            publicKey: cryptoRef.current.getPublicKeyBase64(),
+          } satisfies WsMessage));
+        }
+        break;
+
+      case 'peer_left':
+        setPeerConnected(false);
+        setEncryptionState(false);
+        clearHandshakeTimer();
+        if (msg.role === 'pc' && msg.error !== 'temporary') {
+          intentionalCloseRef.current = true;
+          connInfoRef.current = null;
+          setPendingStatus(null);
+          setConnectionState('disconnected');
+          connectionStateRef.current = 'disconnected';
+        } else if (msg.role === 'pc') {
+          setPendingStatus('Waiting for your PC');
+        }
+        break;
+
+      case 'key_exchange':
+        if (msg.publicKey && !cryptoRef.current.hasPeerKey()) {
+          cryptoRef.current.setPeerPublicKey(msg.publicKey);
+        }
+        setPendingStatus('Securing session');
+        startHandshakeTimeout('Secure pairing timed out. Go back and reconnect.');
+
+        try {
+          const { seed } = cryptoRef.current.initRatchet();
+          const initCmd = JSON.stringify({ type: 'ratchet_init', seed });
+          const { payload, nonce } = cryptoRef.current.encrypt(initCmd);
+          if (wsRef.current?.readyState === WebSocket.OPEN) {
+            wsRef.current.send(JSON.stringify({ type: 'encrypted', payload, nonce } satisfies WsMessage));
+          }
+        } catch (err) {
+          console.error('Failed to initialize ratchet:', err);
+        }
+        break;
+
+      case 'encrypted': {
+        if (!msg.payload || !msg.nonce) break;
+
+        try {
+          const plaintext = msg.seq !== undefined && cryptoRef.current.isRecvRatchetReady()
+            ? cryptoRef.current.decryptRatcheted(msg.payload, msg.nonce, msg.seq)
+            : cryptoRef.current.decrypt(msg.payload, msg.nonce);
+
+          const parsed = JSON.parse(plaintext) as InputCommand;
+          if (parsed.type === 'pc_ratchet_init' && parsed.seed) {
+            cryptoRef.current.initRecvRatchet(parsed.seed);
+            setEncryptionState(true);
+            clearHandshakeTimer();
+            sendEncryptedPayload(JSON.stringify({ type: 'handshake_ack' } satisfies InputCommand));
+          } else if (parsed.type === 'clear') {
+            setInputResetVersion((version) => version + 1);
+          }
+        } catch {
+          // Ignore malformed or stale encrypted payloads.
+        }
+        break;
+      }
+
+      case 'preempted':
+        clearHandshakeTimer();
+        setConnectionState('preempted');
+        connectionStateRef.current = 'preempted';
+        setLastError(msg.error || 'Another device connected');
+        setPendingStatus(null);
+        intentionalCloseRef.current = true;
+        closeSocket('preempted');
+        break;
+
+      case 'error':
+        clearHandshakeTimer();
+        setLastError(msg.error || 'Unknown error');
+        setPendingStatus(null);
+        if (!encryptionReadyRef.current) {
+          intentionalCloseRef.current = true;
+          closeSocket('server-error');
+          setPeerConnected(false);
+          setEncryptionState(false);
+          setConnectionState('disconnected');
+          connectionStateRef.current = 'disconnected';
+        }
+        break;
+    }
+  }, [clearHandshakeTimer, closeSocket, sendEncryptedPayload, setEncryptionState, startHandshakeTimeout]);
 
   const connectWs = useCallback((info: ConnectionInfo) => {
     cleanup();
     intentionalCloseRef.current = false;
     connInfoRef.current = info;
 
-    // Reset crypto for new session
     cryptoRef.current.reset();
     cryptoRef.current.setPeerPublicKey(info.k);
 
     setConnectionState('connecting');
     connectionStateRef.current = 'connecting';
+    setPeerConnected(false);
+    setEncryptionState(false);
     setLastError(null);
+    setPendingStatus('Joining session');
 
     const ws = new WebSocket(info.s);
     wsRef.current = ws;
 
     ws.onopen = () => {
       reconnectAttemptRef.current = 0;
-      // Join the session
-      const joinMsg: WsMessage = {
+      ws.send(JSON.stringify({
         type: 'join_session',
         token: info.t,
-        deviceId: deviceId,
+        deviceId,
         version: PROTOCOL_VERSION,
-      };
-      ws.send(JSON.stringify(joinMsg));
+      } satisfies WsMessage));
     };
 
     ws.onmessage = (event) => {
       try {
-        const msg: WsMessage = JSON.parse(event.data);
-        handleMessage(msg);
+        handleMessage(JSON.parse(event.data) as WsMessage);
       } catch {
-        // ignore parse errors
+        // Ignore malformed messages.
       }
     };
 
     ws.onclose = () => {
-      // Guard: if this WS has been replaced by a newer connection, ignore its close event.
       if (wsRef.current !== ws) return;
+
+      wsRef.current = null;
+      clearHandshakeTimer();
 
       if (intentionalCloseRef.current) {
         setConnectionState('disconnected');
         connectionStateRef.current = 'disconnected';
         return;
       }
-      // Auto-reconnect
+
       if (
         connInfoRef.current &&
         connectionStateRef.current !== 'preempted' &&
         reconnectAttemptRef.current < MAX_RECONNECT_ATTEMPTS
       ) {
-        reconnectAttemptRef.current++;
+        reconnectAttemptRef.current += 1;
         setConnectionState('connecting');
         connectionStateRef.current = 'connecting';
+        setPendingStatus('Reconnecting');
         reconnectTimerRef.current = window.setTimeout(() => {
           if (connInfoRef.current) {
             connectWs(connInfoRef.current);
@@ -111,176 +325,65 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
     };
 
     ws.onerror = () => {
-      // Only set error if this is still the current WS
-      if (wsRef.current === ws) setLastError('Connection error');
-    };
-  }, [deviceId, cleanup]);
-
-  const handleMessage = useCallback((msg: WsMessage) => {
-    switch (msg.type) {
-      case 'joined':
-        // Validate server protocol version
-        if (msg.version && msg.version !== PROTOCOL_VERSION) {
-          setLastError(`Protocol mismatch: mobile ${PROTOCOL_VERSION}, server ${msg.version}. Please update.`);
-          intentionalCloseRef.current = true;
-          wsRef.current?.close();
-          setConnectionState('disconnected');
-          connectionStateRef.current = 'disconnected';
-          return;
-        }
-        setConnectionState('connected');
-        connectionStateRef.current = 'connected';
-        // PC created the room so it's already present — mark peer as connected
-        setPeerConnected(true);
-        // Send our public key to the PC
-        if (wsRef.current?.readyState === WebSocket.OPEN) {
-          const keyMsg: WsMessage = {
-            type: 'key_exchange',
-            publicKey: cryptoRef.current.getPublicKeyBase64(),
-          };
-          wsRef.current.send(JSON.stringify(keyMsg));
-        }
-        break;
-
-      case 'peer_joined':
-        setPeerConnected(true);
-        // If PC rejoined (after brief disconnect), re-establish encryption.
-        if (msg.role === 'pc' && wsRef.current?.readyState === WebSocket.OPEN) {
-          setEncryptionReady(false);
-          cryptoRef.current.reset();
-          if (connInfoRef.current) {
-            cryptoRef.current.setPeerPublicKey(connInfoRef.current.k);
-          }
-          const keyMsg: WsMessage = {
-            type: 'key_exchange',
-            publicKey: cryptoRef.current.getPublicKeyBase64(),
-          };
-          wsRef.current.send(JSON.stringify(keyMsg));
-        }
-        break;
-
-      case 'peer_left':
-        setPeerConnected(false);
-        setEncryptionReady(false);
-        // If PC temporarily disconnected (grace period active), stay connected and wait.
-        // If PC permanently left (session destroyed), stop reconnecting.
-        if (msg.role === 'pc' && msg.error !== 'temporary') {
-          intentionalCloseRef.current = true;
-          connInfoRef.current = null;
-          setConnectionState('disconnected');
-          connectionStateRef.current = 'disconnected';
-        }
-        break;
-
-      case 'key_exchange':
-        // PC sends its public key via server relay.
-        // SECURITY: If we already have PC's key from QR (out-of-band authenticated),
-        // do NOT overwrite it with the server-relayed key (prevents MITM by malicious server).
-        // Only accept server-relayed key for device-code flow (no QR).
-        if (msg.publicKey && !cryptoRef.current.hasPeerKey()) {
-          cryptoRef.current.setPeerPublicKey(msg.publicKey);
-        }
-        setEncryptionReady(true);
-
-        // Initialize symmetric ratchet for forward secrecy
-        try {
-          const { seed } = cryptoRef.current.initRatchet();
-          const initCmd = JSON.stringify({ type: 'ratchet_init', seed });
-          const { payload: initPayload, nonce: initNonce } = cryptoRef.current.encrypt(initCmd);
-          if (wsRef.current?.readyState === WebSocket.OPEN) {
-            const initMsg: WsMessage = { type: 'encrypted', payload: initPayload, nonce: initNonce };
-            wsRef.current.send(JSON.stringify(initMsg));
-          }
-        } catch (err) {
-          console.error('Failed to init ratchet:', err);
-        }
-        break;
-
-      case 'encrypted': {
-        // Handle PC → mobile encrypted messages
-        if (msg.payload && msg.nonce) {
-          try {
-            let plaintext: string;
-            if (msg.seq !== undefined && cryptoRef.current.isRecvRatchetReady()) {
-              plaintext = cryptoRef.current.decryptRatcheted(msg.payload, msg.nonce, msg.seq);
-            } else {
-              plaintext = cryptoRef.current.decrypt(msg.payload, msg.nonce);
-            }
-            const parsed = JSON.parse(plaintext);
-            if (parsed.type === 'pc_ratchet_init' && parsed.seed) {
-              cryptoRef.current.initRecvRatchet(parsed.seed);
-            }
-          } catch {
-            // Non-parseable encrypted messages are ignored
-          }
-        }
-        break;
+      if (wsRef.current === ws) {
+        setLastError('Connection error');
       }
-
-      case 'preempted':
-        setConnectionState('preempted');
-        connectionStateRef.current = 'preempted';
-        setLastError(msg.error || 'Another device connected');
-        intentionalCloseRef.current = true;
-        break;
-
-      case 'error':
-        setLastError(msg.error || 'Unknown error');
-        break;
-    }
-  }, []);
+    };
+  }, [cleanup, clearHandshakeTimer, deviceId, handleMessage, setEncryptionState]);
 
   const disconnect = useCallback(() => {
     intentionalCloseRef.current = true;
-    cleanup();
-    connInfoRef.current = null;
+    cleanup(true);
     setConnectionState('disconnected');
     connectionStateRef.current = 'disconnected';
     setLastError(null);
   }, [cleanup]);
 
   const sendEncrypted = useCallback((cmd: InputCommand) => {
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
-    if (!cryptoRef.current.isReady()) return;
+    sendEncryptedPayload(JSON.stringify(cmd));
+  }, [sendEncryptedPayload]);
 
-    try {
-      const plaintext = JSON.stringify(cmd);
-      let msg: WsMessage;
-
-      if (cryptoRef.current.isRatchetReady()) {
-        // Forward-secret ratcheted encryption
-        const { payload, nonce, seq } = cryptoRef.current.encryptRatcheted(plaintext);
-        msg = { type: 'encrypted', payload, nonce, seq };
-      } else {
-        // Fallback: legacy crypto_box
-        const { payload, nonce } = cryptoRef.current.encrypt(plaintext);
-        msg = { type: 'encrypted', payload, nonce };
-      }
-
-      wsRef.current.send(JSON.stringify(msg));
-    } catch (err) {
-      console.error('Encryption error:', err);
-    }
-  }, []);
-
-  // When mobile browser returns from background, check WS health and reconnect if needed.
   useEffect(() => {
-    const handleVisibility = () => {
-      if (document.visibilityState !== 'visible') return;
+    const reconnectIfNeeded = () => {
       if (!connInfoRef.current) return;
       if (intentionalCloseRef.current) return;
       if (connectionStateRef.current === 'preempted') return;
 
       const ws = wsRef.current;
       if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
-        // WS died while in background — reconnect immediately
         reconnectAttemptRef.current = 0;
         connectWs(connInfoRef.current);
       }
     };
+
+    const handleVisibility = () => {
+      if (document.visibilityState !== 'visible') return;
+      reconnectIfNeeded();
+    };
+
+    const handleOnline = () => reconnectIfNeeded();
+
     document.addEventListener('visibilitychange', handleVisibility);
-    return () => document.removeEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('online', handleOnline);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('online', handleOnline);
+    };
   }, [connectWs]);
+
+  useEffect(() => {
+    const handlePageHide = () => {
+      clearReconnectTimer();
+      clearHandshakeTimer();
+      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+      intentionalCloseRef.current = true;
+      closeSocket('pagehide');
+    };
+
+    window.addEventListener('pagehide', handlePageHide);
+    return () => window.removeEventListener('pagehide', handlePageHide);
+  }, [clearHandshakeTimer, clearReconnectTimer, closeSocket]);
 
   useEffect(() => {
     return () => cleanup();
@@ -294,5 +397,7 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
     disconnect,
     sendEncrypted,
     lastError,
+    pendingStatus,
+    inputResetVersion,
   };
 }
