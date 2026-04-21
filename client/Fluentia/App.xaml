@@ -24,6 +24,7 @@
         <SolidColorBrush x:Key="BgPanelBrush" Color="{StaticResource BgPanel}"/>
         <SolidColorBrush x:Key="BgInputBrush" Color="{StaticResource BgInput}"/>
         <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource Accent}"/>
+        <SolidColorBrush x:Key="AccentHoverBrush" Color="{StaticResource AccentHover}"/>
         <SolidColorBrush x:Key="AccentSoftBrush" Color="{StaticResource AccentSoft}"/>
         <SolidColorBrush x:Key="TextPrimaryBrush" Color="{StaticResource TextPrimary}"/>
         <SolidColorBrush x:Key="TextSecondaryBrush" Color="{StaticResource TextSecondary}"/>
@@ -33,6 +34,7 @@
         <SolidColorBrush x:Key="OverlayBrush" Color="{StaticResource OverlayColor}"/>
         <SolidColorBrush x:Key="SuccessBrush" Color="{StaticResource Success}"/>
         <SolidColorBrush x:Key="DangerBrush" Color="{StaticResource Danger}"/>
+        <SolidColorBrush x:Key="SecondaryHoverBrush" Color="{StaticResource SecondaryHover}"/>
 
         <DropShadowEffect x:Key="CardShadow"
                           BlurRadius="28"
@@ -89,11 +91,7 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="border" Property="Background">
-                                    <Setter.Value>
-                                        <SolidColorBrush Color="{StaticResource AccentHover}"/>
-                                    </Setter.Value>
-                                </Setter>
+                                <Setter TargetName="border" Property="Background" Value="{DynamicResource AccentHoverBrush}"/>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
                                 <Setter TargetName="border" Property="Opacity" Value="0.86"/>
@@ -129,7 +127,7 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="border" Property="Background" Value="{DynamicResource SecondaryHover}"/>
+                                <Setter TargetName="border" Property="Background" Value="{DynamicResource SecondaryHoverBrush}"/>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
                                 <Setter TargetName="border" Property="Opacity" Value="0.86"/>

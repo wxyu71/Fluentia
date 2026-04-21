@@ -73,8 +73,8 @@ public partial class App : Application
         UpdateResourcePair(Resources, "DividerColor", "DividerBrush", divider);
         UpdateResourcePair(Resources, "OverlayColor", "OverlayBrush", overlay);
 
-        Resources["AccentHover"] = accentHover;
-        Resources["SecondaryHover"] = secondaryHover;
+        UpdateResourcePair(Resources, "AccentHover", "AccentHoverBrush", accentHover);
+        UpdateResourcePair(Resources, "SecondaryHover", "SecondaryHoverBrush", secondaryHover);
         UpdateResourcePair(Resources, "Success", "SuccessBrush", isLight ? ColorFromHex("#FF219653") : ColorFromHex("#FF30D158"));
         UpdateResourcePair(Resources, "Danger", "DangerBrush", isLight ? ColorFromHex("#FFE24B42") : ColorFromHex("#FFFF453A"));
 

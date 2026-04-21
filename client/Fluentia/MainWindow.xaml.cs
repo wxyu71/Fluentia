@@ -58,12 +58,22 @@ public partial class MainWindow : Window
     private string? _deviceCode;
     private string _fileSavePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
     private IntPtr _inputTargetWindow;
+    private IntPtr _windowHandle;
 
     [DllImport("user32.dll")]
     private static extern bool DestroyIcon(IntPtr handle);
 
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsWindowVisible(IntPtr hWnd);
 
     private delegate void WinEventDelegate(IntPtr hWinEventHook, uint eventType, IntPtr hwnd,
         int idObject, int idChild, uint dwEventThread, uint dwmsEventTime);
@@ -83,6 +93,7 @@ public partial class MainWindow : Window
     private WinEventDelegate? _winEventDelegate;
     private IntPtr _winEventHook;
     private IntPtr _lastForegroundWindow;
+    private IntPtr _lastExternalForegroundWindow;
 
     private static readonly string SettingsFile = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
@@ -91,6 +102,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        _windowHandle = new WindowInteropHelper(this).EnsureHandle();
 
         _roomManager = new RoomManager();
         SetupRoomManagerEvents();
@@ -113,6 +125,7 @@ public partial class MainWindow : Window
         Task.Run(ProcessCommandQueue);
 
         _lastForegroundWindow = GetForegroundWindow();
+        RememberExternalForegroundWindow(_lastForegroundWindow);
         _winEventDelegate = OnForegroundWindowChanged;
         _winEventHook = SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND,
             IntPtr.Zero, _winEventDelegate, 0, 0, WINEVENT_OUTOFCONTEXT);
@@ -170,6 +183,7 @@ public partial class MainWindow : Window
 
         _roomManager.OnDeviceCodePending += (code, verifyId, userAgent) => Dispatcher.Invoke(() =>
         {
+            RememberExternalForegroundWindow(GetForegroundWindow());
             Show();
             WindowState = WindowState.Normal;
             Activate();
@@ -227,6 +241,7 @@ public partial class MainWindow : Window
             SetStatus("E2E encrypted", true);
             RefreshVisualState();
             Hide();
+            _ = Dispatcher.BeginInvoke(RestorePreviousExternalWindow, DispatcherPriority.ApplicationIdle);
         });
 
         _roomManager.OnInputCommand += (cmd) => _cmdChannel.Writer.TryWrite(cmd);
@@ -603,10 +618,14 @@ public partial class MainWindow : Window
     private bool EnsureInputTarget()
     {
         var currentForeground = GetForegroundWindow();
+        if (currentForeground == _windowHandle && TryRestorePreviousExternalWindow())
+        {
+            currentForeground = GetForegroundWindow();
+        }
+
         if (currentForeground == IntPtr.Zero) return false;
 
-        var ownHandle = new WindowInteropHelper(this).Handle;
-        if (currentForeground == ownHandle) return false;
+        if (currentForeground == _windowHandle) return false;
 
         if (_inputTargetWindow == IntPtr.Zero)
         {
@@ -1042,6 +1061,7 @@ public partial class MainWindow : Window
         if (hwnd == _lastForegroundWindow) return;
 
         _lastForegroundWindow = hwnd;
+        RememberExternalForegroundWindow(hwnd);
         if (_devMode)
         {
             _ = Dispatcher.BeginInvoke(() => AppendLog($"Focus -> 0x{hwnd:X}"));
@@ -1051,6 +1071,34 @@ public partial class MainWindow : Window
         {
             _ = Dispatcher.BeginInvoke(() => { _ = ResetMobileInputAfterFocusChangeAsync(); });
         }
+    }
+
+    private void RememberExternalForegroundWindow(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero || hwnd == _windowHandle) return;
+        if (!IsWindow(hwnd) || !IsWindowVisible(hwnd)) return;
+        _lastExternalForegroundWindow = hwnd;
+    }
+
+    private bool TryRestorePreviousExternalWindow()
+    {
+        if (_lastExternalForegroundWindow == IntPtr.Zero || _lastExternalForegroundWindow == _windowHandle)
+        {
+            return false;
+        }
+
+        if (!IsWindow(_lastExternalForegroundWindow) || !IsWindowVisible(_lastExternalForegroundWindow))
+        {
+            _lastExternalForegroundWindow = IntPtr.Zero;
+            return false;
+        }
+
+        return SetForegroundWindow(_lastExternalForegroundWindow);
+    }
+
+    private void RestorePreviousExternalWindow()
+    {
+        _ = TryRestorePreviousExternalWindow();
     }
 
     private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
