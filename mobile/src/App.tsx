@@ -14,6 +14,9 @@ const CONN_KEY = 'fluentia_conn';
 
 function loadHistory(): HistoryEntry[] {
   try {
+    if (!loadSettings().autoSaveHistory) {
+      return [];
+    }
     const raw = localStorage.getItem(HISTORY_KEY);
     return raw ? JSON.parse(raw) : [];
   } catch { return []; }
@@ -26,8 +29,8 @@ function saveHistory(entries: HistoryEntry[]) {
 function loadSettings(): AppSettings {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
-    return raw ? JSON.parse(raw) : { autoSaveHistory: true };
-  } catch { return { autoSaveHistory: true }; }
+    return raw ? JSON.parse(raw) : { autoSaveHistory: false };
+  } catch { return { autoSaveHistory: false }; }
 }
 
 function saveSettings(s: AppSettings) {
@@ -135,12 +138,16 @@ export const App: React.FC = () => {
   }, [sendEncrypted]);
 
   const handleAddHistory = useCallback((entry: HistoryEntry) => {
+    if (!settings.autoSaveHistory) {
+      return;
+    }
+
     setHistory((prev) => {
       const next = [...prev, entry];
       saveHistory(next);
       return next;
     });
-  }, []);
+  }, [settings.autoSaveHistory]);
 
   const handleClearHistory = useCallback(() => {
     setHistory([]);
@@ -154,6 +161,10 @@ export const App: React.FC = () => {
   const handleToggleAutoSave = useCallback(() => {
     setSettings(prev => {
       const next = { ...prev, autoSaveHistory: !prev.autoSaveHistory };
+      if (!next.autoSaveHistory) {
+        localStorage.removeItem(HISTORY_KEY);
+        setHistory([]);
+      }
       saveSettings(next);
       return next;
     });

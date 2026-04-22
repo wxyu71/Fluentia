@@ -85,7 +85,8 @@
                                    Foreground="{DynamicResource TextPrimaryBrush}"
                                    HorizontalAlignment="Center"
                                    MouseLeftButtonDown="Title_DevTap"/>
-                        <TextBlock Text="Windows relay"
+                        <TextBlock x:Name="TitleSubtitleText"
+                                   Text="Windows relay"
                                    FontSize="11"
                                    Foreground="{DynamicResource TextTertiaryBrush}"
                                    HorizontalAlignment="Center"/>
@@ -135,7 +136,8 @@
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
                                     <StackPanel>
-                                        <TextBlock Text="Secure desktop pairing"
+                                        <TextBlock x:Name="HeroTitleText"
+                                                   Text="Secure desktop pairing"
                                                    FontSize="24"
                                                    FontFamily="Segoe UI Variable Display"
                                                    FontWeight="SemiBold"
@@ -178,12 +180,14 @@
                                     Padding="22"
                                     Margin="0,0,0,18">
                                 <StackPanel>
-                                    <TextBlock Text="Connection"
+                                    <TextBlock x:Name="ConnectionSectionTitleText"
+                                               Text="Connection"
                                                FontSize="18"
                                                FontFamily="Segoe UI Variable Display"
                                                FontWeight="SemiBold"
                                                Foreground="{DynamicResource TextPrimaryBrush}"/>
-                                    <TextBlock Text="Server URL"
+                                    <TextBlock x:Name="ServerUrlLabelText"
+                                               Text="Server URL"
                                                FontSize="12"
                                                Foreground="{DynamicResource TextSecondaryBrush}"
                                                Margin="0,14,0,8"/>
@@ -220,12 +224,14 @@
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
                                         <StackPanel>
-                                            <TextBlock Text="Pairing"
+                                            <TextBlock x:Name="PairingSectionTitleText"
+                                                       Text="Pairing"
                                                        FontSize="18"
                                                        FontFamily="Segoe UI Variable Display"
                                                        FontWeight="SemiBold"
                                                        Foreground="{DynamicResource TextPrimaryBrush}"/>
-                                            <TextBlock Text="Scan the QR code or enter the short code on your phone."
+                                            <TextBlock x:Name="PairingSectionSubtitleText"
+                                                       Text="Scan the QR code or enter the short code on your phone."
                                                        FontSize="12"
                                                        Foreground="{DynamicResource TextSecondaryBrush}"
                                                        Margin="0,4,0,0"/>
@@ -274,7 +280,8 @@
                                             MouseLeftButtonDown="DeviceCode_Click"
                                             ToolTip="Copy device code">
                                         <StackPanel>
-                                            <TextBlock Text="Connection Code"
+                                            <TextBlock x:Name="DeviceCodeTitleText"
+                                                       Text="Connection Code"
                                                        FontSize="12"
                                                        FontWeight="SemiBold"
                                                        Foreground="{DynamicResource TextSecondaryBrush}"/>
@@ -285,7 +292,8 @@
                                                        FontWeight="Bold"
                                                        Foreground="{DynamicResource AccentBrush}"
                                                        TextAlignment="Center"/>
-                                            <TextBlock Text="Visible only while no phone is connected"
+                                            <TextBlock x:Name="DeviceCodeHintText"
+                                                       Text="Visible only while no phone is connected"
                                                        FontSize="11"
                                                        Foreground="{DynamicResource TextSecondaryBrush}"
                                                        TextAlignment="Center"
@@ -332,7 +340,8 @@
                                     CornerRadius="18"
                                     Padding="16">
                                 <StackPanel>
-                                    <TextBlock Text="Diagnostics"
+                                    <TextBlock x:Name="DiagnosticsTitleText"
+                                               Text="Diagnostics"
                                                FontSize="14"
                                                FontWeight="SemiBold"
                                                Foreground="{DynamicResource TextPrimaryBrush}"/>
@@ -373,17 +382,20 @@
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
                             <StackPanel>
-                                <TextBlock Text="Settings"
+                                <TextBlock x:Name="SettingsHeaderText"
+                                       Text="Settings"
                                            FontSize="22"
                                            FontFamily="Segoe UI Variable Display"
                                            FontWeight="SemiBold"
                                            Foreground="{DynamicResource TextPrimaryBrush}"/>
-                                <TextBlock Text="Desktop behavior and file handling"
+                                <TextBlock x:Name="SettingsSubheaderText"
+                                       Text="Desktop behavior and file handling"
                                            FontSize="12"
                                            Foreground="{DynamicResource TextSecondaryBrush}"
                                            Margin="0,6,0,0"/>
                             </StackPanel>
-                            <Button Grid.Column="1"
+                                <Button Grid.Column="1"
+                                    x:Name="CloseSettingsButton"
                                     Style="{StaticResource IconButton}"
                                     Click="CloseSettings_Click"
                                     ToolTip="Close settings">
@@ -411,11 +423,13 @@
                                                 <ColumnDefinition Width="Auto"/>
                                             </Grid.ColumnDefinitions>
                                             <StackPanel>
-                                                <TextBlock Text="Close button behavior"
+                                                <TextBlock x:Name="CloseBehaviorTitleText"
+                                                           Text="Close button behavior"
                                                            FontSize="14"
                                                            FontWeight="SemiBold"
                                                            Foreground="{DynamicResource TextPrimaryBrush}"/>
-                                                <TextBlock Text="When enabled, closing the window hides Fluentia to the notification area."
+                                                <TextBlock x:Name="CloseBehaviorBodyText"
+                                                           Text="When enabled, closing the window hides Fluentia to the notification area."
                                                            FontSize="12"
                                                            Foreground="{DynamicResource TextSecondaryBrush}"
                                                            Margin="0,6,0,0"
@@ -441,11 +455,13 @@
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
                                         <StackPanel>
-                                            <TextBlock Text="Launch at Windows startup"
+                                            <TextBlock x:Name="StartupTitleText"
+                                                       Text="Launch at Windows startup"
                                                        FontSize="14"
                                                        FontWeight="SemiBold"
                                                        Foreground="{DynamicResource TextPrimaryBrush}"/>
-                                            <TextBlock Text="Start Fluentia automatically after you sign in to Windows."
+                                            <TextBlock x:Name="StartupBodyText"
+                                                       Text="Start Fluentia automatically after you sign in to Windows."
                                                        FontSize="12"
                                                        Foreground="{DynamicResource TextSecondaryBrush}"
                                                        Margin="0,6,0,0"
@@ -464,11 +480,13 @@
                                         CornerRadius="18"
                                         Padding="18">
                                     <StackPanel>
-                                        <TextBlock Text="Received files"
+                                        <TextBlock x:Name="ReceivedFilesTitleText"
+                                                   Text="Received files"
                                                    FontSize="14"
                                                    FontWeight="SemiBold"
                                                    Foreground="{DynamicResource TextPrimaryBrush}"/>
-                                        <TextBlock Text="Choose where incoming files are written on this PC."
+                                        <TextBlock x:Name="ReceivedFilesBodyText"
+                                                   Text="Choose where incoming files are written on this PC."
                                                    FontSize="12"
                                                    Foreground="{DynamicResource TextSecondaryBrush}"
                                                    Margin="0,6,0,0"
@@ -476,7 +494,8 @@
                                         <TextBox x:Name="SavePathBox"
                                                  Margin="0,14,0,0"
                                                  Style="{StaticResource DarkTextBox}"/>
-                                        <Button Content="Browse"
+                                        <Button x:Name="BrowseSavePathButton"
+                                            Content="Browse"
                                                 Margin="0,12,0,0"
                                                 Style="{StaticResource SecondaryButton}"
                                                 Click="BrowseSavePath_Click"
@@ -487,7 +506,8 @@
                         </ScrollViewer>
 
                         <Button Grid.Row="2"
-                                Content="Save Settings"
+                            x:Name="SaveSettingsButton"
+                            Content="Save Settings"
                                 Style="{StaticResource AccentButton}"
                                 Click="SaveSettings_Click"/>
                     </Grid>

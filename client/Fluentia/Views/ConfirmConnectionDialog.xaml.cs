@@ -1,4 +1,5 @@
 using System.Windows;
+using Fluentia.Services;
 
 namespace Fluentia.Views;
 
@@ -9,8 +10,15 @@ public partial class ConfirmConnectionDialog : Window
     public ConfirmConnectionDialog(string verifyId, string userAgent)
     {
         InitializeComponent();
+        Title = LocalizationService.Get("ConfirmDialogTitle");
+        HeaderTitleText.Text = LocalizationService.Get("ConfirmDialogHeaderTitle");
+        HeaderBodyText.Text = LocalizationService.Get("ConfirmDialogHeaderBody");
+        VerificationTitleText.Text = LocalizationService.Get("ConfirmDialogVerificationTitle");
+        VerificationHintText.Text = LocalizationService.Get("ConfirmDialogVerificationHint");
+        DeviceLabelText.Text = LocalizationService.Get("ConfirmDialogDeviceLabel");
+        RejectBtn.Content = LocalizationService.Get("ButtonReject");
+        ApproveBtn.Content = LocalizationService.Get("ButtonApprove");
         VerifyIdText.Text = verifyId;
-        // Truncate and sanitize user agent for display
         UserAgentText.Text = userAgent.Length > 120 ? userAgent[..120] + "…" : userAgent;
     }
 

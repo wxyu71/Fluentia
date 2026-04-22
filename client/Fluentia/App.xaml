@@ -4,21 +4,21 @@
              StartupUri="MainWindow.xaml"
              ShutdownMode="OnExplicitShutdown">
     <Application.Resources>
-        <Color x:Key="BgDark">#FF0B0E14</Color>
-        <Color x:Key="BgPanel">#FF121822</Color>
-        <Color x:Key="BgInput">#FF1A2230</Color>
+        <Color x:Key="BgDark">#FF000000</Color>
+        <Color x:Key="BgPanel">#FF1C1C1E</Color>
+        <Color x:Key="BgInput">#FF2C2C2E</Color>
         <Color x:Key="Accent">#FF0A84FF</Color>
-        <Color x:Key="AccentHover">#FF3F96FF</Color>
-        <Color x:Key="TextPrimary">#FFF5F7FA</Color>
-        <Color x:Key="TextSecondary">#FFACB6C5</Color>
-        <Color x:Key="TextTertiary">#FF7B8798</Color>
-        <Color x:Key="BorderColor">#FF273244</Color>
-        <Color x:Key="DividerColor">#20304050</Color>
-        <Color x:Key="AccentSoft">#330A84FF</Color>
-        <Color x:Key="OverlayColor">#8A05070B</Color>
+        <Color x:Key="AccentHover">#FF3395FF</Color>
+        <Color x:Key="TextPrimary">#FFF5F5F7</Color>
+        <Color x:Key="TextSecondary">#FFAEAEB2</Color>
+        <Color x:Key="TextTertiary">#FF8E8E93</Color>
+        <Color x:Key="BorderColor">#FF3A3A3C</Color>
+        <Color x:Key="DividerColor">#33EBEBF5</Color>
+        <Color x:Key="AccentSoft">#2C0A84FF</Color>
+        <Color x:Key="OverlayColor">#94000000</Color>
         <Color x:Key="Success">#FF30D158</Color>
         <Color x:Key="Danger">#FFFF453A</Color>
-        <Color x:Key="SecondaryHover">#FF202A39</Color>
+        <Color x:Key="SecondaryHover">#FF36363A</Color>
 
         <SolidColorBrush x:Key="BgDarkBrush" Color="{StaticResource BgDark}"/>
         <SolidColorBrush x:Key="BgPanelBrush" Color="{StaticResource BgPanel}"/>
@@ -37,10 +37,10 @@
         <SolidColorBrush x:Key="SecondaryHoverBrush" Color="{StaticResource SecondaryHover}"/>
 
         <DropShadowEffect x:Key="CardShadow"
-                          BlurRadius="28"
-                          Color="#40000000"
+                          BlurRadius="40"
+                          Color="#26000000"
                           ShadowDepth="0"
-                          Opacity="0.28"/>
+                          Opacity="0.22"/>
 
         <Style x:Key="DarkTextBox" TargetType="TextBox">
             <Setter Property="Background" Value="{DynamicResource BgInputBrush}"/>

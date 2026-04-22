@@ -1,6 +1,6 @@
-using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Media;
+using Fluentia.Services;
 using Microsoft.Win32;
 using Application = System.Windows.Application;
 using Color = System.Windows.Media.Color;
@@ -14,24 +14,20 @@ public partial class App : Application
 
     public static event EventHandler? ThemeChanged;
 
-    [DllImport("dwmapi.dll", PreserveSig = true)]
-    private static extern int DwmGetColorizationColor(out uint colorization, out bool opaqueBlend);
-
     protected override void OnStartup(StartupEventArgs e)
     {
         const string mutexName = "Fluentia_SingleInstance_Mutex";
         _mutex = new Mutex(true, mutexName, out bool createdNew);
         if (!createdNew)
         {
-            MessageBox.Show("Fluentia is already running.", "Fluentia",
+            MessageBox.Show(LocalizationService.Get("AppAlreadyRunningMessage"), LocalizationService.Get("AppName"),
                 MessageBoxButton.OK, MessageBoxImage.Information);
             Shutdown();
             return;
         }
 
-        base.OnStartup(e);
-
         ApplySystemTheme();
+        base.OnStartup(e);
         SystemEvents.UserPreferenceChanged += SystemEvents_UserPreferenceChanged;
     }
 
@@ -46,20 +42,20 @@ public partial class App : Application
     private void ApplySystemTheme()
     {
         bool isLight = IsSystemLightTheme();
-        var accent = GetSystemAccentColor();
+        var accent = isLight ? ColorFromHex("#FF007AFF") : ColorFromHex("#FF0A84FF");
 
-        var bgDark = isLight ? ColorFromHex("#FFF6F7FB") : ColorFromHex("#FF0B0E14");
-        var bgPanel = isLight ? ColorFromHex("#FFFFFFFF") : Mix(ColorFromHex("#FF111723"), accent, 0.08);
-        var bgInput = isLight ? Mix(ColorFromHex("#FFFFFFFF"), accent, 0.09) : Mix(ColorFromHex("#FF161F2B"), accent, 0.10);
-        var textPrimary = isLight ? ColorFromHex("#FF171C24") : ColorFromHex("#FFF5F7FA");
-        var textSecondary = isLight ? ColorFromHex("#FF5B6675") : ColorFromHex("#FFACB6C5");
-        var textTertiary = isLight ? ColorFromHex("#FF8993A1") : ColorFromHex("#FF7B8798");
-        var border = isLight ? Mix(ColorFromHex("#FFD6DCE6"), accent, 0.12) : ColorFromHex("#FF273244");
-        var divider = isLight ? ColorFromHex("#1E304050") : ColorFromHex("#20304050");
-        var secondaryHover = isLight ? Mix(bgInput, accent, 0.12) : Mix(bgInput, accent, 0.16);
-        var accentHover = isLight ? Mix(accent, Colors.White, 0.18) : Mix(accent, Colors.White, 0.12);
-        var accentSoft = Color.FromArgb(isLight ? (byte)40 : (byte)56, accent.R, accent.G, accent.B);
-        var overlay = Color.FromArgb(isLight ? (byte)90 : (byte)138, 5, 7, 11);
+        var bgDark = isLight ? ColorFromHex("#FFF5F5F7") : ColorFromHex("#FF000000");
+        var bgPanel = isLight ? ColorFromHex("#FFFFFFFF") : ColorFromHex("#FF1C1C1E");
+        var bgInput = isLight ? ColorFromHex("#FFF2F2F7") : ColorFromHex("#FF2C2C2E");
+        var textPrimary = isLight ? ColorFromHex("#FF1C1C1E") : ColorFromHex("#FFF5F5F7");
+        var textSecondary = isLight ? ColorFromHex("#FF6E6E73") : ColorFromHex("#FFAEAEB2");
+        var textTertiary = isLight ? ColorFromHex("#FF8E8E93") : ColorFromHex("#FF8E8E93");
+        var border = isLight ? ColorFromHex("#FFD2D2D7") : ColorFromHex("#FF3A3A3C");
+        var divider = isLight ? ColorFromHex("#223C3C43") : ColorFromHex("#33EBEBF5");
+        var secondaryHover = isLight ? ColorFromHex("#FFE8E8ED") : ColorFromHex("#FF36363A");
+        var accentHover = isLight ? ColorFromHex("#FF2490FF") : ColorFromHex("#FF3395FF");
+        var accentSoft = Color.FromArgb(isLight ? (byte)26 : (byte)44, accent.R, accent.G, accent.B);
+        var overlay = isLight ? Color.FromArgb(94, 17, 24, 39) : Color.FromArgb(148, 0, 0, 0);
 
         UpdateResourcePair(Resources, "BgDark", "BgDarkBrush", bgDark);
         UpdateResourcePair(Resources, "BgPanel", "BgPanelBrush", bgPanel);
@@ -101,36 +97,6 @@ public partial class App : Application
         {
             return false;
         }
-    }
-
-    private static Color GetSystemAccentColor()
-    {
-        try
-        {
-            if (DwmGetColorizationColor(out uint argb, out _) == 0)
-            {
-                return Color.FromRgb(
-                    (byte)((argb >> 16) & 0xFF),
-                    (byte)((argb >> 8) & 0xFF),
-                    (byte)(argb & 0xFF));
-            }
-        }
-        catch
-        {
-            // Fall back to the Fluentia default accent.
-        }
-
-        return ColorFromHex("#FF0A84FF");
-    }
-
-    private static Color Mix(Color from, Color to, double ratio)
-    {
-        ratio = Math.Clamp(ratio, 0, 1);
-        return Color.FromArgb(
-            (byte)(from.A + (to.A - from.A) * ratio),
-            (byte)(from.R + (to.R - from.R) * ratio),
-            (byte)(from.G + (to.G - from.G) * ratio),
-            (byte)(from.B + (to.B - from.B) * ratio));
     }
 
     private static Color ColorFromHex(string hex)

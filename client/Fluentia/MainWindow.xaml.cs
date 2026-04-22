@@ -99,9 +99,12 @@ public partial class MainWindow : Window
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "Fluentia", "settings.json");
 
+    private static string L(string key, params object[] args) => LocalizationService.Get(key, args);
+
     public MainWindow()
     {
         InitializeComponent();
+        ApplyLocalizedText();
         _windowHandle = new WindowInteropHelper(this).EnsureHandle();
 
         _roomManager = new RoomManager();
@@ -148,11 +151,11 @@ public partial class MainWindow : Window
 
             if (!connected && !CanUseConfiguredServer())
             {
-                SetStatus("Network disconnected", false);
+                SetStatus(L("StatusNetworkDisconnected"), false);
             }
             else if (connected && _roomManager.CurrentToken == null)
             {
-                SetStatus("Preparing session", false);
+                SetStatus(L("StatusPreparingSession"), false);
             }
 
             RefreshVisualState();
@@ -169,7 +172,7 @@ public partial class MainWindow : Window
             _sessionExpiresAt = _sessionCreatedAt.AddDays(_roomManager.SessionMaxAgeDays);
             UpdateQRCode();
             UpdateSessionCountdown();
-            SetStatus("Waiting for a phone", false);
+            SetStatus(L("StatusWaitingPhone"), false);
             RefreshVisualState();
             await _roomManager.RequestDeviceCode();
         });
@@ -206,7 +209,7 @@ public partial class MainWindow : Window
             _deviceCode = null;
             _disconnectTimer?.Stop();
             _inputTargetWindow = IntPtr.Zero;
-            SetStatus("Phone detected", false);
+            SetStatus(L("StatusPhoneDetected"), false);
             if (_devMode)
             {
                 AppendLog($"Phone connected: {deviceId[..Math.Min(8, deviceId.Length)]}...");
@@ -219,15 +222,28 @@ public partial class MainWindow : Window
             _mobileConnected = false;
             _handshakePending = false;
             _inputTargetWindow = IntPtr.Zero;
-            SetStatus("Phone disconnected", false);
 
-            if (_serverConnected && !IsSessionExpired())
+            if (_roomManager.HasTrustedSession && !IsSessionExpired())
             {
-                UpdateQRCode();
-                await _roomManager.RequestDeviceCode();
+                _deviceCode = null;
+                _disconnectTimer?.Stop();
+                SetStatus(CanUseConfiguredServer()
+                    ? L("StatusPhoneDisconnectedWaiting")
+                    : L("StatusPhoneDisconnectedOffline"), false);
+            }
+            else
+            {
+                SetStatus(L("StatusPhoneDisconnected"), false);
+
+                if (_serverConnected && !IsSessionExpired())
+                {
+                    UpdateQRCode();
+                    await _roomManager.RequestDeviceCode();
+                }
+
+                StartDisconnectReminderTimer();
             }
 
-            StartDisconnectReminderTimer();
             RefreshVisualState();
         });
 
@@ -238,7 +254,7 @@ public partial class MainWindow : Window
             _deviceCode = null;
             _inputTargetWindow = IntPtr.Zero;
             ShowQrArea(false);
-            SetStatus("E2E encrypted", true);
+            SetStatus(L("StatusEncrypted"), true);
             RefreshVisualState();
             Hide();
             _ = Dispatcher.BeginInvoke(RestorePreviousExternalWindow, DispatcherPriority.ApplicationIdle);
@@ -254,7 +270,7 @@ public partial class MainWindow : Window
         _roomManager.OnError += (error) => Dispatcher.Invoke(() =>
         {
             _handshakePending = false;
-            SetStatus($"Error: {error}", false);
+            SetStatus(L("StatusErrorFormat", error), false);
             RefreshVisualState();
             if (_devMode) AppendLog($"Error: {error}");
         });
@@ -290,23 +306,23 @@ public partial class MainWindow : Window
 
         if (!CanUseConfiguredServer())
         {
-            SetStatus("Network disconnected", false);
+            SetStatus(L("StatusNetworkDisconnected"), false);
             RefreshVisualState();
             return;
         }
 
         ConnectBtn.IsEnabled = false;
-        ConnectBtn.Content = "Connecting...";
+        ConnectBtn.Content = L("ButtonConnecting");
 
         try
         {
             await _roomManager.ConnectAsync(url);
-            SetStatus("Connecting to server", false);
+            SetStatus(L("StatusConnectingServer"), false);
             PersistSettings();
         }
         catch (Exception ex)
         {
-            SetStatus(autoConnect ? "Automatic connection failed" : "Connection failed", false);
+            SetStatus(autoConnect ? L("StatusAutoConnectFailed") : L("StatusConnectionFailed"), false);
             if (_devMode)
             {
                 AppendLog($"Connection error: {ex.Message}");
@@ -335,29 +351,33 @@ public partial class MainWindow : Window
 
         ServerUrlBox.IsEnabled = !_serverConnected && !_handshakePending;
         ConnectBtn.IsEnabled = !_serverConnected && !_handshakePending && canUseServer;
-        ConnectBtn.Content = _serverConnected ? "Connected" : canUseServer ? "Connect" : "Offline";
+        ConnectBtn.Content = _serverConnected ? L("ButtonConnected") : canUseServer ? L("ButtonConnect") : L("ButtonOffline");
         NewSessionBtn.IsEnabled = _serverConnected && !_handshakePending;
         QrExpandBtn.IsEnabled = canPair;
 
         if (!canUseServer)
         {
-            ConnectionHintText.Text = "Reconnect this PC to the network before generating a pairing session.";
+            ConnectionHintText.Text = L("ConnectionHintNoNetwork");
+        }
+        else if (_serverConnected && _roomManager.HasTrustedSession && !_mobileConnected)
+        {
+            ConnectionHintText.Text = L("ConnectionHintTrustedWaiting");
         }
         else if (_serverConnected && _roomManager.EncryptionReady)
         {
-            ConnectionHintText.Text = "Your phone is paired and ready. Create a new session only when you want to invalidate the current secret.";
+            ConnectionHintText.Text = L("ConnectionHintEncrypted");
         }
         else if (_serverConnected && hasSession)
         {
-            ConnectionHintText.Text = $"Session ready. The current pairing secret stays reusable for up to {_roomManager.SessionMaxAgeDays} days.";
+            ConnectionHintText.Text = L("ConnectionHintSessionReady", _roomManager.SessionMaxAgeDays);
         }
         else if (_serverConnected)
         {
-            ConnectionHintText.Text = "Connected to the relay. Preparing a reusable pairing session.";
+            ConnectionHintText.Text = L("ConnectionHintConnectedPreparing");
         }
         else
         {
-            ConnectionHintText.Text = "Connect to your relay server to prepare a reusable session.";
+            ConnectionHintText.Text = L("ConnectionHintConnectToRelay");
         }
     }
 
@@ -369,37 +389,43 @@ public partial class MainWindow : Window
 
         if (!CanUseConfiguredServer())
         {
-            ShowPairingNotice("Network disconnected", "Reconnect this PC before showing a QR code or a connection code.");
+            ShowPairingNotice(L("PairingNoticeNetworkTitle"), L("PairingNoticeNetworkBody"));
             return;
         }
 
         if (!_serverConnected)
         {
-            ShowPairingNotice("Server not connected", "Connect to your relay server to generate a secure pairing session.");
+            ShowPairingNotice(L("PairingNoticeServerTitle"), L("PairingNoticeServerBody"));
             return;
         }
 
         if (_roomManager.CurrentToken == null)
         {
-            ShowPairingNotice("Preparing session", "A secure session is being created. Pairing controls will appear when it is ready.");
+            ShowPairingNotice(L("PairingNoticePreparingTitle"), L("PairingNoticePreparingBody"));
             return;
         }
 
         if (IsSessionExpired() && !_mobileConnected)
         {
-            ShowPairingNotice("Session expired", "Create a new session to continue pairing your phone.");
+            ShowPairingNotice(L("PairingNoticeExpiredTitle"), L("PairingNoticeExpiredBody"));
+            return;
+        }
+
+        if (_roomManager.HasTrustedSession && !_mobileConnected && !_handshakePending)
+        {
+            ShowPairingNotice(L("PairingNoticeWaitingReconnectTitle"), L("PairingNoticeWaitingReconnectBody"));
             return;
         }
 
         if (_roomManager.EncryptionReady)
         {
-            ShowPairingNotice("Secure channel ready", "Your phone is connected. Pairing controls stay hidden until you invalidate the current secret.");
+            ShowPairingNotice(L("PairingNoticeReadyTitle"), L("PairingNoticeReadyBody"));
             return;
         }
 
         if (_mobileConnected || _handshakePending)
         {
-            ShowPairingNotice("Securing connection", "The phone is completing key exchange. Pairing controls are temporarily hidden to prevent duplicate actions.");
+            ShowPairingNotice(L("PairingNoticeSecuringTitle"), L("PairingNoticeSecuringBody"));
             return;
         }
 
@@ -444,7 +470,7 @@ public partial class MainWindow : Window
         var remaining = _sessionExpiresAt - DateTime.Now;
         if (remaining <= TimeSpan.Zero)
         {
-            QrTimerText.Text = "Session expired";
+            QrTimerText.Text = L("QrSessionExpired");
             QrTimerText.Foreground = new SolidColorBrush((Color)FindResource("Danger"));
             return;
         }
@@ -452,15 +478,15 @@ public partial class MainWindow : Window
         QrTimerText.Foreground = (Brush)FindResource("TextSecondaryBrush");
         if (remaining.TotalDays >= 1)
         {
-            QrTimerText.Text = $"Valid for {Math.Ceiling(remaining.TotalDays)} days";
+            QrTimerText.Text = L("QrValidDays", Math.Ceiling(remaining.TotalDays));
         }
         else if (remaining.TotalHours >= 1)
         {
-            QrTimerText.Text = $"Valid for {Math.Ceiling(remaining.TotalHours)} hours";
+            QrTimerText.Text = L("QrValidHours", Math.Ceiling(remaining.TotalHours));
         }
         else
         {
-            QrTimerText.Text = $"Valid for {Math.Max(1, (int)Math.Ceiling(remaining.TotalMinutes))} minutes";
+            QrTimerText.Text = L("QrValidMinutes", Math.Max(1, (int)Math.Ceiling(remaining.TotalMinutes)));
         }
     }
 
@@ -474,7 +500,7 @@ public partial class MainWindow : Window
         var qrData = _roomManager.GetQRData();
         if (string.IsNullOrEmpty(qrData))
         {
-            QrHintText.Text = "No active session";
+            QrHintText.Text = L("QrNoActiveSession");
             QrCodeImage.Source = null;
             return;
         }
@@ -514,7 +540,7 @@ public partial class MainWindow : Window
         bitmap.Freeze();
 
         QrCodeImage.Source = bitmap;
-        QrHintText.Text = $"Session {_roomManager.CurrentToken} · reusable for up to {_roomManager.SessionMaxAgeDays} days";
+    QrHintText.Text = L("QrSessionHint", _roomManager.CurrentToken!, _roomManager.SessionMaxAgeDays);
     }
 
     private async Task ProcessCommandQueue()
@@ -745,16 +771,16 @@ public partial class MainWindow : Window
     {
         _trayIcon = new TaskbarIcon
         {
-            ToolTipText = "Fluentia",
+            ToolTipText = L("TrayTooltipConnected"),
         };
         _trayIcon.TrayLeftMouseDown += TrayIcon_TrayLeftMouseDown;
 
         var menu = new ContextMenu();
-        var showItem = new MenuItem { Header = "Show" };
+        var showItem = new MenuItem { Header = L("TrayShow") };
         showItem.Click += ShowWindow_Click;
-        var refreshItem = new MenuItem { Header = "New Session" };
+        var refreshItem = new MenuItem { Header = L("TrayNewSession") };
         refreshItem.Click += Refresh_Click;
-        var exitItem = new MenuItem { Header = "Quit Fluentia" };
+        var exitItem = new MenuItem { Header = L("TrayQuit") };
         exitItem.Click += Exit_Click;
         menu.Items.Add(showItem);
         menu.Items.Add(refreshItem);
@@ -773,7 +799,7 @@ public partial class MainWindow : Window
         _appIcon?.Dispose();
         _appIcon = CreateAppIcon(disconnected ? GetThemeColor("Danger") : GetThemeColor("Accent"));
         _trayIcon.Icon = _appIcon;
-        _trayIcon.ToolTipText = disconnected ? "Fluentia — Disconnected" : "Fluentia";
+        _trayIcon.ToolTipText = disconnected ? L("TrayTooltipDisconnected") : L("TrayTooltipConnected");
     }
 
     private System.Drawing.Icon CreateAppIcon(Color color)
@@ -943,8 +969,8 @@ public partial class MainWindow : Window
         SettingsPanel.IsHitTestVisible = true;
         SettingsScrim.IsHitTestVisible = true;
 
-        var duration = TimeSpan.FromMilliseconds(260);
-        var easing = new CubicEase { EasingMode = EasingMode.EaseOut };
+        var duration = TimeSpan.FromMilliseconds(320);
+        var easing = new QuinticEase { EasingMode = EasingMode.EaseOut };
 
         var panelAnimation = new DoubleAnimation
         {
@@ -967,25 +993,25 @@ public partial class MainWindow : Window
         SettingsPanelTranslateTransform.BeginAnimation(TranslateTransform.XProperty, panelAnimation);
         MainContentTranslateTransform.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation
         {
-            To = open ? -22 : 0,
+            To = open ? -18 : 0,
             Duration = duration,
             EasingFunction = easing,
         });
         MainContentScaleTransform.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation
         {
-            To = open ? 0.97 : 1,
+            To = open ? 0.985 : 1,
             Duration = duration,
             EasingFunction = easing,
         });
         MainContentScaleTransform.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation
         {
-            To = open ? 0.97 : 1,
+            To = open ? 0.985 : 1,
             Duration = duration,
             EasingFunction = easing,
         });
         SettingsScrim.BeginAnimation(OpacityProperty, new DoubleAnimation
         {
-            To = open ? 0.62 : 0,
+            To = open ? 0.44 : 0,
             Duration = duration,
             EasingFunction = easing,
         });
@@ -993,7 +1019,7 @@ public partial class MainWindow : Window
 
     private void UpdateCloseButtonToolTip()
     {
-        BtnClose.ToolTip = _closeToTray ? "Hide to notification area" : "Quit Fluentia";
+        BtnClose.ToolTip = _closeToTray ? L("TooltipHideToTray") : L("TooltipQuit");
     }
 
     private Color GetThemeColor(string resourceKey)
@@ -1040,7 +1066,7 @@ public partial class MainWindow : Window
             UpdateNetworkAvailability();
             if (!CanUseConfiguredServer())
             {
-                SetStatus("Network disconnected", false);
+                SetStatus(L("StatusNetworkDisconnected"), false);
             }
             RefreshVisualState();
         });
@@ -1167,7 +1193,7 @@ public partial class MainWindow : Window
         try
         {
             Clipboard.SetText(DeviceCodeText.Text);
-            SetStatus("Connection code copied", true);
+            SetStatus(L("StatusConnectionCodeCopied"), true);
         }
         catch
         {
@@ -1178,7 +1204,7 @@ public partial class MainWindow : Window
     {
         if (string.IsNullOrWhiteSpace(ServerUrlBox.Text))
         {
-            MessageBox.Show("Please enter a server URL.", "Fluentia");
+            MessageBox.Show(L("MessageEnterServerUrl"), L("AppName"));
             return;
         }
 
@@ -1219,7 +1245,7 @@ public partial class MainWindow : Window
     {
         using var dialog = new System.Windows.Forms.FolderBrowserDialog
         {
-            Description = "Select the destination for received files",
+            Description = L("BrowseDialogDescription"),
             SelectedPath = SavePathBox.Text,
             UseDescriptionForTitle = true,
         };
@@ -1235,7 +1261,7 @@ public partial class MainWindow : Window
         var path = SavePathBox.Text.Trim();
         if (string.IsNullOrWhiteSpace(path) || !Directory.Exists(path))
         {
-            SetStatus("Invalid save path", false);
+            SetStatus(L("StatusInvalidSavePath"), false);
             return;
         }
 
@@ -1246,7 +1272,44 @@ public partial class MainWindow : Window
         PersistSettings();
         UpdateCloseButtonToolTip();
         ToggleSettingsPanel(false);
-        SetStatus("Settings saved", true);
+        SetStatus(L("StatusSettingsSaved"), true);
+    }
+
+    private void ApplyLocalizedText()
+    {
+        Title = L("MainWindowTitle");
+        TitleLabel.Text = L("AppName");
+        TitleSubtitleText.Text = L("MainWindowSubtitle");
+        BtnMinimize.ToolTip = L("TooltipMinimize");
+        BtnMaximize.ToolTip = L("TooltipMaximizeRestore");
+        SettingsTitleButton.ToolTip = L("TooltipOpenSettings");
+        HeroTitleText.Text = L("HeroTitle");
+        ConnectionHintText.Text = L("ConnectionHintConnectToRelay");
+        StatusText.Text = L("StatusNotConnected");
+        NewSessionBtn.Content = L("ButtonNewSession");
+        ConnectionSectionTitleText.Text = L("SectionConnection");
+        ServerUrlLabelText.Text = L("LabelServerUrl");
+        ConnectBtn.Content = L("ButtonConnect");
+        PairingSectionTitleText.Text = L("SectionPairing");
+        PairingSectionSubtitleText.Text = L("PairingSubtitle");
+        QrExpandBtn.Content = L("ButtonShowQr");
+        PairingNoticeTitle.Text = L("PairingNoticeReady");
+        DeviceCodePanel.ToolTip = L("TooltipCopyDeviceCode");
+        DeviceCodeTitleText.Text = L("DeviceCodeTitle");
+        DeviceCodeHintText.Text = L("DeviceCodeHint");
+        DiagnosticsTitleText.Text = L("DiagnosticsTitle");
+        SettingsHeaderText.Text = L("SettingsTitle");
+        SettingsSubheaderText.Text = L("SettingsSubtitle");
+        CloseSettingsButton.ToolTip = L("TooltipCloseSettings");
+        CloseBehaviorTitleText.Text = L("CloseBehaviorTitle");
+        CloseBehaviorBodyText.Text = L("CloseBehaviorBody");
+        StartupTitleText.Text = L("StartupTitle");
+        StartupBodyText.Text = L("StartupBody");
+        ReceivedFilesTitleText.Text = L("ReceivedFilesTitle");
+        ReceivedFilesBodyText.Text = L("ReceivedFilesBody");
+        BrowseSavePathButton.Content = L("ButtonBrowse");
+        SaveSettingsButton.Content = L("ButtonSaveSettings");
+        UpdateCloseButtonToolTip();
     }
 
     private void TrayIcon_TrayLeftMouseDown(object sender, RoutedEventArgs e)

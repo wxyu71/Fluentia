@@ -17,6 +17,7 @@ public class RoomManager : IDisposable
     private bool _fileTransferEnabled = false; // controlled by server MAX_FILE_MB
     private int _maxFileMB = 0;
     private bool _encryptionConfirmed;
+    private bool _trustedSessionEstablished;
 
     public event Action<string>? OnSessionCreated;     // token
     public event Action<string>? OnMobileConnected;    // deviceId
@@ -37,6 +38,7 @@ public class RoomManager : IDisposable
     public bool FileTransferEnabled => _fileTransferEnabled;
     public int MaxFileMB => _maxFileMB;
     public bool IsConnected => _ws.IsConnected;
+    public bool HasTrustedSession => _trustedSessionEstablished;
 
     /// <summary>
     /// Send an encrypted command from PC to mobile.
@@ -108,6 +110,7 @@ public class RoomManager : IDisposable
         {
             _crypto.Reset();
             _encryptionConfirmed = false;
+            _trustedSessionEstablished = false;
         }
         OnStatusChanged?.Invoke("Connecting...");
         // Fetch server config (non-blocking — best effort)
@@ -143,6 +146,7 @@ public class RoomManager : IDisposable
     {
         _crypto.Reset();
         _encryptionConfirmed = false;
+        _trustedSessionEstablished = false;
         if (_ws.IsConnected)
         {
             await _ws.SendAsync(new WsMessage { Type = MsgTypes.CreateSession, Version = MsgTypes.ProtocolVersion });
@@ -210,6 +214,7 @@ public class RoomManager : IDisposable
                 }
                 _currentToken = msg.Token;
                 _encryptionConfirmed = false;
+                _trustedSessionEstablished = false;
                 _rejoinPending = false;
                 OnSessionCreated?.Invoke(msg.Token!);
                 OnStatusChanged?.Invoke($"Session ready: {msg.Token?[..8]}...");
@@ -263,6 +268,7 @@ public class RoomManager : IDisposable
                     _currentToken = null;
                     _crypto.Reset();
                     _encryptionConfirmed = false;
+                    _trustedSessionEstablished = false;
                     _ = _ws.SendAsync(new WsMessage { Type = MsgTypes.CreateSession, Version = MsgTypes.ProtocolVersion });
                     break;
                 }
@@ -332,6 +338,7 @@ public class RoomManager : IDisposable
                     if (!_encryptionConfirmed)
                     {
                         _encryptionConfirmed = true;
+                        _trustedSessionEstablished = true;
                         OnEncryptionReady?.Invoke();
                         OnStatusChanged?.Invoke("E2E encryption established");
                     }

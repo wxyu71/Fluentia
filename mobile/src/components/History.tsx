@@ -68,8 +68,10 @@ export const History: React.FC<HistoryProps> = ({
             <div style={{ marginBottom: 12, opacity: 0.5 }}>
               <EmptyIcon size={48} />
             </div>
-            <p style={{ fontSize: 14 }}>No history yet</p>
-            <p style={{ fontSize: 12, marginTop: 4 }}>Your sent texts will appear here</p>
+            <p style={{ fontSize: 14 }}>{autoSaveHistory ? 'No history yet' : 'History is off'}</p>
+            <p style={{ fontSize: 12, marginTop: 4 }}>
+              {autoSaveHistory ? 'Your sent texts will appear here' : 'Turn on auto-save if you want to keep sent text snippets'}
+            </p>
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
