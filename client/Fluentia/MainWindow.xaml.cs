@@ -38,6 +38,9 @@ public partial class MainWindow : Window
 
     private TaskbarIcon? _trayIcon;
     private System.Drawing.Icon? _appIcon;
+    private MenuItem? _trayShowItem;
+    private MenuItem? _trayRefreshItem;
+    private MenuItem? _trayExitItem;
     private DispatcherTimer? _sessionTimer;
     private DispatcherTimer? _disconnectTimer;
 
@@ -54,6 +57,7 @@ public partial class MainWindow : Window
     private bool _launchAtStartup;
     private bool _networkAvailable = true;
     private bool _isShuttingDown;
+    private bool _isApplyingLanguageSelection;
     private bool _qrVisible = true;
     private string? _deviceCode;
     private string _fileSavePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
@@ -104,14 +108,15 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+
+        _roomManager = new RoomManager();
+        LoadSettings();
         ApplyLocalizedText();
         _windowHandle = new WindowInteropHelper(this).EnsureHandle();
 
-        _roomManager = new RoomManager();
         SetupRoomManagerEvents();
         SetupTrayIcon();
         SetupSessionTimer();
-        LoadSettings();
         UpdateNetworkAvailability();
         RefreshVisualState();
 
@@ -170,6 +175,7 @@ public partial class MainWindow : Window
             _inputTargetWindow = IntPtr.Zero;
             _sessionCreatedAt = DateTime.Now;
             _sessionExpiresAt = _sessionCreatedAt.AddDays(_roomManager.SessionMaxAgeDays);
+            PersistSettings();
             UpdateQRCode();
             UpdateSessionCountdown();
             SetStatus(L("StatusWaitingPhone"), false);
@@ -253,6 +259,7 @@ public partial class MainWindow : Window
             _handshakePending = false;
             _deviceCode = null;
             _inputTargetWindow = IntPtr.Zero;
+            PersistSettings();
             ShowQrArea(false);
             SetStatus(L("StatusEncrypted"), true);
             RefreshVisualState();
@@ -348,12 +355,17 @@ public partial class MainWindow : Window
         var canUseServer = CanUseConfiguredServer();
         var hasSession = _roomManager.CurrentToken != null;
         var canPair = canUseServer && _serverConnected && hasSession && !_mobileConnected && !_handshakePending && !IsSessionExpired();
+        var canRotateSession = _serverConnected && !_handshakePending &&
+            (_roomManager.EncryptionReady || _roomManager.HasTrustedSession || IsSessionExpired());
+        var canSendFile = _roomManager.FileTransferEnabled && _roomManager.EncryptionReady;
 
         ServerUrlBox.IsEnabled = !_serverConnected && !_handshakePending;
         ConnectBtn.IsEnabled = !_serverConnected && !_handshakePending && canUseServer;
         ConnectBtn.Content = _serverConnected ? L("ButtonConnected") : canUseServer ? L("ButtonConnect") : L("ButtonOffline");
-        NewSessionBtn.IsEnabled = _serverConnected && !_handshakePending;
         QrExpandBtn.IsEnabled = canPair;
+        SendFileButton.Visibility = canSendFile ? Visibility.Visible : Visibility.Collapsed;
+        SendFileButton.IsEnabled = canSendFile;
+        NewSessionSettingsButton.IsEnabled = canRotateSession;
 
         if (!canUseServer)
         {
@@ -776,20 +788,28 @@ public partial class MainWindow : Window
         _trayIcon.TrayLeftMouseDown += TrayIcon_TrayLeftMouseDown;
 
         var menu = new ContextMenu();
-        var showItem = new MenuItem { Header = L("TrayShow") };
-        showItem.Click += ShowWindow_Click;
-        var refreshItem = new MenuItem { Header = L("TrayNewSession") };
-        refreshItem.Click += Refresh_Click;
-        var exitItem = new MenuItem { Header = L("TrayQuit") };
-        exitItem.Click += Exit_Click;
-        menu.Items.Add(showItem);
-        menu.Items.Add(refreshItem);
+        _trayShowItem = new MenuItem { Header = L("TrayShow") };
+        _trayShowItem.Click += ShowWindow_Click;
+        _trayRefreshItem = new MenuItem { Header = L("TrayNewSession") };
+        _trayRefreshItem.Click += Refresh_Click;
+        _trayExitItem = new MenuItem { Header = L("TrayQuit") };
+        _trayExitItem.Click += Exit_Click;
+        menu.Items.Add(_trayShowItem);
+        menu.Items.Add(_trayRefreshItem);
         menu.Items.Add(new Separator());
-        menu.Items.Add(exitItem);
+        menu.Items.Add(_trayExitItem);
 
         _trayIcon.ContextMenu = menu;
         _trayIcon.ForceCreate();
+        RefreshTrayMenuText();
         SetTrayIconColor(disconnected: !_serverConnected || !CanUseConfiguredServer());
+    }
+
+    private void RefreshTrayMenuText()
+    {
+        if (_trayShowItem != null) _trayShowItem.Header = L("TrayShow");
+        if (_trayRefreshItem != null) _trayRefreshItem.Header = L("TrayNewSession");
+        if (_trayExitItem != null) _trayExitItem.Header = L("TrayQuit");
     }
 
     private void SetTrayIconColor(bool disconnected)
@@ -809,13 +829,39 @@ public partial class MainWindow : Window
         {
             graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
             graphics.Clear(System.Drawing.Color.Transparent);
-            using var brush = new System.Drawing.SolidBrush(System.Drawing.Color.FromArgb(color.A, color.R, color.G, color.B));
-            graphics.FillEllipse(brush, 0, 0, 31, 31);
-            graphics.DrawString(
-                "F",
-                new System.Drawing.Font("Segoe UI", 16f, System.Drawing.FontStyle.Bold),
-                System.Drawing.Brushes.White,
-                new System.Drawing.PointF(6f, 2f));
+
+            using var backgroundPath = CreateRoundedRectPath(2.5f, 2.5f, 27f, 27f, 7.5f);
+            using var backgroundBrush = new System.Drawing.SolidBrush(System.Drawing.Color.FromArgb(20, 78, 140));
+            graphics.FillPath(backgroundBrush, backgroundPath);
+
+            using var outlinePen = new System.Drawing.Pen(System.Drawing.Color.FromArgb(245, 245, 247), 2.4f)
+            {
+                LineJoin = System.Drawing.Drawing2D.LineJoin.Round,
+            };
+            using var phonePath = CreateRoundedRectPath(6f, 7f, 7f, 15f, 2.6f);
+            using var desktopPath = CreateRoundedRectPath(17f, 10f, 8.5f, 9f, 2.2f);
+            graphics.DrawPath(outlinePen, phonePath);
+            graphics.DrawPath(outlinePen, desktopPath);
+
+            using var beamPen = new System.Drawing.Pen(System.Drawing.Color.FromArgb(126, 205, 255), 2.8f)
+            {
+                StartCap = System.Drawing.Drawing2D.LineCap.Round,
+                EndCap = System.Drawing.Drawing2D.LineCap.Round,
+                LineJoin = System.Drawing.Drawing2D.LineJoin.Round,
+            };
+            graphics.DrawLine(beamPen, 13.5f, 15.5f, 18.2f, 15.5f);
+            graphics.DrawLines(beamPen, new[]
+            {
+                new System.Drawing.PointF(15.5f, 12.4f),
+                new System.Drawing.PointF(18.5f, 15.5f),
+                new System.Drawing.PointF(15.5f, 18.6f),
+            });
+
+            using var homeBrush = new System.Drawing.SolidBrush(System.Drawing.Color.FromArgb(245, 245, 247));
+            graphics.FillEllipse(homeBrush, 8.4f, 18.9f, 1.8f, 1.8f);
+
+            using var stateBrush = new System.Drawing.SolidBrush(System.Drawing.Color.FromArgb(color.A, color.R, color.G, color.B));
+            graphics.FillEllipse(stateBrush, 22.8f, 22.2f, 5f, 5f);
         }
 
         var hIcon = bmp.GetHicon();
@@ -826,6 +872,18 @@ public partial class MainWindow : Window
         var icon = new System.Drawing.Icon(stream);
         DestroyIcon(hIcon);
         return icon;
+    }
+
+    private static System.Drawing.Drawing2D.GraphicsPath CreateRoundedRectPath(float x, float y, float width, float height, float radius)
+    {
+        var path = new System.Drawing.Drawing2D.GraphicsPath();
+        var diameter = radius * 2;
+        path.AddArc(x, y, diameter, diameter, 180, 90);
+        path.AddArc(x + width - diameter, y, diameter, diameter, 270, 90);
+        path.AddArc(x + width - diameter, y + height - diameter, diameter, diameter, 0, 90);
+        path.AddArc(x, y + height - diameter, diameter, diameter, 90, 90);
+        path.CloseFigure();
+        return path;
     }
 
     private void StartDisconnectReminderTimer()
@@ -901,6 +959,35 @@ public partial class MainWindow : Window
                 {
                     _launchAtStartup = startupElement.GetBoolean();
                 }
+
+                if (doc.RootElement.TryGetProperty("language", out var languageElement))
+                {
+                    LocalizationService.SetLanguagePreference(languageElement.GetString());
+                }
+
+                if (doc.RootElement.TryGetProperty("sessionCreatedAtUtc", out var sessionCreatedElement) &&
+                    DateTime.TryParse(sessionCreatedElement.GetString(), null, System.Globalization.DateTimeStyles.RoundtripKind, out var restoredCreatedAt))
+                {
+                    _sessionCreatedAt = restoredCreatedAt.ToLocalTime();
+                    _sessionExpiresAt = _sessionCreatedAt.AddDays(_roomManager.SessionMaxAgeDays);
+                }
+
+                if (doc.RootElement.TryGetProperty("sessionToken", out var tokenElement) &&
+                    doc.RootElement.TryGetProperty("sessionPublicKey", out var publicKeyElement) &&
+                    doc.RootElement.TryGetProperty("sessionPrivateKey", out var privateKeyElement))
+                {
+                    var token = tokenElement.GetString();
+                    var publicKey = publicKeyElement.GetString();
+                    var privateKey = privateKeyElement.GetString();
+                    var trusted = doc.RootElement.TryGetProperty("sessionTrusted", out var trustedElement) && trustedElement.GetBoolean();
+
+                    if (!string.IsNullOrWhiteSpace(token) &&
+                        !string.IsNullOrWhiteSpace(publicKey) &&
+                        !string.IsNullOrWhiteSpace(privateKey))
+                    {
+                        _roomManager.RestorePersistedSession(new PersistedDesktopSession(token, publicKey, privateKey, trusted));
+                    }
+                }
             }
         }
         catch
@@ -911,6 +998,7 @@ public partial class MainWindow : Window
         SavePathBox.Text = _fileSavePath;
         CloseToTrayToggle.IsChecked = _closeToTray;
         LaunchAtStartupToggle.IsChecked = _launchAtStartup;
+        UpdateLanguageSelectorSelection();
     }
 
     private void PersistSettings()
@@ -918,12 +1006,19 @@ public partial class MainWindow : Window
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(SettingsFile)!);
+            var persistedSession = _roomManager.ExportPersistedSession();
             var payload = JsonSerializer.Serialize(new
             {
                 savePath = _fileSavePath,
                 serverUrl = ServerUrlBox.Text.Trim(),
                 closeToTray = _closeToTray,
                 launchAtStartup = _launchAtStartup,
+                language = LocalizationService.CurrentLanguageSetting,
+                sessionToken = persistedSession?.Token,
+                sessionPublicKey = persistedSession?.PublicKey,
+                sessionPrivateKey = persistedSession?.PrivateKey,
+                sessionTrusted = persistedSession?.TrustedSessionEstablished ?? false,
+                sessionCreatedAtUtc = _sessionCreatedAt == default ? null : _sessionCreatedAt.ToUniversalTime().ToString("O"),
             });
             File.WriteAllText(SettingsFile, payload);
         }
@@ -1030,7 +1125,50 @@ public partial class MainWindow : Window
     private void SetStatus(string text, bool connected)
     {
         StatusText.Text = text;
-        StatusDot.Fill = new SolidColorBrush(GetThemeColor(connected ? "Success" : "Danger"));
+        StatusIndicator.Fill = new SolidColorBrush(GetThemeColor(connected ? "Success" : "Danger"));
+    }
+
+    private void RefreshStatusFromState()
+    {
+        if (!CanUseConfiguredServer())
+        {
+            SetStatus(L("StatusNetworkDisconnected"), false);
+            return;
+        }
+
+        if (_roomManager.EncryptionReady)
+        {
+            SetStatus(L("StatusEncrypted"), true);
+            return;
+        }
+
+        if (_handshakePending || _mobileConnected)
+        {
+            SetStatus(L("StatusPhoneDetected"), false);
+            return;
+        }
+
+        if (_roomManager.HasTrustedSession && _roomManager.CurrentToken != null)
+        {
+            SetStatus(CanUseConfiguredServer()
+                ? L("StatusPhoneDisconnectedWaiting")
+                : L("StatusPhoneDisconnectedOffline"), false);
+            return;
+        }
+
+        if (_serverConnected && _roomManager.CurrentToken == null)
+        {
+            SetStatus(L("StatusPreparingSession"), false);
+            return;
+        }
+
+        if (_roomManager.CurrentToken != null)
+        {
+            SetStatus(L("StatusWaitingPhone"), false);
+            return;
+        }
+
+        SetStatus(L("StatusNotConnected"), false);
     }
 
     private void AppendLog(string text)
@@ -1127,15 +1265,53 @@ public partial class MainWindow : Window
         _ = TryRestorePreviousExternalWindow();
     }
 
+    private static T? FindAncestor<T>(DependencyObject? source) where T : DependencyObject
+    {
+        while (source != null)
+        {
+            if (source is T typed)
+            {
+                return typed;
+            }
+
+            source = source switch
+            {
+                Visual visual => VisualTreeHelper.GetParent(visual),
+                System.Windows.Media.Media3D.Visual3D visual3D => VisualTreeHelper.GetParent(visual3D),
+                _ => LogicalTreeHelper.GetParent(source),
+            };
+        }
+
+        return null;
+    }
+
+    private static bool IsInteractiveTitleBarSource(DependencyObject? source)
+    {
+         return FindAncestor<System.Windows.Controls.Button>(source) != null ||
+             FindAncestor<System.Windows.Controls.TextBox>(source) != null ||
+             FindAncestor<System.Windows.Controls.ComboBox>(source) != null;
+    }
+
     private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
+        if (IsInteractiveTitleBarSource(e.OriginalSource as DependencyObject))
+        {
+            return;
+        }
+
         if (e.ClickCount == 2)
         {
             ToggleMaximize();
         }
         else
         {
-            DragMove();
+            try
+            {
+                DragMove();
+            }
+            catch
+            {
+            }
         }
     }
 
@@ -1143,21 +1319,18 @@ public partial class MainWindow : Window
     {
     }
 
-    private void TrafficClose_Click(object sender, MouseButtonEventArgs e)
+    private void TrafficClose_Click(object sender, RoutedEventArgs e)
     {
-        e.Handled = true;
         RequestWindowClose();
     }
 
-    private void TrafficMinimize_Click(object sender, MouseButtonEventArgs e)
+    private void TrafficMinimize_Click(object sender, RoutedEventArgs e)
     {
-        e.Handled = true;
         WindowState = WindowState.Minimized;
     }
 
-    private void TrafficMaximize_Click(object sender, MouseButtonEventArgs e)
+    private void TrafficMaximize_Click(object sender, RoutedEventArgs e)
     {
-        e.Handled = true;
         ToggleMaximize();
     }
 
@@ -1233,6 +1406,7 @@ public partial class MainWindow : Window
 
     private void SettingsScrim_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
+        e.Handled = true;
         ToggleSettingsPanel(false);
     }
 
@@ -1256,6 +1430,116 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void SendFile_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_roomManager.EncryptionReady || !_roomManager.FileTransferEnabled)
+        {
+            SetStatus(L("StatusFileTransferUnavailable"), false);
+            return;
+        }
+
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = L("DialogSelectFileTitle"),
+            Filter = L("DialogFileFilter"),
+            Multiselect = false,
+            CheckFileExists = true,
+        };
+
+        if (dialog.ShowDialog(this) == true)
+        {
+            await SendFileToMobileAsync(dialog.FileName);
+        }
+    }
+
+    private async Task SendFileToMobileAsync(string filePath)
+    {
+        try
+        {
+            var fileInfo = new FileInfo(filePath);
+            if (_roomManager.MaxFileMB > 0 && fileInfo.Length > (long)_roomManager.MaxFileMB * 1024 * 1024)
+            {
+                SetStatus(L("StatusFileTooLargeFormat", _roomManager.MaxFileMB), false);
+                return;
+            }
+
+            var transferId = Guid.NewGuid().ToString("N");
+            await _roomManager.SendToMobileAsync(new InputCommand
+            {
+                Type = "file_start",
+                TransferId = transferId,
+                FileName = fileInfo.Name,
+                FileSize = fileInfo.Length,
+                MimeType = GuessMimeType(fileInfo.Extension),
+            }.Serialize());
+
+            SetStatus(L("StatusSendingFileFormat", fileInfo.Name), true);
+
+            const int chunkSize = 32 * 1024;
+            if (fileInfo.Length == 0)
+            {
+                await _roomManager.SendToMobileAsync(new InputCommand
+                {
+                    Type = "file_chunk",
+                    TransferId = transferId,
+                    ChunkIndex = 0,
+                    ChunkData = string.Empty,
+                    IsLast = true,
+                }.Serialize());
+            }
+            else
+            {
+                using var stream = File.OpenRead(filePath);
+                var buffer = new byte[chunkSize];
+                var chunkIndex = 0;
+                int bytesRead;
+
+                while ((bytesRead = await stream.ReadAsync(buffer.AsMemory(0, buffer.Length))) > 0)
+                {
+                    var chunkBytes = bytesRead == buffer.Length ? buffer[..bytesRead] : buffer[..bytesRead];
+                    await _roomManager.SendToMobileAsync(new InputCommand
+                    {
+                        Type = "file_chunk",
+                        TransferId = transferId,
+                        ChunkIndex = chunkIndex++,
+                        ChunkData = Convert.ToBase64String(chunkBytes),
+                        IsLast = stream.Position == stream.Length,
+                    }.Serialize());
+                }
+            }
+
+            if (_devMode)
+            {
+                AppendLog($"File sent to mobile: {fileInfo.FullName}");
+            }
+
+            SetStatus(L("StatusFileSentFormat", fileInfo.Name), true);
+        }
+        catch (Exception ex)
+        {
+            if (_devMode)
+            {
+                AppendLog($"File send failed: {ex.Message}");
+            }
+
+            SetStatus(L("StatusFileSendFailed"), false);
+        }
+    }
+
+    private static string GuessMimeType(string extension)
+    {
+        return extension.ToLowerInvariant() switch
+        {
+            ".png" => "image/png",
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".gif" => "image/gif",
+            ".webp" => "image/webp",
+            ".txt" => "text/plain",
+            ".pdf" => "application/pdf",
+            _ => "application/octet-stream",
+        };
+    }
+
     private void SaveSettings_Click(object sender, RoutedEventArgs e)
     {
         var path = SavePathBox.Text.Trim();
@@ -1275,21 +1559,56 @@ public partial class MainWindow : Window
         SetStatus(L("StatusSettingsSaved"), true);
     }
 
+    private void LanguageSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_isApplyingLanguageSelection) return;
+        if (LanguageSelector.SelectedItem is not ComboBoxItem selected || selected.Tag is not string language)
+        {
+            return;
+        }
+
+        LocalizationService.SetLanguagePreference(language);
+        ApplyLocalizedText();
+        RefreshVisualState();
+        PersistSettings();
+    }
+
+    private void UpdateLanguageSelectorSelection()
+    {
+        _isApplyingLanguageSelection = true;
+        try
+        {
+            var target = LocalizationService.CurrentLanguageSetting;
+            foreach (var item in LanguageSelector.Items)
+            {
+                if (item is ComboBoxItem comboItem && string.Equals(comboItem.Tag as string, target, StringComparison.OrdinalIgnoreCase))
+                {
+                    LanguageSelector.SelectedItem = comboItem;
+                    return;
+                }
+            }
+
+            LanguageSelector.SelectedIndex = 0;
+        }
+        finally
+        {
+            _isApplyingLanguageSelection = false;
+        }
+    }
+
     private void ApplyLocalizedText()
     {
         Title = L("MainWindowTitle");
         TitleLabel.Text = L("AppName");
-        TitleSubtitleText.Text = L("MainWindowSubtitle");
         BtnMinimize.ToolTip = L("TooltipMinimize");
         BtnMaximize.ToolTip = L("TooltipMaximizeRestore");
         SettingsTitleButton.ToolTip = L("TooltipOpenSettings");
         HeroTitleText.Text = L("HeroTitle");
         ConnectionHintText.Text = L("ConnectionHintConnectToRelay");
-        StatusText.Text = L("StatusNotConnected");
-        NewSessionBtn.Content = L("ButtonNewSession");
         ConnectionSectionTitleText.Text = L("SectionConnection");
         ServerUrlLabelText.Text = L("LabelServerUrl");
         ConnectBtn.Content = L("ButtonConnect");
+        SendFileButton.Content = L("ButtonSendFile");
         PairingSectionTitleText.Text = L("SectionPairing");
         PairingSectionSubtitleText.Text = L("PairingSubtitle");
         QrExpandBtn.Content = L("ButtonShowQr");
@@ -1305,10 +1624,21 @@ public partial class MainWindow : Window
         CloseBehaviorBodyText.Text = L("CloseBehaviorBody");
         StartupTitleText.Text = L("StartupTitle");
         StartupBodyText.Text = L("StartupBody");
+        LanguageTitleText.Text = L("SettingsLanguageTitle");
+        LanguageBodyText.Text = L("SettingsLanguageBody");
+        LanguageSystemOption.Content = L("LanguageSystem");
+        LanguageEnglishOption.Content = L("LanguageEnglish");
+        LanguageChineseOption.Content = L("LanguageChinese");
+        SessionTitleText.Text = L("SettingsSessionTitle");
+        SessionBodyText.Text = L("SettingsSessionBody");
+        NewSessionSettingsButton.Content = L("ButtonCreateNewSession");
         ReceivedFilesTitleText.Text = L("ReceivedFilesTitle");
         ReceivedFilesBodyText.Text = L("ReceivedFilesBody");
         BrowseSavePathButton.Content = L("ButtonBrowse");
         SaveSettingsButton.Content = L("ButtonSaveSettings");
+        RefreshTrayMenuText();
+        UpdateLanguageSelectorSelection();
+        RefreshStatusFromState();
         UpdateCloseButtonToolTip();
     }
 

@@ -58,6 +58,18 @@ export const App: React.FC = () => {
   const [scannerOverlay, setScannerOverlay] = useState(false);
   const [fileTransferEnabled, setFileTransferEnabled] = useState(false);
 
+  const fetchServerConfig = useCallback((info: ConnectionInfo) => {
+    const httpBase = info.s.replace(/\/ws.*$/, '').replace('wss://', 'https://').replace('ws://', 'http://');
+    fetch(`${httpBase}/api/config`)
+      .then((response) => response.json())
+      .then((config) => {
+        setFileTransferEnabled(typeof config.fileTransfer === 'boolean' ? config.fileTransfer : false);
+      })
+      .catch(() => {
+        setFileTransferEnabled(false);
+      });
+  }, []);
+
   // Swipe state
   const touchStartRef = useRef<{ x: number; y: number; t: number } | null>(null);
   const swipeContainerRef = useRef<HTMLDivElement>(null);
@@ -93,12 +105,8 @@ export const App: React.FC = () => {
     connect(info);
     setActiveTab('input');
     setScannerOverlay(false);
-    // Fetch server config (file transfer toggle, etc.)
-    const httpBase = info.s.replace(/\/ws.*$/, '').replace('wss://', 'https://').replace('ws://', 'http://');
-    fetch(`${httpBase}/api/config`).then(r => r.json()).then(cfg => {
-      if (typeof cfg.fileTransfer === 'boolean') setFileTransferEnabled(cfg.fileTransfer);
-    }).catch(() => {});
-  }, [connect]);
+    fetchServerConfig(info);
+  }, [connect, fetchServerConfig]);
 
   // Auto-reconnect from localStorage on mount (survives page refresh)
   useEffect(() => {
@@ -108,6 +116,7 @@ export const App: React.FC = () => {
         const info = JSON.parse(raw) as ConnectionInfo;
         if (info.s && info.t && info.k) {
           connect(info);
+          fetchServerConfig(info);
         }
       }
     } catch { /* ignore */ }
@@ -124,6 +133,7 @@ export const App: React.FC = () => {
             const info = JSON.parse(raw) as ConnectionInfo;
             if (info.s && info.t && info.k) {
               connect(info);
+              fetchServerConfig(info);
             }
           }
         } catch { /* ignore */ }
@@ -131,7 +141,23 @@ export const App: React.FC = () => {
     };
     document.addEventListener('visibilitychange', handleVisibility);
     return () => document.removeEventListener('visibilitychange', handleVisibility);
-  }, [connectionState, connect]);
+  }, [connectionState, connect, fetchServerConfig]);
+
+  useEffect(() => {
+    if (connectionState !== 'connected') return;
+
+    try {
+      const raw = localStorage.getItem(CONN_KEY);
+      if (!raw) return;
+
+      const info = JSON.parse(raw) as ConnectionInfo;
+      if (info.s && info.t && info.k) {
+        fetchServerConfig(info);
+      }
+    } catch {
+      setFileTransferEnabled(false);
+    }
+  }, [connectionState, fetchServerConfig]);
 
   const handleSendCommand = useCallback((cmd: InputCommand) => {
     sendEncrypted(cmd);

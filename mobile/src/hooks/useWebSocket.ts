@@ -34,8 +34,38 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
   const reconnectTimerRef = useRef<number | null>(null);
   const handshakeTimerRef = useRef<number | null>(null);
   const intentionalCloseRef = useRef(false);
+  const suspendedRef = useRef(false);
   const connectionStateRef = useRef<ConnectionState>('disconnected');
   const encryptionReadyRef = useRef(false);
+  const incomingFilesRef = useRef(new Map<string, { fileName: string; mimeType: string; chunks: string[] }>());
+
+  const decodeBase64Chunk = useCallback((chunkData: string) => {
+    if (!chunkData) {
+      return new Uint8Array();
+    }
+
+    const binary = window.atob(chunkData);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) {
+      bytes[index] = binary.charCodeAt(index);
+    }
+
+    return bytes;
+  }, []);
+
+  const triggerFileDownload = useCallback((fileName: string, mimeType: string, chunks: string[]) => {
+    const blob = new Blob(chunks.map(decodeBase64Chunk), { type: mimeType || 'application/octet-stream' });
+    const downloadUrl = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = downloadUrl;
+    anchor.download = fileName || 'fluentia-download';
+    anchor.rel = 'noopener';
+    anchor.style.display = 'none';
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1500);
+  }, [decodeBase64Chunk]);
 
   const setEncryptionState = useCallback((ready: boolean) => {
     encryptionReadyRef.current = ready;
@@ -96,6 +126,7 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
   const cleanup = useCallback((clearConnectionInfo = false) => {
     clearReconnectTimer();
     clearHandshakeTimer();
+    incomingFilesRef.current.clear();
     if (wsRef.current) {
       intentionalCloseRef.current = true;
       closeSocket('cleanup');
@@ -223,6 +254,32 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
             sendEncryptedPayload(JSON.stringify({ type: 'handshake_ack' } satisfies InputCommand));
           } else if (parsed.type === 'clear') {
             setInputResetVersion((version) => version + 1);
+          } else if (parsed.type === 'file_start' && parsed.transferId) {
+            incomingFilesRef.current.set(parsed.transferId, {
+              fileName: parsed.fileName || 'fluentia-download',
+              mimeType: parsed.mimeType || 'application/octet-stream',
+              chunks: [],
+            });
+          } else if (parsed.type === 'file_chunk' && parsed.transferId) {
+            const transfer = incomingFilesRef.current.get(parsed.transferId) ?? {
+              fileName: parsed.fileName || 'fluentia-download',
+              mimeType: parsed.mimeType || 'application/octet-stream',
+              chunks: [],
+            };
+
+            transfer.chunks[parsed.chunkIndex ?? transfer.chunks.length] = parsed.chunkData || '';
+            incomingFilesRef.current.set(parsed.transferId, transfer);
+
+            if (parsed.isLast) {
+              triggerFileDownload(
+                transfer.fileName,
+                transfer.mimeType,
+                transfer.chunks.filter((chunk): chunk is string => typeof chunk === 'string'),
+              );
+              incomingFilesRef.current.delete(parsed.transferId);
+            }
+          } else if (parsed.type === 'file_abort' && parsed.transferId) {
+            incomingFilesRef.current.delete(parsed.transferId);
           }
         } catch {
           // Ignore malformed or stale encrypted payloads.
@@ -254,7 +311,7 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
         }
         break;
     }
-  }, [clearHandshakeTimer, closeSocket, sendEncryptedPayload, setEncryptionState, startHandshakeTimeout]);
+  }, [clearHandshakeTimer, closeSocket, sendEncryptedPayload, setEncryptionState, startHandshakeTimeout, triggerFileDownload]);
 
   const connectWs = useCallback((info: ConnectionInfo) => {
     cleanup();
@@ -275,6 +332,7 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
     wsRef.current = ws;
 
     ws.onopen = () => {
+      suspendedRef.current = false;
       reconnectAttemptRef.current = 0;
       ws.send(JSON.stringify({
         type: 'join_session',
@@ -299,6 +357,12 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
       clearHandshakeTimer();
 
       if (intentionalCloseRef.current) {
+        setConnectionState('disconnected');
+        connectionStateRef.current = 'disconnected';
+        return;
+      }
+
+      if (document.visibilityState !== 'visible' || suspendedRef.current) {
         setConnectionState('disconnected');
         connectionStateRef.current = 'disconnected';
         return;
@@ -358,10 +422,14 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
 
     const handleVisibility = () => {
       if (document.visibilityState !== 'visible') return;
+      suspendedRef.current = false;
       reconnectIfNeeded();
     };
 
-    const handleOnline = () => reconnectIfNeeded();
+    const handleOnline = () => {
+      suspendedRef.current = false;
+      reconnectIfNeeded();
+    };
 
     document.addEventListener('visibilitychange', handleVisibility);
     window.addEventListener('online', handleOnline);
@@ -376,8 +444,8 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
     const handlePageHide = () => {
       clearReconnectTimer();
       clearHandshakeTimer();
+      suspendedRef.current = true;
       if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
-      intentionalCloseRef.current = true;
       closeSocket('pagehide');
     };
 

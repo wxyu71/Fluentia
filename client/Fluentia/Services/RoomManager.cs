@@ -3,6 +3,12 @@ using Fluentia.Models;
 
 namespace Fluentia.Services;
 
+public sealed record PersistedDesktopSession(
+    string Token,
+    string PublicKey,
+    string PrivateKey,
+    bool TrustedSessionEstablished);
+
 /// <summary>
 /// Manages the session lifecycle: connect to server, create session, handle messages, key exchange.
 /// </summary>
@@ -39,6 +45,28 @@ public class RoomManager : IDisposable
     public int MaxFileMB => _maxFileMB;
     public bool IsConnected => _ws.IsConnected;
     public bool HasTrustedSession => _trustedSessionEstablished;
+
+    public PersistedDesktopSession? ExportPersistedSession()
+    {
+        if (string.IsNullOrWhiteSpace(_currentToken))
+        {
+            return null;
+        }
+
+        return new PersistedDesktopSession(
+            _currentToken,
+            _crypto.PublicKeyBase64,
+            _crypto.PrivateKeyBase64,
+            _trustedSessionEstablished);
+    }
+
+    public void RestorePersistedSession(PersistedDesktopSession session)
+    {
+        _currentToken = session.Token;
+        _crypto.ImportKeyPair(session.PublicKey, session.PrivateKey);
+        _trustedSessionEstablished = session.TrustedSessionEstablished;
+        _encryptionConfirmed = false;
+    }
 
     /// <summary>
     /// Send an encrypted command from PC to mobile.

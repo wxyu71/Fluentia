@@ -4,6 +4,8 @@ namespace Fluentia.Services;
 
 public static class LocalizationService
 {
+    private static string? _languageOverride;
+
     private static readonly IReadOnlyDictionary<string, string> English = new Dictionary<string, string>
     {
         ["AppName"] = "Fluentia",
@@ -43,7 +45,18 @@ public static class LocalizationService
         ["ReceivedFilesBody"] = "Choose where incoming files are written on this PC.",
         ["ButtonBrowse"] = "Browse",
         ["ButtonSaveSettings"] = "Save Settings",
+        ["ButtonSendFile"] = "Send File to Phone",
+        ["ButtonCreateNewSession"] = "Create New Pairing Session",
         ["BrowseDialogDescription"] = "Select the destination for received files",
+        ["DialogSelectFileTitle"] = "Choose a file to send",
+        ["DialogFileFilter"] = "All files|*.*",
+        ["SettingsLanguageTitle"] = "App language",
+        ["SettingsLanguageBody"] = "Choose the display language for the desktop client.",
+        ["LanguageSystem"] = "Follow system",
+        ["LanguageEnglish"] = "English",
+        ["LanguageChinese"] = "Simplified Chinese",
+        ["SettingsSessionTitle"] = "Pairing session",
+        ["SettingsSessionBody"] = "Create a fresh pairing session only when you need to rotate the current trusted secret.",
         ["ConnectionHintNoNetwork"] = "Reconnect this PC to the network before generating a pairing session.",
         ["ConnectionHintTrustedWaiting"] = "Your phone is already trusted. Fluentia is waiting for it to reconnect with the saved secret.",
         ["ConnectionHintEncrypted"] = "Your phone is paired and ready. Create a new session only when you want to invalidate the current secret.",
@@ -84,6 +97,12 @@ public static class LocalizationService
         ["StatusConnectionCodeCopied"] = "Connection code copied",
         ["StatusInvalidSavePath"] = "Invalid save path",
         ["StatusSettingsSaved"] = "Settings saved",
+        ["StatusSendingFileFormat"] = "Sending {0}",
+        ["StatusFileSentFormat"] = "Sent {0}",
+        ["StatusFileTooLargeFormat"] = "File exceeds the {0} MB server limit",
+        ["StatusFileTransferUnavailable"] = "File transfer is unavailable right now",
+        ["StatusFileSendFailed"] = "File transfer failed",
+        ["StatusSessionRecovered"] = "Recovered saved session",
         ["StatusErrorFormat"] = "Error: {0}",
         ["ConfirmDialogTitle"] = "Fluentia - Connection Request",
         ["ConfirmDialogHeaderTitle"] = "Connection Request",
@@ -140,7 +159,18 @@ public static class LocalizationService
         ["ReceivedFilesBody"] = "选择本机接收文件的保存位置。",
         ["ButtonBrowse"] = "浏览",
         ["ButtonSaveSettings"] = "保存设置",
+        ["ButtonSendFile"] = "发送文件到手机",
+        ["ButtonCreateNewSession"] = "创建新的配对会话",
         ["BrowseDialogDescription"] = "选择接收文件的保存位置",
+        ["DialogSelectFileTitle"] = "选择要发送的文件",
+        ["DialogFileFilter"] = "所有文件|*.*",
+        ["SettingsLanguageTitle"] = "应用语言",
+        ["SettingsLanguageBody"] = "选择桌面客户端显示语言。",
+        ["LanguageSystem"] = "跟随系统",
+        ["LanguageEnglish"] = "英语",
+        ["LanguageChinese"] = "简体中文",
+        ["SettingsSessionTitle"] = "配对会话",
+        ["SettingsSessionBody"] = "只有在你需要轮换当前受信任密钥时，才创建新的配对会话。",
         ["ConnectionHintNoNetwork"] = "请先让这台电脑重新联网，再生成配对会话。",
         ["ConnectionHintTrustedWaiting"] = "你的手机已经受信任，Fluentia 正在等待它用已保存的密钥重新连接。",
         ["ConnectionHintEncrypted"] = "你的手机已完成配对。如需使当前密钥失效，再创建新会话。",
@@ -181,6 +211,12 @@ public static class LocalizationService
         ["StatusConnectionCodeCopied"] = "连接码已复制",
         ["StatusInvalidSavePath"] = "保存路径无效",
         ["StatusSettingsSaved"] = "设置已保存",
+        ["StatusSendingFileFormat"] = "正在发送 {0}",
+        ["StatusFileSentFormat"] = "已发送 {0}",
+        ["StatusFileTooLargeFormat"] = "文件超过服务器 {0} MB 的限制",
+        ["StatusFileTransferUnavailable"] = "当前无法使用文件传输",
+        ["StatusFileSendFailed"] = "文件发送失败",
+        ["StatusSessionRecovered"] = "已恢复保存的会话",
         ["StatusErrorFormat"] = "错误: {0}",
         ["ConfirmDialogTitle"] = "Fluentia - 连接请求",
         ["ConfirmDialogHeaderTitle"] = "连接请求",
@@ -198,10 +234,48 @@ public static class LocalizationService
         ["MessageEnterServerUrl"] = "请输入服务器地址。",
     };
 
+    public static string CurrentLanguageSetting => _languageOverride ?? "system";
+
+    private static CultureInfo ActiveCulture =>
+        string.IsNullOrWhiteSpace(_languageOverride)
+            ? CultureInfo.CurrentUICulture
+            : new CultureInfo(_languageOverride);
+
     private static IReadOnlyDictionary<string, string> Current =>
-        CultureInfo.CurrentUICulture.Name.StartsWith("zh", StringComparison.OrdinalIgnoreCase)
+        ActiveCulture.Name.StartsWith("zh", StringComparison.OrdinalIgnoreCase)
             ? Chinese
             : English;
+
+    public static void SetLanguagePreference(string? language)
+    {
+        _languageOverride = NormalizeLanguage(language);
+
+        if (_languageOverride == null)
+        {
+            CultureInfo.DefaultThreadCurrentUICulture = null;
+            CultureInfo.DefaultThreadCurrentCulture = null;
+            return;
+        }
+
+        var culture = new CultureInfo(_languageOverride);
+        CultureInfo.DefaultThreadCurrentUICulture = culture;
+        CultureInfo.DefaultThreadCurrentCulture = culture;
+    }
+
+    private static string? NormalizeLanguage(string? language)
+    {
+        if (string.IsNullOrWhiteSpace(language) || language.Equals("system", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        if (language.StartsWith("zh", StringComparison.OrdinalIgnoreCase))
+        {
+            return "zh-CN";
+        }
+
+        return "en";
+    }
 
     public static string Get(string key, params object[] args)
     {

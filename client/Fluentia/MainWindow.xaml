@@ -22,7 +22,7 @@
             Effect="{DynamicResource CardShadow}">
         <Grid ClipToBounds="True">
             <Grid.RowDefinitions>
-                <RowDefinition Height="52"/>
+                <RowDefinition Height="48"/>
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
 
@@ -38,9 +38,13 @@
                     </Grid.ColumnDefinitions>
 
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <Border x:Name="BtnClose" Width="14" Height="14" CornerRadius="7"
-                                Background="#FF5F57" Margin="0,0,8,0" Cursor="Hand"
-                                MouseLeftButtonDown="TrafficClose_Click"
+                        <Button x:Name="BtnClose"
+                                Width="18"
+                                Height="18"
+                                Margin="0,0,8,0"
+                                Background="#FF5F57"
+                                Style="{StaticResource TrafficLightButton}"
+                                Click="TrafficClose_Click"
                                 ToolTip="Hide to notification area">
                             <Path x:Name="CloseX"
                                   Data="M4,4 L10,10 M10,4 L4,10"
@@ -49,10 +53,14 @@
                                   HorizontalAlignment="Center"
                                   VerticalAlignment="Center"
                                   Visibility="Collapsed"/>
-                        </Border>
-                        <Border x:Name="BtnMinimize" Width="14" Height="14" CornerRadius="7"
-                                Background="#FEBC2E" Margin="0,0,8,0" Cursor="Hand"
-                                MouseLeftButtonDown="TrafficMinimize_Click"
+                        </Button>
+                        <Button x:Name="BtnMinimize"
+                                Width="18"
+                                Height="18"
+                                Margin="0,0,8,0"
+                                Background="#FEBC2E"
+                                Style="{StaticResource TrafficLightButton}"
+                                Click="TrafficMinimize_Click"
                                 ToolTip="Minimize">
                             <Path x:Name="MinLine"
                                   Data="M3,7 L11,7"
@@ -61,10 +69,13 @@
                                   HorizontalAlignment="Center"
                                   VerticalAlignment="Center"
                                   Visibility="Collapsed"/>
-                        </Border>
-                        <Border x:Name="BtnMaximize" Width="14" Height="14" CornerRadius="7"
-                                Background="#28C840" Cursor="Hand"
-                                MouseLeftButtonDown="TrafficMaximize_Click"
+                        </Button>
+                        <Button x:Name="BtnMaximize"
+                                Width="18"
+                                Height="18"
+                                Background="#28C840"
+                                Style="{StaticResource TrafficLightButton}"
+                                Click="TrafficMaximize_Click"
                                 ToolTip="Maximize or restore">
                             <Path x:Name="MaxDiamond"
                                   Data="M3,7 L7,3 L11,7 L7,11 Z"
@@ -73,13 +84,13 @@
                                   HorizontalAlignment="Center"
                                   VerticalAlignment="Center"
                                   Visibility="Collapsed"/>
-                        </Border>
+                        </Button>
                     </StackPanel>
 
                     <StackPanel Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center">
                         <TextBlock x:Name="TitleLabel"
                                    Text="Fluentia"
-                                   FontSize="14"
+                                   FontSize="15"
                                    FontFamily="Segoe UI Variable Display"
                                    FontWeight="SemiBold"
                                    Foreground="{DynamicResource TextPrimaryBrush}"
@@ -87,6 +98,7 @@
                                    MouseLeftButtonDown="Title_DevTap"/>
                         <TextBlock x:Name="TitleSubtitleText"
                                    Text="Windows relay"
+                                   Visibility="Collapsed"
                                    FontSize="11"
                                    Foreground="{DynamicResource TextTertiaryBrush}"
                                    HorizontalAlignment="Center"/>
@@ -148,28 +160,32 @@
                                                    Foreground="{DynamicResource TextSecondaryBrush}"
                                                    Margin="0,8,0,0"
                                                    TextWrapping="Wrap"/>
-                                        <StackPanel Orientation="Horizontal" Margin="0,18,0,0" VerticalAlignment="Center">
-                                            <Ellipse x:Name="StatusDot" Width="10" Height="10" Margin="0,0,10,0">
-                                                <Ellipse.Fill>
-                                                    <SolidColorBrush Color="{StaticResource Danger}"/>
-                                                </Ellipse.Fill>
-                                            </Ellipse>
+                                    </StackPanel>
+
+                                    <Border x:Name="StatusBadge"
+                                            Grid.Column="1"
+                                            Background="{DynamicResource BgInputBrush}"
+                                            BorderBrush="{DynamicResource DividerBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="14"
+                                            Padding="12,8"
+                                            Margin="18,0,0,0"
+                                            VerticalAlignment="Top">
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Rectangle x:Name="StatusIndicator"
+                                                       Width="8"
+                                                       Height="8"
+                                                       RadiusX="2"
+                                                       RadiusY="2"
+                                                       Margin="0,0,8,0"
+                                                       Fill="{DynamicResource DangerBrush}"/>
                                             <TextBlock x:Name="StatusText"
                                                        Text="Not connected"
                                                        FontSize="13"
                                                        FontWeight="SemiBold"
                                                        Foreground="{DynamicResource TextPrimaryBrush}"/>
                                         </StackPanel>
-                                    </StackPanel>
-
-                                    <Button Grid.Column="1"
-                                            x:Name="NewSessionBtn"
-                                            Content="New Session"
-                                            Style="{StaticResource SecondaryButton}"
-                                            Click="Refresh_Click"
-                                            Padding="16,10"
-                                            Margin="18,0,0,0"
-                                            VerticalAlignment="Top"/>
+                                    </Border>
                                 </Grid>
                             </Border>
 
@@ -208,6 +224,13 @@
                                                 Click="Connect_Click"
                                                 MinWidth="108"/>
                                     </Grid>
+                                    <Button x:Name="SendFileButton"
+                                            Content="Send File to Phone"
+                                            Margin="0,14,0,0"
+                                            HorizontalAlignment="Right"
+                                            Style="{StaticResource SecondaryButton}"
+                                            Visibility="Collapsed"
+                                            Click="SendFile_Click"/>
                                 </StackPanel>
                             </Border>
 
@@ -440,6 +463,62 @@
                                                       Style="{StaticResource SwitchCheckBoxStyle}"
                                                       VerticalAlignment="Top"/>
                                         </Grid>
+                                    </StackPanel>
+                                </Border>
+
+                                <Border Background="{DynamicResource BgInputBrush}"
+                                        BorderBrush="{DynamicResource DividerBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="18"
+                                        Padding="18"
+                                        Margin="0,0,0,14">
+                                    <StackPanel>
+                                        <TextBlock x:Name="LanguageTitleText"
+                                                   Text="App language"
+                                                   FontSize="14"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                        <TextBlock x:Name="LanguageBodyText"
+                                                   Text="Choose the display language for the desktop client."
+                                                   FontSize="12"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                   Margin="0,6,0,0"
+                                                   TextWrapping="Wrap"/>
+                                        <ComboBox x:Name="LanguageSelector"
+                                                  Margin="0,14,0,0"
+                                                  Style="{StaticResource DarkComboBox}"
+                                                  SelectionChanged="LanguageSelector_SelectionChanged">
+                                            <ComboBoxItem x:Name="LanguageSystemOption" Tag="system"/>
+                                            <ComboBoxItem x:Name="LanguageEnglishOption" Tag="en"/>
+                                            <ComboBoxItem x:Name="LanguageChineseOption" Tag="zh-CN"/>
+                                        </ComboBox>
+                                    </StackPanel>
+                                </Border>
+
+                                <Border Background="{DynamicResource BgInputBrush}"
+                                        BorderBrush="{DynamicResource DividerBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="18"
+                                        Padding="18"
+                                        Margin="0,0,0,14">
+                                    <StackPanel>
+                                        <TextBlock x:Name="SessionTitleText"
+                                                   Text="Pairing session"
+                                                   FontSize="14"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                        <TextBlock x:Name="SessionBodyText"
+                                                   Text="Create a fresh pairing session only when you need to rotate the current trusted secret."
+                                                   FontSize="12"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                   Margin="0,6,0,0"
+                                                   TextWrapping="Wrap"/>
+                                        <Button x:Name="NewSessionSettingsButton"
+                                                Content="Create New Pairing Session"
+                                                Margin="0,14,0,0"
+                                                HorizontalAlignment="Left"
+                                                Style="{StaticResource SecondaryButton}"
+                                                Click="Refresh_Click"/>
                                     </StackPanel>
                                 </Border>
 

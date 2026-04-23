@@ -25,9 +25,18 @@ public class CryptoService
     }
 
     public string PublicKeyBase64 => Convert.ToBase64String(_keyPair.PublicKey);
+    public string PrivateKeyBase64 => Convert.ToBase64String(_keyPair.PrivateKey);
     public bool IsReady => _peerPublicKey != null;
     public bool RatchetReady => _ratchetReady;
     public bool SendRatchetReady => _sendRatchetReady;
+
+    public void ImportKeyPair(string publicKeyBase64, string privateKeyBase64)
+    {
+        _keyPair = new KeyPair(
+            Convert.FromBase64String(publicKeyBase64),
+            Convert.FromBase64String(privateKeyBase64));
+        ResetPeerState();
+    }
 
     public void SetPeerPublicKey(string base64Key)
     {
