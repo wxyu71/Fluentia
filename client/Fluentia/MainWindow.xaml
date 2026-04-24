@@ -457,6 +457,14 @@
                                                             Background="#1C31C96B"
                                                             CornerRadius="15"
                                                             Visibility="Collapsed">
+                                                        <Border.RenderTransform>
+                                                            <ScaleTransform x:Name="TransferSuccessBadgeScaleTransform"
+                                                                            ScaleX="1"
+                                                                            ScaleY="1"/>
+                                                        </Border.RenderTransform>
+                                                        <Border.RenderTransformOrigin>
+                                                            0.5,0.5
+                                                        </Border.RenderTransformOrigin>
                                                         <TextBlock Text="✓"
                                                                    FontSize="14"
                                                                    FontWeight="SemiBold"

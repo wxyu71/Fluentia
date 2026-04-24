@@ -146,7 +146,7 @@ export const TransferStatusCard: React.FC<TransferStatusCardProps> = ({
         />
       </div>
 
-      {expanded && showExpand && (
+      <div className={`transfer-details-shell ${expanded && showExpand ? 'expanded' : ''}`}>
         <div className="transfer-details">
           {batch.files.map((file, index) => (
             <div
@@ -164,7 +164,7 @@ export const TransferStatusCard: React.FC<TransferStatusCardProps> = ({
             </div>
           ))}
         </div>
-      )}
+      </div>
     </div>
   );
 };

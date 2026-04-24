@@ -943,6 +943,7 @@ public partial class MainWindow : Window
         var isSend = _transferProgressBatch.Direction == "send";
         var isCompleted = _transferProgressBatch.Files.All(file => file.Status == "completed");
         var isCancelled = _transferProgressBatch.Files.All(file => file.Status == "cancelled");
+        var badgeWasVisible = TransferSuccessBadge.Visibility == Visibility.Visible;
 
         TransferProgressTitleText.Text = isCompleted
             ? L(isSend ? "TransferUploadedFilesFormat" : "TransferReceivedFilesFormat", fileCount)
@@ -977,6 +978,15 @@ public partial class MainWindow : Window
         TransferProgressLine.Opacity = isCompleted ? 0 : 1;
 
         TransferSuccessBadge.Visibility = isCompleted ? Visibility.Visible : Visibility.Collapsed;
+        if (isCompleted && !badgeWasVisible)
+        {
+            var popAnimation = new DoubleAnimationUsingKeyFrames();
+            popAnimation.KeyFrames.Add(new EasingDoubleKeyFrame(0.35, KeyTime.FromTimeSpan(TimeSpan.Zero)));
+            popAnimation.KeyFrames.Add(new EasingDoubleKeyFrame(1.08, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(180))));
+            popAnimation.KeyFrames.Add(new EasingDoubleKeyFrame(1, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(300))));
+            TransferSuccessBadgeScaleTransform.BeginAnimation(ScaleTransform.ScaleXProperty, popAnimation);
+            TransferSuccessBadgeScaleTransform.BeginAnimation(ScaleTransform.ScaleYProperty, popAnimation);
+        }
 
         TransferPauseButton.Visibility = isSend && !isCompleted && !isCancelled ? Visibility.Visible : Visibility.Collapsed;
         TransferCancelButton.Visibility = isSend && !isCompleted && !isCancelled ? Visibility.Visible : Visibility.Collapsed;
@@ -1002,6 +1012,8 @@ public partial class MainWindow : Window
         }
 
         TransferProgressDetailsPanel.Visibility = Visibility.Visible;
+    TransferProgressDetailsPanel.Opacity = 0;
+    TransferProgressDetailsPanel.RenderTransform = new TranslateTransform(0, 8);
 
         foreach (var file in _transferProgressBatch.Files)
         {
@@ -1059,6 +1071,25 @@ public partial class MainWindow : Window
 
             row.Child = grid;
             TransferProgressDetailsPanel.Children.Add(row);
+        }
+
+        TransferProgressDetailsPanel.BeginAnimation(OpacityProperty, new DoubleAnimation
+        {
+            From = 0,
+            To = 1,
+            Duration = TimeSpan.FromMilliseconds(200),
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut },
+        });
+
+        if (TransferProgressDetailsPanel.RenderTransform is TranslateTransform translate)
+        {
+            translate.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation
+            {
+                From = 8,
+                To = 0,
+                Duration = TimeSpan.FromMilliseconds(220),
+                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut },
+            });
         }
     }
 

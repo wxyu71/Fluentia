@@ -253,6 +253,8 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
           setConnectionState('disconnected');
           connectionStateRef.current = 'disconnected';
         } else if (msg.role === 'pc') {
+          setConnectionState('connecting');
+          connectionStateRef.current = 'connecting';
           setPendingStatus('Waiting for your PC');
         }
         break;
@@ -542,8 +544,15 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
   }, [cleanup]);
 
   const sendEncrypted = useCallback((cmd: InputCommand) => {
-    sendEncryptedPayload(JSON.stringify(cmd));
-  }, [sendEncryptedPayload]);
+    const sent = sendEncryptedPayload(JSON.stringify(cmd));
+    if (!sent) {
+      setPeerConnected(false);
+      setEncryptionState(false);
+      setPendingStatus('Waiting for your PC');
+      setConnectionState('connecting');
+      connectionStateRef.current = 'connecting';
+    }
+  }, [sendEncryptedPayload, setEncryptionState]);
 
   useEffect(() => {
     const reconnectIfNeeded = () => {
