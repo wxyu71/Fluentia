@@ -3,12 +3,10 @@ import {
   CheckIcon,
   CloseIcon,
   CollapseIcon,
-  DownloadIcon,
   ExpandIcon,
   MoreIcon,
   PauseIcon,
   ResendIcon,
-  UploadIcon,
 } from './Icons';
 import type { TransferBatchProgress, TransferFileProgress } from '../types';
 
@@ -98,51 +96,52 @@ export const TransferStatusCard: React.FC<TransferStatusCardProps> = ({
     <div className={`transfer-card ${batch.status === 'completed' ? 'is-complete' : ''} ${batch.status === 'paused' ? 'is-paused' : ''}`}>
       <div className="transfer-card-inner">
         <div className="transfer-copy">
-          <div className="transfer-title-row">
-            <span className={`transfer-direction-chip ${batch.direction}`}>
-              {batch.direction === 'upload' ? <UploadIcon size={14} /> : <DownloadIcon size={14} />}
-              {batch.direction === 'upload' ? 'Send' : 'Receive'}
-            </span>
-            <div className="transfer-title">{title}</div>
-          </div>
-          <div className="transfer-subtitle">
-            {summary.percent}% · {summary.secondaryText}
-          </div>
-        </div>
-
-        <div className="transfer-actions" aria-hidden={!showActions && !showExpand}>
-          {showPause && (
-            <button type="button" className={`transfer-action-btn transfer-action-morph ${batch.status === 'paused' ? 'is-paused' : ''}`} onClick={onPauseToggle} aria-label={batch.status === 'paused' ? 'Resume transfer' : 'Pause transfer'}>
-              <span className="transfer-morph-icon" aria-hidden="true">
-                <span className="transfer-morph-layer pause-layer">
-                  <PauseIcon size={16} />
-                </span>
-                <span className="transfer-morph-layer resume-layer">
-                  <ResendIcon size={14} />
-                </span>
-              </span>
-            </button>
-          )}
-          {showCancel && (
-            <button type="button" className="transfer-action-btn" onClick={onCancel} aria-label="Cancel transfer">
-              <CloseIcon size={14} />
-            </button>
-          )}
-          {showExpand && (
-            <button type="button" className="transfer-action-btn" onClick={() => setExpanded((value) => !value)} aria-label={expanded ? 'Collapse transfer details' : 'Expand transfer details'}>
-              {expanded ? <CollapseIcon size={15} /> : <ExpandIcon size={15} />}
-            </button>
-          )}
-          {showActions && (
-            <button type="button" className="transfer-action-btn muted" aria-label="More options" disabled>
-              <MoreIcon size={14} />
-            </button>
-          )}
-          {showSuccess && (
-            <div className="transfer-success-mark" aria-hidden="true">
-              <CheckIcon size={16} />
+          <div className="transfer-title">{title}</div>
+          {!showSuccess && (
+            <div className="transfer-subtitle">
+              {summary.percent}% · {summary.secondaryText}
             </div>
           )}
+        </div>
+
+        <div className="transfer-action-rail" aria-hidden={!showActions && !showExpand}>
+          <div className="transfer-actions hover-actions">
+            {showPause && (
+              <button type="button" className={`transfer-action-btn transfer-action-morph ${batch.status === 'paused' ? 'is-paused' : ''}`} onClick={onPauseToggle} aria-label={batch.status === 'paused' ? 'Resume transfer' : 'Pause transfer'}>
+                <span className="transfer-morph-icon" aria-hidden="true">
+                  <span className="transfer-morph-layer pause-layer">
+                    <PauseIcon size={16} />
+                  </span>
+                  <span className="transfer-morph-layer resume-layer">
+                    <ResendIcon size={14} />
+                  </span>
+                </span>
+              </button>
+            )}
+            {showCancel && (
+              <button type="button" className="transfer-action-btn" onClick={onCancel} aria-label="Cancel transfer">
+                <CloseIcon size={14} />
+              </button>
+            )}
+          </div>
+
+          <div className="transfer-actions static-actions">
+            {showExpand && (
+              <button type="button" className="transfer-action-btn icon-plain" onClick={() => setExpanded((value) => !value)} aria-label={expanded ? 'Collapse transfer details' : 'Expand transfer details'}>
+                {expanded ? <CollapseIcon size={15} /> : <ExpandIcon size={15} />}
+              </button>
+            )}
+            {!showSuccess && (
+              <button type="button" className="transfer-action-btn icon-plain muted" aria-label="More options" disabled>
+                <MoreIcon size={14} />
+              </button>
+            )}
+            {showSuccess && (
+              <div className="transfer-success-mark" aria-hidden="true">
+                <CheckIcon size={16} />
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

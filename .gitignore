@@ -7,6 +7,8 @@ coverage/
 .vscode/
 .github/
 .idea/
+video-frames/
+*.mp4
 *.log
 *.tmp
 *.bak
