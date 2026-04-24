@@ -2176,7 +2176,9 @@ public partial class MainWindow : Window
             else
             {
                 using var stream = File.OpenRead(filePath);
-                var buffer = new byte[chunkSize];
+                var effectiveChunkSize = fileInfo.Length <= 3 * 1024 * 1024 ? 8 * 1024 : chunkSize;
+                var interChunkDelayMs = fileInfo.Length <= 3 * 1024 * 1024 ? 12 : 4;
+                var buffer = new byte[effectiveChunkSize];
                 var chunkIndex = 0;
                 int bytesRead;
 
@@ -2212,10 +2214,7 @@ public partial class MainWindow : Window
 
                     UpdateTransferProgress(uiFileId, stream.Position, stream.Position == stream.Length ? "completed" : (_outgoingTransferPaused ? "paused" : "active"));
 
-                    if (chunkIndex % 2 == 0)
-                    {
-                        await Task.Delay(12);
-                    }
+                    await Task.Delay(interChunkDelayMs);
                 }
             }
 

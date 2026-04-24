@@ -151,6 +151,8 @@ export const FileTransfer = forwardRef<FileTransferHandle, FileTransferProps>(
       for (const [index, file] of files.entries()) {
         const transferId = transferFiles[index].id;
         const fileStartedAt = Date.now();
+        const chunkSize = file.size <= 3 * 1024 * 1024 ? 8 * 1024 : CHUNK_SIZE;
+        const interChunkDelayMs = file.size <= 3 * 1024 * 1024 ? 12 : 4;
 
         updateBatch((current) => current ? {
           ...current,
@@ -170,7 +172,7 @@ export const FileTransfer = forwardRef<FileTransferHandle, FileTransferProps>(
           mimeType: file.type || 'application/octet-stream',
         });
 
-        const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+        const totalChunks = Math.ceil(file.size / chunkSize);
         const arrayBuffer = await file.arrayBuffer();
         const bytes = new Uint8Array(arrayBuffer);
 
@@ -205,8 +207,8 @@ export const FileTransfer = forwardRef<FileTransferHandle, FileTransferProps>(
 
           await waitWhilePaused();
 
-          const start = chunkIndex * CHUNK_SIZE;
-          const end = Math.min(start + CHUNK_SIZE, file.size);
+          const start = chunkIndex * chunkSize;
+          const end = Math.min(start + chunkSize, file.size);
           const chunk = bytes.slice(start, end);
           const b64 = btoa(String.fromCharCode(...chunk));
           onSendCommand({ type: 'file_chunk', transferId, chunkIndex, chunkData: b64, isLast: chunkIndex === totalChunks - 1 });
@@ -226,9 +228,7 @@ export const FileTransfer = forwardRef<FileTransferHandle, FileTransferProps>(
                 : item),
           } : current);
 
-          if (chunkIndex % 2 === 1) {
-            await new Promise((resolve) => setTimeout(resolve, 10));
-          }
+          await new Promise((resolve) => setTimeout(resolve, interChunkDelayMs));
         }
       }
 
