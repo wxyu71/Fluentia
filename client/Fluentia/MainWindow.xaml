@@ -484,12 +484,16 @@
                                                 </StackPanel>
                                             </Grid>
 
-                                            <Grid Height="3"
+                                                <Grid Height="12"
                                                   Margin="0,16,0,0">
                                                 <Border Background="#1E6B55E7"
-                                                        CornerRadius="2"/>
+                                                    Height="3"
+                                                    VerticalAlignment="Center"
+                                                    CornerRadius="2"/>
                                                 <Border x:Name="TransferProgressLine"
                                                     Background="#FF6B55E7"
+                                                    Height="3"
+                                                    VerticalAlignment="Center"
                                                         CornerRadius="2"
                                                         RenderTransformOrigin="0,0.5">
                                                     <Border.RenderTransform>
@@ -497,6 +501,15 @@
                                                                         ScaleX="0"/>
                                                     </Border.RenderTransform>
                                                 </Border>
+                                                <Path x:Name="TransferProgressSlackLine"
+                                                      Visibility="Collapsed"
+                                                      Stroke="#FF6B55E7"
+                                                      StrokeThickness="2"
+                                                      Stretch="Fill"
+                                                      Height="10"
+                                                      VerticalAlignment="Center"
+                                                      Opacity="0"
+                                                      Data="M 0,3 C 26,10 52,10 78,3 S 130,-4 156,3 S 208,10 234,3"/>
                                             </Grid>
 
                                             <StackPanel x:Name="TransferProgressDetailsPanel"

@@ -972,10 +972,24 @@ public partial class MainWindow : Window
         }
 
         TransferProgressScaleTransform.ScaleX = percent / 100d;
-        TransferProgressLine.Background = new SolidColorBrush(_outgoingTransferPaused && isSend
+        var showSlackLine = _outgoingTransferPaused && isSend && !isCompleted && !isCancelled;
+        TransferProgressLine.Background = new SolidColorBrush(showSlackLine
                 ? (Color)System.Windows.Media.ColorConverter.ConvertFromString("#FF8B77FF")!
                 : (Color)System.Windows.Media.ColorConverter.ConvertFromString("#FF6B55E7")!);
-        TransferProgressLine.Opacity = isCompleted ? 0 : 1;
+        TransferProgressLine.BeginAnimation(OpacityProperty, new DoubleAnimation
+        {
+            To = isCompleted ? 0 : (showSlackLine ? 0 : 1),
+            Duration = TimeSpan.FromMilliseconds(180),
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut },
+        });
+
+        TransferProgressSlackLine.Visibility = showSlackLine ? Visibility.Visible : Visibility.Collapsed;
+        TransferProgressSlackLine.BeginAnimation(OpacityProperty, new DoubleAnimation
+        {
+            To = showSlackLine ? 1 : 0,
+            Duration = TimeSpan.FromMilliseconds(180),
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut },
+        });
 
         TransferSuccessBadge.Visibility = isCompleted ? Visibility.Visible : Visibility.Collapsed;
         if (isCompleted && !badgeWasVisible)
@@ -1023,7 +1037,9 @@ public partial class MainWindow : Window
                 Background = new SolidColorBrush((Color)System.Windows.Media.ColorConverter.ConvertFromString("#FFF0F3FB")!),
                 Padding = new Thickness(12, 10, 12, 10),
                 Margin = new Thickness(0, 0, 0, 8),
+                Opacity = 0,
             };
+            row.RenderTransform = new TranslateTransform(0, 10);
 
             var grid = new Grid();
             grid.ColumnDefinitions.Add(new ColumnDefinition());
@@ -1088,6 +1104,33 @@ public partial class MainWindow : Window
                 From = 8,
                 To = 0,
                 Duration = TimeSpan.FromMilliseconds(220),
+                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut },
+            });
+        }
+
+        for (var index = 0; index < TransferProgressDetailsPanel.Children.Count; index += 1)
+        {
+            if (TransferProgressDetailsPanel.Children[index] is not Border row || row.RenderTransform is not TranslateTransform rowTranslate)
+            {
+                continue;
+            }
+
+            var delay = TimeSpan.FromMilliseconds(index * 45);
+            row.BeginAnimation(OpacityProperty, new DoubleAnimation
+            {
+                BeginTime = delay,
+                From = 0,
+                To = 1,
+                Duration = TimeSpan.FromMilliseconds(180),
+                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut },
+            });
+
+            rowTranslate.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation
+            {
+                BeginTime = delay,
+                From = 10,
+                To = 0,
+                Duration = TimeSpan.FromMilliseconds(200),
                 EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut },
             });
         }
@@ -1925,6 +1968,25 @@ public partial class MainWindow : Window
         }
 
         _outgoingTransferPaused = !_outgoingTransferPaused;
+        var nextGlyph = _outgoingTransferPaused ? "↻" : "⏸";
+        var fadeOut = new DoubleAnimation
+        {
+            To = 0,
+            Duration = TimeSpan.FromMilliseconds(90),
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut },
+        };
+        fadeOut.Completed += (_, _) =>
+        {
+            TransferPauseGlyph.Text = nextGlyph;
+            TransferPauseGlyph.BeginAnimation(OpacityProperty, new DoubleAnimation
+            {
+                To = 1,
+                Duration = TimeSpan.FromMilliseconds(120),
+                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut },
+            });
+        };
+        TransferPauseGlyph.BeginAnimation(OpacityProperty, fadeOut);
+
         if (!_outgoingTransferPaused)
         {
             _outgoingTransferResumeTcs?.TrySetResult(true);

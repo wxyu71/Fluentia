@@ -113,7 +113,14 @@ export const TransferStatusCard: React.FC<TransferStatusCardProps> = ({
         <div className="transfer-actions" aria-hidden={!showActions && !showExpand}>
           {showPause && (
             <button type="button" className={`transfer-action-btn transfer-action-morph ${batch.status === 'paused' ? 'is-paused' : ''}`} onClick={onPauseToggle} aria-label={batch.status === 'paused' ? 'Resume transfer' : 'Pause transfer'}>
-              {batch.status === 'paused' ? <ResendIcon size={14} /> : <PauseIcon size={16} />}
+              <span className="transfer-morph-icon" aria-hidden="true">
+                <span className="transfer-morph-layer pause-layer">
+                  <PauseIcon size={16} />
+                </span>
+                <span className="transfer-morph-layer resume-layer">
+                  <ResendIcon size={14} />
+                </span>
+              </span>
             </button>
           )}
           {showCancel && (
