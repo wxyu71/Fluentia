@@ -29,6 +29,7 @@ public class RoomManager : IDisposable
     public event Action<string>? OnMobileConnected;    // deviceId
     public event Action? OnMobileDisconnected;
     public event Action? OnEncryptionReady;
+    public event Action? OnSessionRecovered;
     public event Action<InputCommand>? OnInputCommand;
     public event Action<string>? OnStatusChanged;
     public event Action<string>? OnError;
@@ -71,9 +72,9 @@ public class RoomManager : IDisposable
     /// <summary>
     /// Send an encrypted command from PC to mobile.
     /// </summary>
-    public async Task SendToMobileAsync(string jsonPayload)
+    public async Task<bool> SendToMobileAsync(string jsonPayload)
     {
-        if (!_encryptionConfirmed || !_ws.IsConnected) return;
+        if (!_encryptionConfirmed || !_ws.IsConnected) return false;
 
         try
         {
@@ -89,8 +90,12 @@ public class RoomManager : IDisposable
                 msg = new WsMessage { Type = MsgTypes.Encrypted, Payload = payload, Nonce = nonce };
             }
             await _ws.SendAsync(msg);
+            return true;
         }
-        catch { /* best-effort */ }
+        catch
+        {
+            return false;
+        }
     }
 
     public RoomManager()
@@ -252,6 +257,7 @@ public class RoomManager : IDisposable
                 // Successfully reclaimed session within grace period.
                 _rejoinPending = false;
                 OnStatusChanged?.Invoke($"Reconnected to session: {msg.Token?[..8]}...");
+                OnSessionRecovered?.Invoke();
                 // Token is the same, crypto keys are the same — mobile is still connected.
                 // If mobile is connected, server will send peer_joined.
                 // If mobile was disconnected, PC keeps waiting.

@@ -121,6 +121,7 @@
 
             <Grid Grid.Row="1" ClipToBounds="True">
                 <Border x:Name="SettingsScrim"
+                    Panel.ZIndex="1"
                         Visibility="Collapsed"
                         Opacity="0"
                         Background="{DynamicResource OverlayBrush}"
@@ -224,13 +225,6 @@
                                                 Click="Connect_Click"
                                                 MinWidth="108"/>
                                     </Grid>
-                                    <Button x:Name="SendFileButton"
-                                            Content="Send File to Phone"
-                                            Margin="0,14,0,0"
-                                            HorizontalAlignment="Right"
-                                            Style="{StaticResource SecondaryButton}"
-                                            Visibility="Collapsed"
-                                            Click="SendFile_Click"/>
                                 </StackPanel>
                             </Border>
 
@@ -244,6 +238,7 @@
                                     <Grid Margin="0,0,0,14">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
                                         <StackPanel>
@@ -259,7 +254,15 @@
                                                        Foreground="{DynamicResource TextSecondaryBrush}"
                                                        Margin="0,4,0,0"/>
                                         </StackPanel>
-                                        <Button Grid.Column="1"
+                                            <Button Grid.Column="1"
+                                                x:Name="SendFileButton"
+                                                Content="Send Files to Phone"
+                                                Style="{StaticResource SecondaryButton}"
+                                                Visibility="Collapsed"
+                                                Click="SendFile_Click"
+                                                Padding="16,10"
+                                                Margin="0,0,10,0"/>
+                                            <Button Grid.Column="2"
                                                 x:Name="QrExpandBtn"
                                                 Content="Show QR Code"
                                                 Style="{StaticResource SecondaryButton}"
@@ -382,6 +385,7 @@
                 </Grid>
 
                 <Border x:Name="SettingsPanel"
+                    Panel.ZIndex="2"
                         Width="340"
                         HorizontalAlignment="Right"
                         Background="{DynamicResource BgPanelBrush}"

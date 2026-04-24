@@ -43,6 +43,7 @@ public partial class MainWindow : Window
     private MenuItem? _trayExitItem;
     private DispatcherTimer? _sessionTimer;
     private DispatcherTimer? _disconnectTimer;
+    private DispatcherTimer? _receivedFilesRevealTimer;
 
     private DateTime _sessionCreatedAt;
     private DateTime _sessionExpiresAt;
@@ -102,6 +103,7 @@ public partial class MainWindow : Window
     private static readonly string SettingsFile = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "Fluentia", "settings.json");
+    private static readonly string TrayIconSourceFile = Path.Combine(AppContext.BaseDirectory, "fluentia-icon-source.png");
 
     private static string L(string key, params object[] args) => LocalizationService.Get(key, args);
 
@@ -154,15 +156,7 @@ public partial class MainWindow : Window
                 _inputTargetWindow = IntPtr.Zero;
             }
 
-            if (!connected && !CanUseConfiguredServer())
-            {
-                SetStatus(L("StatusNetworkDisconnected"), false);
-            }
-            else if (connected && _roomManager.CurrentToken == null)
-            {
-                SetStatus(L("StatusPreparingSession"), false);
-            }
-
+            RefreshStatusFromState();
             RefreshVisualState();
         });
 
@@ -265,6 +259,27 @@ public partial class MainWindow : Window
             RefreshVisualState();
             Hide();
             _ = Dispatcher.BeginInvoke(RestorePreviousExternalWindow, DispatcherPriority.ApplicationIdle);
+        });
+
+        _roomManager.OnSessionRecovered += () => Dispatcher.Invoke(async () =>
+        {
+            _qrVisible = true;
+
+            if (_sessionCreatedAt == default)
+            {
+                _sessionCreatedAt = DateTime.Now;
+                _sessionExpiresAt = _sessionCreatedAt.AddDays(_roomManager.SessionMaxAgeDays);
+            }
+
+            UpdateQRCode();
+            UpdateSessionCountdown();
+            RefreshStatusFromState();
+            RefreshVisualState();
+
+            if (!_roomManager.HasTrustedSession)
+            {
+                await _roomManager.RequestDeviceCode();
+            }
         });
 
         _roomManager.OnInputCommand += (cmd) => _cmdChannel.Writer.TryWrite(cmd);
@@ -614,6 +629,7 @@ public partial class MainWindow : Window
             case "file_start":
                 if (!string.IsNullOrEmpty(cmd.TransferId))
                 {
+                    CancelPendingReceivedFilesReveal();
                     _fileTransfers[cmd.TransferId] = (cmd, new List<byte[]>());
                     if (_devMode)
                     {
@@ -761,6 +777,53 @@ public partial class MainWindow : Window
         {
             _ = Dispatcher.BeginInvoke(() => AppendLog($"File received: {savePath}"));
         }
+
+        _ = Dispatcher.BeginInvoke(() =>
+        {
+            SetStatus(L("StatusFileReceivedFormat", Path.GetFileName(savePath)), true);
+            ScheduleReceivedFilesReveal();
+        });
+    }
+
+    private void ScheduleReceivedFilesReveal()
+    {
+        if (_receivedFilesRevealTimer == null)
+        {
+            _receivedFilesRevealTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(700) };
+            _receivedFilesRevealTimer.Tick += (_, _) =>
+            {
+                _receivedFilesRevealTimer?.Stop();
+                RevealReceivedFilesFolder();
+            };
+        }
+
+        _receivedFilesRevealTimer.Stop();
+        _receivedFilesRevealTimer.Start();
+    }
+
+    private void CancelPendingReceivedFilesReveal()
+    {
+        _receivedFilesRevealTimer?.Stop();
+    }
+
+    private void RevealReceivedFilesFolder()
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "explorer.exe",
+                Arguments = $"\"{_fileSavePath}\"",
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception ex)
+        {
+            if (_devMode)
+            {
+                AppendLog($"Open folder failed: {ex.Message}");
+            }
+        }
     }
 
     private static string SanitizeFileName(string name)
@@ -828,40 +891,48 @@ public partial class MainWindow : Window
         using (var graphics = System.Drawing.Graphics.FromImage(bmp))
         {
             graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+            graphics.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
             graphics.Clear(System.Drawing.Color.Transparent);
 
-            using var backgroundPath = CreateRoundedRectPath(2.5f, 2.5f, 27f, 27f, 7.5f);
-            using var backgroundBrush = new System.Drawing.SolidBrush(System.Drawing.Color.FromArgb(20, 78, 140));
-            graphics.FillPath(backgroundBrush, backgroundPath);
-
-            using var outlinePen = new System.Drawing.Pen(System.Drawing.Color.FromArgb(245, 245, 247), 2.4f)
+            if (!TryDrawTrayBaseIcon(graphics))
             {
-                LineJoin = System.Drawing.Drawing2D.LineJoin.Round,
-            };
-            using var phonePath = CreateRoundedRectPath(6f, 7f, 7f, 15f, 2.6f);
-            using var desktopPath = CreateRoundedRectPath(17f, 10f, 8.5f, 9f, 2.2f);
-            graphics.DrawPath(outlinePen, phonePath);
-            graphics.DrawPath(outlinePen, desktopPath);
+                using var backgroundPath = CreateRoundedRectPath(2.5f, 2.5f, 27f, 27f, 7.5f);
+                using var backgroundBrush = new System.Drawing.SolidBrush(System.Drawing.Color.FromArgb(20, 78, 140));
+                graphics.FillPath(backgroundBrush, backgroundPath);
 
-            using var beamPen = new System.Drawing.Pen(System.Drawing.Color.FromArgb(126, 205, 255), 2.8f)
-            {
-                StartCap = System.Drawing.Drawing2D.LineCap.Round,
-                EndCap = System.Drawing.Drawing2D.LineCap.Round,
-                LineJoin = System.Drawing.Drawing2D.LineJoin.Round,
-            };
-            graphics.DrawLine(beamPen, 13.5f, 15.5f, 18.2f, 15.5f);
-            graphics.DrawLines(beamPen, new[]
-            {
-                new System.Drawing.PointF(15.5f, 12.4f),
-                new System.Drawing.PointF(18.5f, 15.5f),
-                new System.Drawing.PointF(15.5f, 18.6f),
-            });
+                using var outlinePen = new System.Drawing.Pen(System.Drawing.Color.FromArgb(245, 245, 247), 2.4f)
+                {
+                    LineJoin = System.Drawing.Drawing2D.LineJoin.Round,
+                };
+                using var phonePath = CreateRoundedRectPath(6f, 7f, 7f, 15f, 2.6f);
+                using var desktopPath = CreateRoundedRectPath(17f, 10f, 8.5f, 9f, 2.2f);
+                graphics.DrawPath(outlinePen, phonePath);
+                graphics.DrawPath(outlinePen, desktopPath);
 
-            using var homeBrush = new System.Drawing.SolidBrush(System.Drawing.Color.FromArgb(245, 245, 247));
-            graphics.FillEllipse(homeBrush, 8.4f, 18.9f, 1.8f, 1.8f);
+                using var beamPen = new System.Drawing.Pen(System.Drawing.Color.FromArgb(126, 205, 255), 2.8f)
+                {
+                    StartCap = System.Drawing.Drawing2D.LineCap.Round,
+                    EndCap = System.Drawing.Drawing2D.LineCap.Round,
+                    LineJoin = System.Drawing.Drawing2D.LineJoin.Round,
+                };
+                graphics.DrawLine(beamPen, 13.5f, 15.5f, 18.2f, 15.5f);
+                graphics.DrawLines(beamPen, new[]
+                {
+                    new System.Drawing.PointF(15.5f, 12.4f),
+                    new System.Drawing.PointF(18.5f, 15.5f),
+                    new System.Drawing.PointF(15.5f, 18.6f),
+                });
+
+                using var homeBrush = new System.Drawing.SolidBrush(System.Drawing.Color.FromArgb(245, 245, 247));
+                graphics.FillEllipse(homeBrush, 8.4f, 18.9f, 1.8f, 1.8f);
+            }
+
+            using var badgeRingBrush = new System.Drawing.SolidBrush(System.Drawing.Color.FromArgb(240, 245, 239, 232));
+            graphics.FillEllipse(badgeRingBrush, 20.7f, 20.1f, 8f, 8f);
 
             using var stateBrush = new System.Drawing.SolidBrush(System.Drawing.Color.FromArgb(color.A, color.R, color.G, color.B));
-            graphics.FillEllipse(stateBrush, 22.8f, 22.2f, 5f, 5f);
+            graphics.FillEllipse(stateBrush, 22.2f, 21.6f, 5.2f, 5.2f);
         }
 
         var hIcon = bmp.GetHicon();
@@ -872,6 +943,25 @@ public partial class MainWindow : Window
         var icon = new System.Drawing.Icon(stream);
         DestroyIcon(hIcon);
         return icon;
+    }
+
+    private static bool TryDrawTrayBaseIcon(System.Drawing.Graphics graphics)
+    {
+        if (!File.Exists(TrayIconSourceFile))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var source = new System.Drawing.Bitmap(TrayIconSourceFile);
+            graphics.DrawImage(source, new System.Drawing.RectangleF(1f, 1f, 30f, 30f));
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private static System.Drawing.Drawing2D.GraphicsPath CreateRoundedRectPath(float x, float y, float width, float height, float radius)
@@ -1442,17 +1532,46 @@ public partial class MainWindow : Window
         {
             Title = L("DialogSelectFileTitle"),
             Filter = L("DialogFileFilter"),
-            Multiselect = false,
+            Multiselect = true,
             CheckFileExists = true,
         };
 
         if (dialog.ShowDialog(this) == true)
         {
-            await SendFileToMobileAsync(dialog.FileName);
+            await SendFilesToMobileAsync(dialog.FileNames);
         }
     }
 
-    private async Task SendFileToMobileAsync(string filePath)
+    private async Task SendFilesToMobileAsync(IReadOnlyList<string> filePaths)
+    {
+        if (filePaths.Count == 0)
+        {
+            return;
+        }
+
+        var sentCount = 0;
+        foreach (var filePath in filePaths)
+        {
+            var sent = await SendFileToMobileAsync(filePath);
+            if (!sent)
+            {
+                return;
+            }
+
+            sentCount += 1;
+            if (sentCount < filePaths.Count)
+            {
+                await Task.Delay(40);
+            }
+        }
+
+        if (sentCount > 1)
+        {
+            SetStatus(L("StatusFilesSentFormat", sentCount), true);
+        }
+    }
+
+    private async Task<bool> SendFileToMobileAsync(string filePath)
     {
         try
         {
@@ -1460,32 +1579,40 @@ public partial class MainWindow : Window
             if (_roomManager.MaxFileMB > 0 && fileInfo.Length > (long)_roomManager.MaxFileMB * 1024 * 1024)
             {
                 SetStatus(L("StatusFileTooLargeFormat", _roomManager.MaxFileMB), false);
-                return;
+                return false;
             }
 
             var transferId = Guid.NewGuid().ToString("N");
-            await _roomManager.SendToMobileAsync(new InputCommand
+            if (!await _roomManager.SendToMobileAsync(new InputCommand
             {
                 Type = "file_start",
                 TransferId = transferId,
                 FileName = fileInfo.Name,
                 FileSize = fileInfo.Length,
                 MimeType = GuessMimeType(fileInfo.Extension),
-            }.Serialize());
+            }.Serialize()))
+            {
+                SetStatus(L("StatusFileSendFailed"), false);
+                return false;
+            }
 
             SetStatus(L("StatusSendingFileFormat", fileInfo.Name), true);
 
-            const int chunkSize = 32 * 1024;
+            const int chunkSize = 16 * 1024;
             if (fileInfo.Length == 0)
             {
-                await _roomManager.SendToMobileAsync(new InputCommand
+                if (!await _roomManager.SendToMobileAsync(new InputCommand
                 {
                     Type = "file_chunk",
                     TransferId = transferId,
                     ChunkIndex = 0,
                     ChunkData = string.Empty,
                     IsLast = true,
-                }.Serialize());
+                }.Serialize()))
+                {
+                    SetStatus(L("StatusFileSendFailed"), false);
+                    return false;
+                }
             }
             else
             {
@@ -1497,14 +1624,23 @@ public partial class MainWindow : Window
                 while ((bytesRead = await stream.ReadAsync(buffer.AsMemory(0, buffer.Length))) > 0)
                 {
                     var chunkBytes = bytesRead == buffer.Length ? buffer[..bytesRead] : buffer[..bytesRead];
-                    await _roomManager.SendToMobileAsync(new InputCommand
+                    if (!await _roomManager.SendToMobileAsync(new InputCommand
                     {
                         Type = "file_chunk",
                         TransferId = transferId,
                         ChunkIndex = chunkIndex++,
                         ChunkData = Convert.ToBase64String(chunkBytes),
                         IsLast = stream.Position == stream.Length,
-                    }.Serialize());
+                    }.Serialize()))
+                    {
+                        SetStatus(L("StatusFileSendFailed"), false);
+                        return false;
+                    }
+
+                    if (chunkIndex % 4 == 0)
+                    {
+                        await Task.Delay(8);
+                    }
                 }
             }
 
@@ -1514,6 +1650,7 @@ public partial class MainWindow : Window
             }
 
             SetStatus(L("StatusFileSentFormat", fileInfo.Name), true);
+            return true;
         }
         catch (Exception ex)
         {
@@ -1523,6 +1660,7 @@ public partial class MainWindow : Window
             }
 
             SetStatus(L("StatusFileSendFailed"), false);
+            return false;
         }
     }
 
@@ -1689,6 +1827,7 @@ public partial class MainWindow : Window
     {
         _sessionTimer?.Stop();
         _disconnectTimer?.Stop();
+        _receivedFilesRevealTimer?.Stop();
 
         if (_winEventHook != IntPtr.Zero)
         {
