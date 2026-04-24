@@ -73,6 +73,7 @@ export const App: React.FC = () => {
     lastError,
     pendingStatus,
     inputResetVersion,
+    incomingTransferBatch,
   } = useWebSocket(deviceId);
 
   const [activeTab, setActiveTab] = useState<AppTab>('input');
@@ -392,6 +393,7 @@ export const App: React.FC = () => {
                 pendingStatus={pendingStatus}
                 onCancelPendingConnection={handleCancelPendingConnection}
                 inputResetVersion={inputResetVersion}
+                incomingTransferBatch={incomingTransferBatch}
               />
             </div>
             <div className="swipe-page">

@@ -2,7 +2,9 @@ import React, { useEffect, useRef, useCallback, useState } from 'react';
 import { computeDiff } from '../utils/diff';
 import { ScanIcon, ClipboardIcon } from './Icons';
 import { FileTransfer } from './FileTransfer';
-import type { InputCommand, HistoryEntry } from '../types';
+import { TransferStatusCard } from './TransferStatusCard';
+import type { FileTransferHandle } from './FileTransfer';
+import type { InputCommand, HistoryEntry, TransferBatchProgress } from '../types';
 
 interface InputAreaProps {
   encryptionReady: boolean;
@@ -16,6 +18,7 @@ interface InputAreaProps {
   pendingStatus: string | null;
   onCancelPendingConnection: () => void;
   inputResetVersion: number;
+  incomingTransferBatch?: TransferBatchProgress | null;
 }
 
 export const InputArea: React.FC<InputAreaProps> = ({
@@ -30,13 +33,15 @@ export const InputArea: React.FC<InputAreaProps> = ({
   pendingStatus,
   onCancelPendingConnection,
   inputResetVersion,
+  incomingTransferBatch = null,
 }) => {
   const lastSentRef = useRef('');
   const textRef = useRef(text);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isComposingRef = useRef(false);
-  const fileTransferRef = useRef<{ open: () => void }>(null);
+  const fileTransferRef = useRef<FileTransferHandle>(null);
   const [resetNotice, setResetNotice] = useState(false);
+  const [outgoingTransferBatch, setOutgoingTransferBatch] = useState<TransferBatchProgress | null>(null);
 
   useEffect(() => {
     textRef.current = text;
@@ -195,6 +200,21 @@ export const InputArea: React.FC<InputAreaProps> = ({
         </div>
       )}
 
+      {(outgoingTransferBatch || incomingTransferBatch) && (
+        <div className="transfer-stack">
+          {outgoingTransferBatch && (
+            <TransferStatusCard
+              batch={outgoingTransferBatch}
+              onPauseToggle={() => fileTransferRef.current?.togglePause()}
+              onCancel={() => fileTransferRef.current?.cancel()}
+            />
+          )}
+          {incomingTransferBatch && (
+            <TransferStatusCard batch={incomingTransferBatch} />
+          )}
+        </div>
+      )}
+
       {encryptionReady && (
         <div style={{
           display: 'flex',
@@ -228,6 +248,7 @@ export const InputArea: React.FC<InputAreaProps> = ({
                 encryptionReady={encryptionReady}
                 onSendCommand={onSendCommand}
                 compact
+                onBatchStateChange={setOutgoingTransferBatch}
               />
             )}
             <button

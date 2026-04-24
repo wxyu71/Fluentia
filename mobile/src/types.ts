@@ -53,6 +53,29 @@ export interface HistoryEntry {
   timestamp: number;
 }
 
+export type TransferDirection = 'upload' | 'download';
+
+export type TransferStatus = 'queued' | 'active' | 'paused' | 'completed' | 'failed' | 'cancelled';
+
+export interface TransferFileProgress {
+  id: string;
+  name: string;
+  transferredBytes: number;
+  totalBytes: number;
+  status: TransferStatus;
+  startedAt: number;
+  updatedAt: number;
+}
+
+export interface TransferBatchProgress {
+  id: string;
+  direction: TransferDirection;
+  status: TransferStatus;
+  files: TransferFileProgress[];
+  startedAt: number;
+  updatedAt: number;
+}
+
 // App settings persisted in localStorage
 export interface AppSettings {
   autoSaveHistory: boolean;

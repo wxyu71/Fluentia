@@ -480,3 +480,259 @@ body {
 .toggle-switch.on::after {
   transform: translateX(20px);
 }
+
+.transfer-stack {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.transfer-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.94);
+  color: #181825;
+  box-shadow: 0 18px 44px rgba(36, 42, 82, 0.16);
+  border: 1px solid rgba(123, 131, 173, 0.12);
+  transform-origin: top center;
+  animation: transferCardIn 0.42s cubic-bezier(0.2, 0.9, 0.2, 1);
+}
+
+.transfer-card-inner {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px 14px;
+}
+
+.transfer-copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.transfer-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.transfer-direction-chip {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border-radius: 999px;
+  padding: 4px 9px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: rgba(95, 74, 203, 0.08);
+  color: #5b46cd;
+}
+
+.transfer-direction-chip.download {
+  background: rgba(58, 110, 212, 0.08);
+  color: #3366c9;
+}
+
+.transfer-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.transfer-subtitle {
+  margin-top: 6px;
+  font-size: 13px;
+  color: #69708f;
+  letter-spacing: -0.01em;
+}
+
+.transfer-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  opacity: 0;
+  transform: translateX(8px);
+  transition: opacity 0.2s ease-out, transform 0.2s ease-out;
+}
+
+.transfer-card:hover .transfer-actions,
+.transfer-card:focus-within .transfer-actions {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.transfer-action-btn {
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(92, 78, 191, 0.08);
+  color: #5242be;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.16s ease, background 0.16s ease, opacity 0.16s ease;
+}
+
+.transfer-action-btn:active {
+  transform: scale(0.94);
+}
+
+.transfer-action-btn.muted {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.transfer-action-btn:disabled {
+  pointer-events: none;
+}
+
+.transfer-success-mark {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: rgba(46, 198, 108, 0.14);
+  color: #19a95a;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  animation: transferCheckPop 0.42s cubic-bezier(0.22, 1.2, 0.2, 1);
+}
+
+.transfer-progress-track {
+  position: relative;
+  height: 3px;
+  margin: 0 18px 14px;
+  border-radius: 999px;
+  background: rgba(95, 74, 203, 0.12);
+  overflow: hidden;
+}
+
+.transfer-progress-line {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, #6a54e6, #8d6cff);
+  border-radius: 999px;
+  transform-origin: left center;
+  transition: transform 0.26s ease-out, opacity 0.22s ease-out;
+  box-shadow: 0 0 16px rgba(106, 84, 230, 0.35);
+}
+
+.transfer-card.is-paused .transfer-progress-line {
+  background:
+    linear-gradient(90deg, rgba(106, 84, 230, 0.12), rgba(106, 84, 230, 0.12)) 0 50% / 100% 1px no-repeat,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='12' viewBox='0 0 160 12'%3E%3Cpath d='M0 4 C20 10 40 10 60 4 S100 -2 120 4 S140 10 160 4' fill='none' stroke='%236a54e6' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E") 0 50% / 160px 12px repeat-x;
+  animation: transferSlack 1.6s linear infinite;
+}
+
+.transfer-card.is-complete .transfer-progress-line {
+  opacity: 0;
+}
+
+.transfer-details {
+  display: grid;
+  gap: 10px;
+  padding: 2px 18px 16px;
+}
+
+.transfer-file-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(236, 239, 249, 0.8);
+  animation: transferFileIn 0.22s ease-out both;
+}
+
+.transfer-file-copy {
+  min-width: 0;
+}
+
+.transfer-file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+  color: #21253d;
+}
+
+.transfer-file-meta {
+  margin-top: 3px;
+  font-size: 11px;
+  color: #6f7693;
+}
+
+.transfer-file-percent {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: #4f45b7;
+}
+
+@media (hover: none), (pointer: coarse) {
+  .transfer-actions {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes transferCardIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes transferFileIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes transferSlack {
+  from {
+    background-position: 0 50%, 0 50%;
+  }
+  to {
+    background-position: 0 50%, 160px 50%;
+  }
+}
+
+@keyframes transferCheckPop {
+  0% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  72% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}

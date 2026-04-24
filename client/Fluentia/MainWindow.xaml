@@ -295,64 +295,196 @@
                                     </Border>
 
                                     <Border x:Name="DeviceCodePanel"
-                                            Background="{DynamicResource AccentSoftBrush}"
-                                            BorderBrush="{DynamicResource DividerBrush}"
-                                            BorderThickness="1"
-                                            CornerRadius="18"
-                                            Padding="18"
-                                            Margin="0,0,0,14"
+                                            Background="Transparent"
+                                            BorderThickness="0"
+                                            Padding="0"
+                                            Margin="0,0,0,18"
                                             Visibility="Collapsed"
                                             Cursor="Hand"
                                             MouseLeftButtonDown="DeviceCode_Click"
                                             ToolTip="Copy device code">
-                                        <StackPanel>
+                                        <StackPanel HorizontalAlignment="Center">
                                             <TextBlock x:Name="DeviceCodeTitleText"
                                                        Text="Connection Code"
                                                        FontSize="12"
                                                        FontWeight="SemiBold"
-                                                       Foreground="{DynamicResource TextSecondaryBrush}"/>
-                                            <TextBlock x:Name="DeviceCodeText"
-                                                       Margin="0,10,0,0"
-                                                       FontSize="30"
-                                                       FontFamily="Consolas"
-                                                       FontWeight="Bold"
-                                                       Foreground="{DynamicResource AccentBrush}"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}"
                                                        TextAlignment="Center"/>
+                                            <Border Background="{DynamicResource BgInputBrush}"
+                                                    BorderBrush="{DynamicResource DividerBrush}"
+                                                    BorderThickness="1"
+                                                    CornerRadius="22"
+                                                    Padding="24,14"
+                                                    Margin="0,10,0,0">
+                                                <TextBlock x:Name="DeviceCodeText"
+                                                           FontSize="34"
+                                                           FontFamily="Consolas"
+                                                           FontWeight="Bold"
+                                                           Foreground="{DynamicResource TextPrimaryBrush}"
+                                                           TextAlignment="Center"/>
+                                            </Border>
                                             <TextBlock x:Name="DeviceCodeHintText"
                                                        Text="Visible only while no phone is connected"
                                                        FontSize="11"
                                                        Foreground="{DynamicResource TextSecondaryBrush}"
                                                        TextAlignment="Center"
-                                                       Margin="0,8,0,0"/>
+                                                       Margin="0,10,0,0"/>
                                         </StackPanel>
                                     </Border>
 
                                     <Border x:Name="QrContainer"
-                                            Background="{DynamicResource BgInputBrush}"
-                                            BorderBrush="{DynamicResource DividerBrush}"
-                                            BorderThickness="1"
-                                            CornerRadius="22"
-                                            Padding="12"
+                                            Background="Transparent"
+                                            BorderThickness="0"
+                                            Padding="0"
                                             HorizontalAlignment="Stretch"
                                             Visibility="Collapsed">
                                         <StackPanel HorizontalAlignment="Center">
-                                            <Image x:Name="QrCodeImage"
-                                                   Width="360"
-                                                   Height="360"
-                                                   RenderOptions.BitmapScalingMode="NearestNeighbor"/>
+                                            <Border Background="#FFFFFFFF"
+                                                    CornerRadius="30"
+                                                    Padding="16">
+                                                <Image x:Name="QrCodeImage"
+                                                       Width="360"
+                                                       Height="360"
+                                                       RenderOptions.BitmapScalingMode="NearestNeighbor"/>
+                                            </Border>
                                             <TextBlock x:Name="QrTimerText"
                                                        Text=""
                                                        FontSize="12"
                                                        Foreground="{DynamicResource TextSecondaryBrush}"
-                                                       Margin="0,12,0,0"
+                                                       Margin="0,14,0,0"
                                                        HorizontalAlignment="Center"/>
                                             <TextBlock x:Name="QrHintText"
                                                        Text=""
                                                        FontSize="11"
                                                        Foreground="{DynamicResource TextSecondaryBrush}"
                                                        TextAlignment="Center"
-                                                       Margin="0,6,0,0"
+                                                       Margin="0,8,0,0"
                                                        HorizontalAlignment="Center"/>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Border x:Name="TransferProgressCard"
+                                            Visibility="Collapsed"
+                                            Background="#FFFBFCFF"
+                                            BorderBrush="#1B7085C6"
+                                            BorderThickness="1"
+                                            CornerRadius="24"
+                                            Padding="18,16,18,14"
+                                            Margin="0,16,0,0"
+                                            MouseEnter="TransferProgressCard_MouseEnter"
+                                            MouseLeave="TransferProgressCard_MouseLeave">
+                                        <StackPanel>
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel>
+                                                    <TextBlock x:Name="TransferProgressTitleText"
+                                                               Text="Uploading 0 files"
+                                                               FontSize="19"
+                                                               FontWeight="SemiBold"
+                                                               Foreground="#FF161924"/>
+                                                    <TextBlock x:Name="TransferProgressSubtitleText"
+                                                               Text="0% · Preparing"
+                                                               Margin="0,6,0,0"
+                                                               FontSize="12"
+                                                               Foreground="#FF69708F"/>
+                                                </StackPanel>
+
+                                                <StackPanel x:Name="TransferProgressActions"
+                                                            Grid.Column="1"
+                                                            Orientation="Horizontal"
+                                                            VerticalAlignment="Top"
+                                                            Opacity="0">
+                                                    <StackPanel.RenderTransform>
+                                                        <TranslateTransform x:Name="TransferProgressActionsTransform" X="8"/>
+                                                    </StackPanel.RenderTransform>
+
+                                                    <Button x:Name="TransferPauseButton"
+                                                            Width="30"
+                                                            Height="30"
+                                                            Margin="0,0,6,0"
+                                                            Click="TransferPause_Click"
+                                                            Background="#145C4EC8"
+                                                            BorderThickness="0"
+                                                            Foreground="#FF5242BE"
+                                                            Cursor="Hand"
+                                                            ToolTip="Pause transfer">
+                                                        <TextBlock x:Name="TransferPauseGlyph"
+                                                                   Text="⏸"
+                                                                   FontSize="13"
+                                                                   VerticalAlignment="Center"
+                                                                   HorizontalAlignment="Center"/>
+                                                    </Button>
+
+                                                    <Button x:Name="TransferCancelButton"
+                                                            Width="30"
+                                                            Height="30"
+                                                            Margin="0,0,6,0"
+                                                            Click="TransferCancel_Click"
+                                                            Background="#145C4EC8"
+                                                            BorderThickness="0"
+                                                            Foreground="#FF5242BE"
+                                                            Cursor="Hand"
+                                                            ToolTip="Cancel transfer">
+                                                        <TextBlock Text="✕"
+                                                                   FontSize="13"
+                                                                   VerticalAlignment="Center"
+                                                                   HorizontalAlignment="Center"/>
+                                                    </Button>
+
+                                                    <Button x:Name="TransferExpandButton"
+                                                            Width="30"
+                                                            Height="30"
+                                                            Click="TransferExpand_Click"
+                                                            Background="#145C4EC8"
+                                                            BorderThickness="0"
+                                                            Foreground="#FF5242BE"
+                                                            Cursor="Hand"
+                                                            ToolTip="Expand details">
+                                                        <TextBlock x:Name="TransferExpandGlyph"
+                                                                   Text="⤢"
+                                                                   FontSize="13"
+                                                                   VerticalAlignment="Center"
+                                                                   HorizontalAlignment="Center"/>
+                                                    </Button>
+
+                                                    <Border x:Name="TransferSuccessBadge"
+                                                            Width="30"
+                                                            Height="30"
+                                                            Margin="6,0,0,0"
+                                                            Background="#1C31C96B"
+                                                            CornerRadius="15"
+                                                            Visibility="Collapsed">
+                                                        <TextBlock Text="✓"
+                                                                   FontSize="14"
+                                                                   FontWeight="SemiBold"
+                                                                   Foreground="#FF169A53"
+                                                                   HorizontalAlignment="Center"
+                                                                   VerticalAlignment="Center"/>
+                                                    </Border>
+                                                </StackPanel>
+                                            </Grid>
+
+                                            <Grid Height="3"
+                                                  Margin="0,16,0,0">
+                                                <Border Background="#1E6B55E7"
+                                                        CornerRadius="2"/>
+                                                <Border x:Name="TransferProgressLine"
+                                                    Background="#FF6B55E7"
+                                                        CornerRadius="2"
+                                                        RenderTransformOrigin="0,0.5">
+                                                    <Border.RenderTransform>
+                                                        <ScaleTransform x:Name="TransferProgressScaleTransform"
+                                                                        ScaleX="0"/>
+                                                    </Border.RenderTransform>
+                                                </Border>
+                                            </Grid>
+
+                                            <StackPanel x:Name="TransferProgressDetailsPanel"
+                                                        Visibility="Collapsed"
+                                                        Margin="0,14,0,0"/>
                                         </StackPanel>
                                     </Border>
                                 </StackPanel>

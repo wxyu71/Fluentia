@@ -143,3 +143,64 @@ export const AttachIcon: React.FC<IconProps> = ({ size = 20, color = 'currentCol
     <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
   </svg>
 );
+
+export const PauseIcon: React.FC<IconProps> = ({ size = 18, color = 'currentColor' }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="9" y1="5" x2="9" y2="19" />
+    <line x1="15" y1="5" x2="15" y2="19" />
+  </svg>
+);
+
+export const PlayIcon: React.FC<IconProps> = ({ size = 18, color = 'currentColor' }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill={color} stroke="none">
+    <path d="M8 5.5v13a1 1 0 001.55.83l9.5-6.5a1 1 0 000-1.66l-9.5-6.5A1 1 0 008 5.5z" />
+  </svg>
+);
+
+export const MoreIcon: React.FC<IconProps> = ({ size = 18, color = 'currentColor' }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill={color} stroke="none">
+    <circle cx="12" cy="5" r="1.8" />
+    <circle cx="12" cy="12" r="1.8" />
+    <circle cx="12" cy="19" r="1.8" />
+  </svg>
+);
+
+export const ExpandIcon: React.FC<IconProps> = ({ size = 18, color = 'currentColor' }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="9,3 3,3 3,9" />
+    <line x1="3" y1="3" x2="10" y2="10" />
+    <polyline points="15,21 21,21 21,15" />
+    <line x1="14" y1="14" x2="21" y2="21" />
+    <polyline points="21,9 21,3 15,3" />
+    <line x1="14" y1="10" x2="21" y2="3" />
+    <polyline points="3,15 3,21 9,21" />
+    <line x1="3" y1="21" x2="10" y2="14" />
+  </svg>
+);
+
+export const CollapseIcon: React.FC<IconProps> = ({ size = 18, color = 'currentColor' }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="10,10 3,10 3,3" />
+    <line x1="3" y1="3" x2="10" y2="10" />
+    <polyline points="14,14 21,14 21,21" />
+    <line x1="14" y1="14" x2="21" y2="21" />
+    <polyline points="14,10 21,10 21,3" />
+    <line x1="14" y1="10" x2="21" y2="3" />
+    <polyline points="10,14 3,14 3,21" />
+    <line x1="3" y1="21" x2="10" y2="14" />
+  </svg>
+);
+
+export const CheckIcon: React.FC<IconProps> = ({ size = 18, color = 'currentColor' }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M20 6L9 17l-5-5" />
+  </svg>
+);
+
+export const DownloadIcon: React.FC<IconProps> = ({ size = 18, color = 'currentColor' }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+    <polyline points="7,10 12,15 17,10" />
+    <line x1="12" y1="15" x2="12" y2="3" />
+  </svg>
+);

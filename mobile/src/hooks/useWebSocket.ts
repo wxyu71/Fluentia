@@ -1,6 +1,12 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { CryptoService } from '../utils/crypto';
-import type { WsMessage, ConnectionState, InputCommand, ConnectionInfo } from '../types';
+import type {
+  WsMessage,
+  ConnectionState,
+  InputCommand,
+  ConnectionInfo,
+  TransferBatchProgress,
+} from '../types';
 import { PROTOCOL_VERSION } from '../types';
 
 const RECONNECT_DELAY = 1200;
@@ -17,6 +23,7 @@ interface UseWebSocketReturn {
   lastError: string | null;
   pendingStatus: string | null;
   inputResetVersion: number;
+  incomingTransferBatch: TransferBatchProgress | null;
 }
 
 export function useWebSocket(deviceId: string): UseWebSocketReturn {
@@ -26,6 +33,7 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
   const [lastError, setLastError] = useState<string | null>(null);
   const [pendingStatus, setPendingStatus] = useState<string | null>(null);
   const [inputResetVersion, setInputResetVersion] = useState(0);
+  const [incomingTransferBatch, setIncomingTransferBatch] = useState<TransferBatchProgress | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
   const cryptoRef = useRef<CryptoService>(new CryptoService());
@@ -38,6 +46,33 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
   const connectionStateRef = useRef<ConnectionState>('disconnected');
   const encryptionReadyRef = useRef(false);
   const incomingFilesRef = useRef(new Map<string, { fileName: string; mimeType: string; chunks: string[] }>());
+  const incomingTransferBatchRef = useRef<TransferBatchProgress | null>(null);
+  const incomingTransferHideTimerRef = useRef<number | null>(null);
+
+  const clearIncomingTransferHideTimer = useCallback(() => {
+    if (incomingTransferHideTimerRef.current !== null) {
+      clearTimeout(incomingTransferHideTimerRef.current);
+      incomingTransferHideTimerRef.current = null;
+    }
+  }, []);
+
+  const updateIncomingTransferBatch = useCallback((updater: TransferBatchProgress | null | ((prev: TransferBatchProgress | null) => TransferBatchProgress | null)) => {
+    setIncomingTransferBatch((prev) => {
+      const next = typeof updater === 'function'
+        ? (updater as (value: TransferBatchProgress | null) => TransferBatchProgress | null)(prev)
+        : updater;
+      incomingTransferBatchRef.current = next;
+      return next;
+    });
+  }, []);
+
+  const scheduleIncomingTransferHide = useCallback(() => {
+    clearIncomingTransferHideTimer();
+    incomingTransferHideTimerRef.current = window.setTimeout(() => {
+      incomingTransferBatchRef.current = null;
+      setIncomingTransferBatch(null);
+    }, 2600);
+  }, [clearIncomingTransferHideTimer]);
 
   const decodeBase64Chunk = useCallback((chunkData: string) => {
     if (!chunkData) {
@@ -126,7 +161,10 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
   const cleanup = useCallback((clearConnectionInfo = false) => {
     clearReconnectTimer();
     clearHandshakeTimer();
+    clearIncomingTransferHideTimer();
     incomingFilesRef.current.clear();
+    incomingTransferBatchRef.current = null;
+    setIncomingTransferBatch(null);
     if (wsRef.current) {
       intentionalCloseRef.current = true;
       closeSocket('cleanup');
@@ -137,7 +175,7 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
     if (clearConnectionInfo) {
       connInfoRef.current = null;
     }
-  }, [clearHandshakeTimer, clearReconnectTimer, closeSocket, setEncryptionState]);
+  }, [clearHandshakeTimer, clearIncomingTransferHideTimer, clearReconnectTimer, closeSocket, setEncryptionState]);
 
   const sendEncryptedPayload = useCallback((plaintext: string) => {
     const ws = wsRef.current;
@@ -255,20 +293,97 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
           } else if (parsed.type === 'clear') {
             setInputResetVersion((version) => version + 1);
           } else if (parsed.type === 'file_start' && parsed.transferId) {
-            incomingFilesRef.current.set(parsed.transferId, {
+            const transferId = parsed.transferId;
+            clearIncomingTransferHideTimer();
+            incomingFilesRef.current.set(transferId, {
               fileName: parsed.fileName || 'fluentia-download',
               mimeType: parsed.mimeType || 'application/octet-stream',
               chunks: [],
             });
+
+            updateIncomingTransferBatch((current) => {
+              const next = current && current.status !== 'completed'
+                ? current
+                : {
+                    id: `incoming-${Date.now().toString(36)}`,
+                    direction: 'download' as const,
+                    status: 'active' as const,
+                    files: [],
+                    startedAt: Date.now(),
+                    updatedAt: Date.now(),
+                  };
+
+              const nextFiles: TransferBatchProgress['files'] = next.files.some((file) => file.id === transferId)
+                ? next.files.map((file) => file.id === transferId
+                  ? {
+                      ...file,
+                      name: parsed.fileName || file.name,
+                      totalBytes: parsed.fileSize ?? file.totalBytes,
+                      status: 'active' as const,
+                      updatedAt: Date.now(),
+                    }
+                  : file)
+                : [
+                    ...next.files,
+                    {
+                      id: transferId,
+                      name: parsed.fileName || 'fluentia-download',
+                      transferredBytes: 0,
+                      totalBytes: parsed.fileSize ?? 0,
+                      status: 'active' as const,
+                      startedAt: Date.now(),
+                      updatedAt: Date.now(),
+                    },
+                  ];
+
+              return {
+                ...next,
+                status: 'active' as const,
+                files: nextFiles,
+                updatedAt: Date.now(),
+              };
+            });
           } else if (parsed.type === 'file_chunk' && parsed.transferId) {
-            const transfer = incomingFilesRef.current.get(parsed.transferId) ?? {
+            const transferId = parsed.transferId;
+            const transfer = incomingFilesRef.current.get(transferId) ?? {
               fileName: parsed.fileName || 'fluentia-download',
               mimeType: parsed.mimeType || 'application/octet-stream',
               chunks: [],
             };
 
+            const chunkBytes = decodeBase64Chunk(parsed.chunkData || '').length;
+
             transfer.chunks[parsed.chunkIndex ?? transfer.chunks.length] = parsed.chunkData || '';
-            incomingFilesRef.current.set(parsed.transferId, transfer);
+            incomingFilesRef.current.set(transferId, transfer);
+
+            updateIncomingTransferBatch((current) => {
+              if (!current) {
+                return current;
+              }
+
+              const nextFiles: TransferBatchProgress['files'] = current.files.map((file) => file.id === transferId
+                ? {
+                    ...file,
+                    transferredBytes: Math.min(
+                      file.totalBytes > 0 ? file.totalBytes : file.transferredBytes + chunkBytes,
+                      file.transferredBytes + chunkBytes,
+                    ),
+                    status: parsed.isLast ? ('completed' as const) : file.status,
+                    updatedAt: Date.now(),
+                  }
+                : file);
+
+              const nextStatus = nextFiles.every((file) => file.status === 'completed')
+                ? ('completed' as const)
+                : current.status;
+
+              return {
+                ...current,
+                status: nextStatus,
+                files: nextFiles,
+                updatedAt: Date.now(),
+              };
+            });
 
             if (parsed.isLast) {
               triggerFileDownload(
@@ -276,10 +391,22 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
                 transfer.mimeType,
                 transfer.chunks.filter((chunk): chunk is string => typeof chunk === 'string'),
               );
-              incomingFilesRef.current.delete(parsed.transferId);
+              incomingFilesRef.current.delete(transferId);
+              scheduleIncomingTransferHide();
             }
           } else if (parsed.type === 'file_abort' && parsed.transferId) {
-            incomingFilesRef.current.delete(parsed.transferId);
+            const transferId = parsed.transferId;
+            incomingFilesRef.current.delete(transferId);
+            updateIncomingTransferBatch((current) => current ? {
+              ...current,
+              status: 'cancelled',
+              updatedAt: Date.now(),
+              files: current.files.map((file) =>
+                file.id === transferId
+                  ? { ...file, status: 'cancelled', updatedAt: Date.now() }
+                  : file),
+            } : current);
+            scheduleIncomingTransferHide();
           }
         } catch {
           // Ignore malformed or stale encrypted payloads.
@@ -311,7 +438,18 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
         }
         break;
     }
-  }, [clearHandshakeTimer, closeSocket, sendEncryptedPayload, setEncryptionState, startHandshakeTimeout, triggerFileDownload]);
+  }, [
+    clearHandshakeTimer,
+    clearIncomingTransferHideTimer,
+    closeSocket,
+    decodeBase64Chunk,
+    scheduleIncomingTransferHide,
+    sendEncryptedPayload,
+    setEncryptionState,
+    startHandshakeTimeout,
+    triggerFileDownload,
+    updateIncomingTransferBatch,
+  ]);
 
   const connectWs = useCallback((info: ConnectionInfo) => {
     cleanup();
@@ -467,5 +605,6 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
     lastError,
     pendingStatus,
     inputResetVersion,
+    incomingTransferBatch,
   };
 }
