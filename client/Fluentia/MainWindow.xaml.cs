@@ -537,9 +537,9 @@ public partial class MainWindow : Window
 
         var modules = qrCodeData.ModuleMatrix;
         int size = modules.Count;
-        const int targetPx = 320;
-        int moduleSize = Math.Max(4, targetPx / (size + 4));
-        int margin = moduleSize * 2;
+        const int targetPx = 360;
+        int moduleSize = Math.Max(4, targetPx / (size + 3));
+        int margin = Math.Max(moduleSize, (int)Math.Round(moduleSize * 1.5));
         int canvasSize = size * moduleSize;
         int totalSize = canvasSize + margin * 2;
 

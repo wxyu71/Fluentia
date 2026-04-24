@@ -332,13 +332,13 @@
                                             BorderBrush="{DynamicResource DividerBrush}"
                                             BorderThickness="1"
                                             CornerRadius="22"
-                                            Padding="18"
+                                            Padding="12"
                                             HorizontalAlignment="Stretch"
                                             Visibility="Collapsed">
                                         <StackPanel HorizontalAlignment="Center">
                                             <Image x:Name="QrCodeImage"
-                                                   Width="320"
-                                                   Height="320"
+                                                   Width="360"
+                                                   Height="360"
                                                    RenderOptions.BitmapScalingMode="NearestNeighbor"/>
                                             <TextBlock x:Name="QrTimerText"
                                                        Text=""
