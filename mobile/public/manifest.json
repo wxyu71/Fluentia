@@ -4,8 +4,8 @@
   "description": "Wireless voice input relay",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#153A4A",
-  "theme_color": "#153A4A",
+  "background_color": "#FFFFFF",
+  "theme_color": "#FFFFFF",
   "orientation": "portrait",
   "icons": [
     {

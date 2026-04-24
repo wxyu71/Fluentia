@@ -12,6 +12,30 @@ const HISTORY_KEY = 'fluentia_history';
 const SETTINGS_KEY = 'fluentia_settings';
 const CONN_KEY = 'fluentia_conn';
 
+function resolveThemeColor(): string {
+  const cssColor = getComputedStyle(document.documentElement).getPropertyValue('--bg-primary').trim();
+  if (cssColor) {
+    return cssColor;
+  }
+
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? '#000000' : '#FFFFFF';
+}
+
+function syncThemeColor() {
+  const color = resolveThemeColor();
+  let themeMeta = document.querySelector('meta[name="theme-color"]') as HTMLMetaElement | null;
+
+  if (!themeMeta) {
+    themeMeta = document.createElement('meta');
+    themeMeta.name = 'theme-color';
+    document.head.appendChild(themeMeta);
+  }
+
+  themeMeta.content = color;
+  document.documentElement.style.backgroundColor = color;
+  document.body.style.backgroundColor = color;
+}
+
 function loadHistory(): HistoryEntry[] {
   try {
     if (!loadSettings().autoSaveHistory) {
@@ -96,6 +120,20 @@ export const App: React.FC = () => {
     return () => {
       vv.removeEventListener('resize', update);
       vv.removeEventListener('scroll', update);
+    };
+  }, []);
+
+  useEffect(() => {
+    const colorScheme = window.matchMedia('(prefers-color-scheme: dark)');
+    const updateTheme = () => {
+      window.requestAnimationFrame(syncThemeColor);
+    };
+
+    updateTheme();
+    colorScheme.addEventListener('change', updateTheme);
+
+    return () => {
+      colorScheme.removeEventListener('change', updateTheme);
     };
   }, []);
 
