@@ -683,9 +683,33 @@ body {
   box-shadow: 0 0 12px rgba(106, 84, 230, 0.22);
 }
 
+.transfer-progress-slack {
+  position: absolute;
+  left: -10px;
+  right: 0;
+  bottom: -1px;
+  height: 14px;
+  width: calc(100% + 10px);
+  transform-origin: left center;
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 0.26s ease-out, opacity 0.18s ease-out;
+}
+
+.transfer-progress-slack path {
+  fill: none;
+  stroke: #6a54e6;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .transfer-card.is-paused .transfer-progress-line {
-  background:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='14' viewBox='0 0 220 14'%3E%3Cpath d='M0 3 C36 7 72 7 108 3 S180 -1 220 3' fill='none' stroke='%236a54e6' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E") 0 50% / 220px 14px no-repeat;
+  opacity: 0;
+}
+
+.transfer-progress-slack.visible {
+  opacity: 1;
   animation: transferSlack 1.6s linear infinite;
 }
 

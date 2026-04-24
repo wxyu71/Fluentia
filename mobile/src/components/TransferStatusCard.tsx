@@ -150,6 +150,14 @@ export const TransferStatusCard: React.FC<TransferStatusCardProps> = ({
           className="transfer-progress-line"
           style={{ transform: `scaleX(${summary.percent / 100})` }}
         />
+        <svg
+          className={`transfer-progress-slack ${batch.status === 'paused' ? 'visible' : ''}`}
+          viewBox="0 0 220 14"
+          preserveAspectRatio="none"
+          style={{ transform: `scaleX(${summary.percent / 100})` }}
+        >
+          <path d="M0 3 C36 8 72 8 108 3 S180 -1 220 3" />
+        </svg>
       </div>
 
       <div className={`transfer-details-shell ${expanded && showExpand ? 'expanded' : ''}`}>
