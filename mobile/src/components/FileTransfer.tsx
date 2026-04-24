@@ -2,7 +2,7 @@
 import { AttachIcon } from './Icons';
 import type { InputCommand, TransferBatchProgress } from '../types';
 
-const CHUNK_SIZE = 32 * 1024;
+const CHUNK_SIZE = 16 * 1024;
 const MAX_FILE_MB = 20;
 
 interface FileTransferProps {
@@ -226,8 +226,8 @@ export const FileTransfer = forwardRef<FileTransferHandle, FileTransferProps>(
                 : item),
           } : current);
 
-          if (chunkIndex % 4 === 3) {
-            await new Promise((resolve) => setTimeout(resolve, 0));
+          if (chunkIndex % 2 === 1) {
+            await new Promise((resolve) => setTimeout(resolve, 10));
           }
         }
       }

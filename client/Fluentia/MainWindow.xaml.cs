@@ -2150,9 +2150,9 @@ public partial class MainWindow : Window
 
                     UpdateTransferProgress(uiFileId, stream.Position, stream.Position == stream.Length ? "completed" : (_outgoingTransferPaused ? "paused" : "active"));
 
-                    if (chunkIndex % 4 == 0)
+                    if (chunkIndex % 2 == 0)
                     {
-                        await Task.Delay(8);
+                        await Task.Delay(12);
                     }
                 }
             }

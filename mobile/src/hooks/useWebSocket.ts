@@ -544,8 +544,9 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
   }, [cleanup]);
 
   const sendEncrypted = useCallback((cmd: InputCommand) => {
+    const ws = wsRef.current;
     const sent = sendEncryptedPayload(JSON.stringify(cmd));
-    if (!sent) {
+    if (!sent && (!ws || ws.readyState !== WebSocket.OPEN)) {
       setPeerConnected(false);
       setEncryptionState(false);
       setPendingStatus('Waiting for your PC');
