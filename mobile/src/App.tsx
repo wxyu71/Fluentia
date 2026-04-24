@@ -127,13 +127,36 @@ export const App: React.FC = () => {
     const colorScheme = window.matchMedia('(prefers-color-scheme: dark)');
     const updateTheme = () => {
       window.requestAnimationFrame(syncThemeColor);
+      window.setTimeout(syncThemeColor, 120);
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        updateTheme();
+      }
     };
 
     updateTheme();
-    colorScheme.addEventListener('change', updateTheme);
+
+    if (typeof colorScheme.addEventListener === 'function') {
+      colorScheme.addEventListener('change', updateTheme);
+    } else {
+      colorScheme.addListener(updateTheme);
+    }
+
+    window.addEventListener('focus', updateTheme);
+    window.addEventListener('pageshow', updateTheme);
+    document.addEventListener('visibilitychange', handleVisibility);
 
     return () => {
-      colorScheme.removeEventListener('change', updateTheme);
+      if (typeof colorScheme.removeEventListener === 'function') {
+        colorScheme.removeEventListener('change', updateTheme);
+      } else {
+        colorScheme.removeListener(updateTheme);
+      }
+
+      window.removeEventListener('focus', updateTheme);
+      window.removeEventListener('pageshow', updateTheme);
+      document.removeEventListener('visibilitychange', handleVisibility);
     };
   }, []);
 
