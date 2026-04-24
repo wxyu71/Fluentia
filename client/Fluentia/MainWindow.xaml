@@ -373,6 +373,15 @@
                                             Margin="0,16,0,0"
                                             MouseEnter="TransferProgressCard_MouseEnter"
                                             MouseLeave="TransferProgressCard_MouseLeave">
+                                        <Border.Effect>
+                                            <DropShadowEffect BlurRadius="24"
+                                                              ShadowDepth="0"
+                                                              Color="#24000000"
+                                                              Opacity="0.9"/>
+                                        </Border.Effect>
+                                        <Border.RenderTransform>
+                                            <TranslateTransform x:Name="TransferProgressCardTransform" Y="0"/>
+                                        </Border.RenderTransform>
                                         <StackPanel>
                                             <Grid>
                                                 <Grid.ColumnDefinitions>

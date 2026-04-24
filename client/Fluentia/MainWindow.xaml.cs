@@ -1890,11 +1890,24 @@ public partial class MainWindow : Window
 
     private void TransferProgressCard_MouseEnter(object sender, System.Windows.Input.MouseEventArgs e)
     {
+        TransferProgressCardTransform.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation
+        {
+            To = -2,
+            Duration = TimeSpan.FromMilliseconds(180),
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut },
+        });
         AnimateTransferActions(true);
     }
 
     private void TransferProgressCard_MouseLeave(object sender, System.Windows.Input.MouseEventArgs e)
     {
+        TransferProgressCardTransform.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation
+        {
+            To = 0,
+            Duration = TimeSpan.FromMilliseconds(180),
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut },
+        });
+
         if (_transferProgressBatch?.Files.All(file => file.Status is "completed" or "cancelled") == true)
         {
             AnimateTransferActions(false);

@@ -7,7 +7,7 @@ import {
   ExpandIcon,
   MoreIcon,
   PauseIcon,
-  PlayIcon,
+  ResendIcon,
   UploadIcon,
 } from './Icons';
 import type { TransferBatchProgress, TransferFileProgress } from '../types';
@@ -112,8 +112,8 @@ export const TransferStatusCard: React.FC<TransferStatusCardProps> = ({
 
         <div className="transfer-actions" aria-hidden={!showActions && !showExpand}>
           {showPause && (
-            <button type="button" className="transfer-action-btn" onClick={onPauseToggle} aria-label={batch.status === 'paused' ? 'Resume transfer' : 'Pause transfer'}>
-              {batch.status === 'paused' ? <PlayIcon size={16} /> : <PauseIcon size={16} />}
+            <button type="button" className={`transfer-action-btn transfer-action-morph ${batch.status === 'paused' ? 'is-paused' : ''}`} onClick={onPauseToggle} aria-label={batch.status === 'paused' ? 'Resume transfer' : 'Pause transfer'}>
+              {batch.status === 'paused' ? <ResendIcon size={14} /> : <PauseIcon size={16} />}
             </button>
           )}
           {showCancel && (
