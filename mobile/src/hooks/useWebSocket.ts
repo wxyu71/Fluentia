@@ -651,16 +651,23 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
       reconnectIfNeeded();
     };
 
+    const handlePageShow = () => {
+      suspendedRef.current = false;
+      reconnectIfNeeded();
+    };
+
     const handleOnline = () => {
       suspendedRef.current = false;
       reconnectIfNeeded();
     };
 
     document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('pageshow', handlePageShow);
     window.addEventListener('online', handleOnline);
 
     return () => {
       document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('pageshow', handlePageShow);
       window.removeEventListener('online', handleOnline);
     };
   }, [connectWs]);
@@ -672,6 +679,11 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
       clearHeartbeatInterval();
       clearHeartbeatTimeout();
       suspendedRef.current = true;
+      setPeerConnected(false);
+      setEncryptionState(false);
+      setPendingStatus(null);
+      setConnectionState('disconnected');
+      connectionStateRef.current = 'disconnected';
       if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
       closeSocket('pagehide');
     };

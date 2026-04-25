@@ -82,6 +82,7 @@ export const App: React.FC = () => {
   const [inputText, setInputText] = useState('');
   const [scannerOverlay, setScannerOverlay] = useState(false);
   const [fileTransferEnabled, setFileTransferEnabled] = useState(false);
+  const [maxFileMB, setMaxFileMB] = useState(0);
 
   const fetchServerConfig = useCallback((info: ConnectionInfo) => {
     const httpBase = info.s.replace(/\/ws.*$/, '').replace('wss://', 'https://').replace('ws://', 'http://');
@@ -89,9 +90,11 @@ export const App: React.FC = () => {
       .then((response) => response.json())
       .then((config) => {
         setFileTransferEnabled(typeof config.fileTransfer === 'boolean' ? config.fileTransfer : false);
+        setMaxFileMB(typeof config.maxFileMB === 'number' ? config.maxFileMB : 0);
       })
       .catch(() => {
         setFileTransferEnabled(false);
+        setMaxFileMB(0);
       });
   }, []);
 
@@ -218,6 +221,7 @@ export const App: React.FC = () => {
       }
     } catch {
       setFileTransferEnabled(false);
+      setMaxFileMB(0);
     }
   }, [connectionState, fetchServerConfig]);
 
@@ -390,6 +394,7 @@ export const App: React.FC = () => {
                 onOpenScanner={() => setScannerOverlay(true)}
                 autoSaveHistory={settings.autoSaveHistory}
                 fileTransferEnabled={fileTransferEnabled}
+                maxFileMB={maxFileMB}
                 pendingStatus={pendingStatus}
                 onCancelPendingConnection={handleCancelPendingConnection}
                 inputResetVersion={inputResetVersion}

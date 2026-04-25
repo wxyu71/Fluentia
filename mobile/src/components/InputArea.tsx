@@ -15,6 +15,7 @@ interface InputAreaProps {
   onOpenScanner: () => void;
   autoSaveHistory: boolean;
   fileTransferEnabled?: boolean;
+  maxFileMB?: number;
   pendingStatus: string | null;
   onCancelPendingConnection: () => void;
   inputResetVersion: number;
@@ -30,6 +31,7 @@ export const InputArea: React.FC<InputAreaProps> = ({
   onOpenScanner,
   autoSaveHistory,
   fileTransferEnabled = false,
+  maxFileMB = 0,
   pendingStatus,
   onCancelPendingConnection,
   inputResetVersion,
@@ -248,6 +250,7 @@ export const InputArea: React.FC<InputAreaProps> = ({
                 encryptionReady={encryptionReady}
                 onSendCommand={onSendCommand}
                 compact
+                maxFileMB={maxFileMB}
                 onBatchStateChange={setOutgoingTransferBatch}
               />
             )}

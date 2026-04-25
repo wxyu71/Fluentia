@@ -3,12 +3,12 @@ import { AttachIcon } from './Icons';
 import type { InputCommand, TransferBatchProgress } from '../types';
 
 const CHUNK_SIZE = 16 * 1024;
-const MAX_FILE_MB = 20;
 
 interface FileTransferProps {
   encryptionReady: boolean;
   onSendCommand: (cmd: InputCommand) => void;
   compact?: boolean;
+  maxFileMB?: number;
   onBatchStateChange?: (batch: TransferBatchProgress | null) => void;
 }
 
@@ -23,7 +23,7 @@ function generateTransferId(): string {
 }
 
 export const FileTransfer = forwardRef<FileTransferHandle, FileTransferProps>(
-  ({ encryptionReady, onSendCommand, compact = false, onBatchStateChange }, ref) => {
+  ({ encryptionReady, onSendCommand, compact = false, maxFileMB = 0, onBatchStateChange }, ref) => {
   const [batch, setBatch] = useState<TransferBatchProgress | null>(null);
   const [error, setError] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -117,9 +117,10 @@ export const FileTransfer = forwardRef<FileTransferHandle, FileTransferProps>(
     setError('');
     clearHideTimer();
 
-    const oversize = files.find((file) => file.size > MAX_FILE_MB * 1024 * 1024);
+    const effectiveMaxFileMB = maxFileMB > 0 ? maxFileMB : Number.POSITIVE_INFINITY;
+    const oversize = files.find((file) => file.size > effectiveMaxFileMB * 1024 * 1024);
     if (oversize) {
-      setError(`File too large (max ${MAX_FILE_MB} MB)`);
+      setError(maxFileMB > 0 ? `File too large (max ${maxFileMB} MB)` : 'File too large');
       updateBatch(null);
       return;
     }
@@ -257,7 +258,7 @@ export const FileTransfer = forwardRef<FileTransferHandle, FileTransferProps>(
       } : current);
       scheduleBatchClear();
     }
-  }, [clearHideTimer, onSendCommand, scheduleBatchClear, updateBatch, waitWhilePaused]);
+  }, [clearHideTimer, maxFileMB, onSendCommand, scheduleBatchClear, updateBatch, waitWhilePaused]);
 
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
