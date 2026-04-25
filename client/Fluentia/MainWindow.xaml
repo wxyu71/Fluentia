@@ -343,8 +343,8 @@
                                                     CornerRadius="30"
                                                     Padding="16">
                                                 <Image x:Name="QrCodeImage"
-                                                       Width="360"
-                                                       Height="360"
+                                                       Width="420"
+                                                       Height="420"
                                                        RenderOptions.BitmapScalingMode="NearestNeighbor"/>
                                             </Border>
                                             <TextBlock x:Name="QrTimerText"

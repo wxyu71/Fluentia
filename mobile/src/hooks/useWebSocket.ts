@@ -9,6 +9,7 @@ import type {
 } from '../types';
 import { PROTOCOL_VERSION } from '../types';
 
+const STORED_CONN_KEY = 'fluentia_conn';
 const BASE_RECONNECT_DELAY_MS = 150;
 const MAX_RECONNECT_DELAY_MS = 1200;
 const MAX_RECONNECT_ATTEMPTS = 300;
@@ -313,6 +314,10 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
         if (msg.publicKey && !cryptoRef.current.hasPeerKey()) {
           cryptoRef.current.setPeerPublicKey(msg.publicKey);
         }
+        if (msg.publicKey && connInfoRef.current && connInfoRef.current.k !== msg.publicKey) {
+          connInfoRef.current = { ...connInfoRef.current, k: msg.publicKey };
+          localStorage.setItem(STORED_CONN_KEY, JSON.stringify(connInfoRef.current));
+        }
         setPendingStatus('Waiting for your PC');
         break;
 
@@ -555,7 +560,9 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
     connInfoRef.current = info;
 
     cryptoRef.current.reset();
-    cryptoRef.current.setPeerPublicKey(info.k);
+    if (info.k) {
+      cryptoRef.current.setPeerPublicKey(info.k);
+    }
 
     setConnectionState('connecting');
     connectionStateRef.current = 'connecting';

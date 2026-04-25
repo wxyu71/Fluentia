@@ -214,6 +214,11 @@ public partial class MainWindow : Window
 
         _roomManager.OnDeviceCodeCreated += (code) => Dispatcher.Invoke(() =>
         {
+            if (_mobileConnected || _handshakePending || _roomManager.EncryptionReady)
+            {
+                return;
+            }
+
             _deviceCode = code;
             if (_devMode) AppendLog($"Device code ready: {code}");
             RefreshVisualState();
@@ -573,7 +578,7 @@ public partial class MainWindow : Window
 
         var modules = qrCodeData.ModuleMatrix;
         int size = modules.Count;
-        const int targetPx = 360;
+        const int targetPx = 420;
         int moduleSize = Math.Max(4, targetPx / (size + 3));
         int margin = Math.Max(moduleSize, (int)Math.Round(moduleSize * 1.5));
         int canvasSize = size * moduleSize;
