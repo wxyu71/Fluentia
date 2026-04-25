@@ -499,6 +499,7 @@ func (h *Hub) handleDeviceCodeConfirm(c *Client, msg Message) {
 		Approved:  true,
 	})
 	if session.PC != nil {
+		mobile.SendMessage(Message{Type: MsgPeerJoined, Role: "pc"})
 		session.PC.SendMessage(Message{Type: MsgPeerJoined, Role: "mobile", DeviceID: mobile.deviceID})
 	}
 
