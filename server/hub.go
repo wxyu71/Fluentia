@@ -352,6 +352,7 @@ func (h *Hub) handleJoinSession(c *Client, msg Message) {
 
 	c.SendMessage(Message{Type: MsgJoined, Role: "mobile", Token: session.Token, Version: ProtocolVersion})
 	if session.PC != nil {
+		c.SendMessage(Message{Type: MsgPeerJoined, Role: "pc"})
 		session.PC.SendMessage(Message{Type: MsgPeerJoined, Role: "mobile", DeviceID: c.deviceID})
 	}
 }

@@ -309,20 +309,11 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
 
         setConnectionState('connected');
         connectionStateRef.current = 'connected';
-        setPeerConnected(true);
+        setPeerConnected(false);
         if (msg.publicKey && !cryptoRef.current.hasPeerKey()) {
           cryptoRef.current.setPeerPublicKey(msg.publicKey);
         }
-        setPendingStatus('Key exchange');
-        startHandshakeTimeout('Secure pairing timed out. Go back and reconnect.');
-
-        if (wsRef.current?.readyState === WebSocket.OPEN) {
-          wsRef.current.send(JSON.stringify({
-            type: 'key_exchange',
-            publicKey: cryptoRef.current.getPublicKeyBase64(),
-          } satisfies WsMessage));
-          beginSecureHandshake();
-        }
+        setPendingStatus('Waiting for your PC');
         break;
 
       case 'pong':
@@ -523,6 +514,13 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
       case 'error':
         clearHandshakeTimer();
         setLastError(msg.error || 'Unknown error');
+        if (!encryptionReadyRef.current && msg.error === 'no peer connected') {
+          setPeerConnected(false);
+          setPendingStatus('Waiting for your PC');
+          setConnectionState('connected');
+          connectionStateRef.current = 'connected';
+          return;
+        }
         setPendingStatus(null);
         handshakeStartedRef.current = false;
         if (!encryptionReadyRef.current) {
