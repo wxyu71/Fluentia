@@ -334,6 +334,7 @@ func (h *Hub) handleJoinSession(c *Client, msg Message) {
 
 	// Preempt existing mobile client (force-disconnect)
 	if old := session.Mobile; old != nil && old != c {
+		sameDevice := old.deviceID != "" && old.deviceID == c.deviceID
 		log.Printf("Preempting device %s in session %s (new: %s)", old.deviceID, session.Token, c.deviceID)
 		session.Mobile = nil
 		old.session = nil
@@ -342,7 +343,7 @@ func (h *Hub) handleJoinSession(c *Client, msg Message) {
 			Type:  MsgPreempted,
 			Error: "another device connected",
 		})
-		if session.PC != nil {
+		if session.PC != nil && !sameDevice {
 			session.PC.SendMessage(Message{Type: MsgPeerLeft, Role: "mobile", DeviceID: old.deviceID})
 		}
 	}
@@ -434,6 +435,7 @@ func (h *Hub) handleDeviceCodeJoin(c *Client, msg Message) {
 
 	// Generate verification ID shown on both sides
 	verifyID := generateVerifyID()
+	c.deviceID = msg.DeviceID
 	entry.Pending = c
 	entry.VerifyID = verifyID
 
@@ -472,16 +474,16 @@ func (h *Hub) handleDeviceCodeConfirm(c *Client, msg Message) {
 
 	// Now join the mobile to the session (same as handleJoinSession logic)
 	mobile.role = "mobile"
-	mobile.deviceID = msg.DeviceID
 	mobile.session = session
 
 	// Preempt existing mobile
 	if old := session.Mobile; old != nil && old != mobile {
+		sameDevice := old.deviceID != "" && old.deviceID == mobile.deviceID
 		session.Mobile = nil
 		old.session = nil
 		delete(h.clients, old)
 		old.SendAndClose(Message{Type: MsgPreempted, Error: "another device connected"})
-		if session.PC != nil {
+		if session.PC != nil && !sameDevice {
 			session.PC.SendMessage(Message{Type: MsgPeerLeft, Role: "mobile", DeviceID: old.deviceID})
 		}
 	}

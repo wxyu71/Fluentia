@@ -2101,7 +2101,97 @@ public partial class MainWindow : Window
 
     private void QrExpand_Click(object sender, RoutedEventArgs e)
     {
-        ShowQrArea(true);
+        if (!_qrVisible)
+        {
+            ShowQrArea(true);
+            return;
+        }
+
+        ShowQrPreviewWindow();
+    }
+
+    private void QrContainer_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        ShowQrPreviewWindow();
+    }
+
+    private void ShowQrPreviewWindow()
+    {
+        if (QrCodeImage.Source == null)
+        {
+            return;
+        }
+
+        var qrMetaText = string.IsNullOrWhiteSpace(_deviceCode)
+            ? QrTimerText.Text
+            : $"{QrTimerText.Text}\n{L("DeviceCodeTitle")}: {_deviceCode}";
+
+        var panel = new Border
+        {
+            Background = Brushes.White,
+            CornerRadius = new CornerRadius(28),
+            Padding = new Thickness(24),
+            Child = new StackPanel
+            {
+                Children =
+                {
+                    new System.Windows.Controls.Image
+                    {
+                        Source = QrCodeImage.Source,
+                        Width = 640,
+                        Height = 640,
+                        Stretch = Stretch.Uniform,
+                        SnapsToDevicePixels = true,
+                    },
+                    new TextBlock
+                    {
+                        Text = qrMetaText,
+                        Margin = new Thickness(0, 18, 0, 0),
+                        Foreground = Brushes.Black,
+                        FontSize = 16,
+                        TextAlignment = TextAlignment.Center,
+                    },
+                    new TextBlock
+                    {
+                        Text = L("QrHintClickToCollapse"),
+                        Margin = new Thickness(0, 10, 0, 0),
+                        Foreground = new SolidColorBrush(Color.FromRgb(95, 99, 104)),
+                        FontSize = 13,
+                        TextAlignment = TextAlignment.Center,
+                    },
+                }
+            }
+        };
+
+        var preview = new Window
+        {
+            Owner = this,
+            Width = 760,
+            Height = 860,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            WindowStyle = WindowStyle.None,
+            ResizeMode = ResizeMode.NoResize,
+            AllowsTransparency = true,
+            Background = Brushes.Transparent,
+            ShowInTaskbar = false,
+            Content = new Border
+            {
+                Background = new SolidColorBrush(Color.FromArgb(180, 8, 10, 14)),
+                Padding = new Thickness(24),
+                Child = panel,
+            }
+        };
+
+        preview.MouseLeftButtonDown += (_, _) => preview.Close();
+        preview.PreviewKeyDown += (_, args) =>
+        {
+            if (args.Key == Key.Escape)
+            {
+                preview.Close();
+            }
+        };
+
+        preview.ShowDialog();
     }
 
     private void BrowseSavePath_Click(object sender, RoutedEventArgs e)

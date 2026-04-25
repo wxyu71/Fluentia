@@ -337,7 +337,9 @@
                                             BorderThickness="0"
                                             Padding="0"
                                             HorizontalAlignment="Stretch"
-                                            Visibility="Collapsed">
+                                            Visibility="Collapsed"
+                                            Cursor="Hand"
+                                            MouseLeftButtonDown="QrContainer_MouseLeftButtonDown">
                                         <StackPanel HorizontalAlignment="Center">
                                             <Border Background="#FFFFFFFF"
                                                     CornerRadius="30"

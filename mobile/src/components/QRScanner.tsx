@@ -209,6 +209,7 @@ const ManualConnect: React.FC<{ onConnect: (info: ConnectionInfo) => void }> = (
   const [verifyId, setVerifyId] = useState('');
   const [waiting, setWaiting] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
+  const handoffPendingRef = useRef(false);
   const inputRefs = useRef<(HTMLInputElement | null)[]>(Array(8).fill(null));
 
   const getCode = () => chars.join('');
@@ -218,6 +219,7 @@ const ManualConnect: React.FC<{ onConnect: (info: ConnectionInfo) => void }> = (
   };
 
   const cancelPending = useCallback(() => {
+    handoffPendingRef.current = false;
     wsRef.current?.close();
     wsRef.current = null;
     setWaiting(false);
@@ -250,10 +252,11 @@ const ManualConnect: React.FC<{ onConnect: (info: ConnectionInfo) => void }> = (
           setVerifyId(msg.verifyId);
           setStatus('Waiting for approval on your PC');
         } else if (msg.type === 'joined' && msg.approved) {
-          ws.close();
+          handoffPendingRef.current = true;
           const info: ConnectionInfo = { s: wsUrl, t: msg.token, k: msg.publicKey || '' };
           onConnect(info);
         } else if (msg.type === 'error') {
+          handoffPendingRef.current = false;
           setStatus(msg.error || 'Connection failed');
           setWaiting(false);
           ws.close();
@@ -264,11 +267,15 @@ const ManualConnect: React.FC<{ onConnect: (info: ConnectionInfo) => void }> = (
     };
 
     ws.onerror = () => {
+      handoffPendingRef.current = false;
       setStatus('Connection failed');
       setWaiting(false);
     };
 
     ws.onclose = () => {
+      if (!handoffPendingRef.current) {
+        setWaiting(false);
+      }
       wsRef.current = null;
     };
   }, [onConnect, waiting]);
@@ -348,7 +355,25 @@ const ManualConnect: React.FC<{ onConnect: (info: ConnectionInfo) => void }> = (
     }
   }, [handleSubmit]);
 
-  useEffect(() => () => { wsRef.current?.close(); }, []);
+  useEffect(() => () => {
+    const ws = wsRef.current;
+    if (!ws) {
+      return;
+    }
+
+    if (handoffPendingRef.current) {
+      window.setTimeout(() => {
+        try {
+          ws.close();
+        } catch {
+          // Ignore close errors after handoff.
+        }
+      }, 5000);
+      return;
+    }
+
+    ws.close();
+  }, []);
 
   const boxStyle = (filled: boolean): React.CSSProperties => ({
     width: '100%',
