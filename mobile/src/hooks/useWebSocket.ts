@@ -635,9 +635,8 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
     };
 
     ws.onerror = () => {
-      if (wsRef.current === ws) {
-        setLastError('Connection error');
-      }
+      // Wait for onclose or a protocol error before surfacing failures.
+      // Browsers often emit a transient onerror immediately before a successful reconnect.
     };
   }, [cleanup, clearHandshakeTimer, clearHeartbeatInterval, clearHeartbeatTimeout, deviceId, handleMessage, setEncryptionState, startHeartbeat]);
 
