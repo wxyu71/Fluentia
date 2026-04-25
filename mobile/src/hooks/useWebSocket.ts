@@ -52,6 +52,7 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
   const heartbeatTimeoutRef = useRef<number | null>(null);
   const intentionalCloseRef = useRef(false);
   const suspendedRef = useRef(false);
+  const handshakeStartedRef = useRef(false);
   const connectionStateRef = useRef<ConnectionState>('disconnected');
   const encryptionReadyRef = useRef(false);
   const incomingFilesRef = useRef(new Map<string, { fileName: string; mimeType: string; chunks: string[] }>());
@@ -113,6 +114,9 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
 
   const setEncryptionState = useCallback((ready: boolean) => {
     encryptionReadyRef.current = ready;
+    if (ready) {
+      handshakeStartedRef.current = false;
+    }
     setEncryptionReady(ready);
     if (ready) {
       setPendingStatus(null);
@@ -230,6 +234,7 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
     clearHeartbeatInterval();
     clearHeartbeatTimeout();
     clearIncomingTransferHideTimer();
+    handshakeStartedRef.current = false;
     incomingFilesRef.current.clear();
     incomingTransferBatchRef.current = null;
     setIncomingTransferBatch(null);
@@ -267,6 +272,27 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
     }
   }, []);
 
+  const beginSecureHandshake = useCallback(() => {
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    if (!cryptoRef.current.isReady()) return;
+    if (handshakeStartedRef.current) return;
+
+    handshakeStartedRef.current = true;
+    setPendingStatus('Securing session');
+    startHandshakeTimeout('Secure pairing timed out. Go back and reconnect.');
+
+    try {
+      const { seed } = cryptoRef.current.initRatchet();
+      const initCmd = JSON.stringify({ type: 'ratchet_init', seed });
+      const { payload, nonce } = cryptoRef.current.encrypt(initCmd);
+      ws.send(JSON.stringify({ type: 'encrypted', payload, nonce } satisfies WsMessage));
+    } catch (err) {
+      handshakeStartedRef.current = false;
+      console.error('Failed to initialize ratchet:', err);
+    }
+  }, [startHandshakeTimeout]);
+
   const handleMessage = useCallback((msg: WsMessage) => {
     clearHeartbeatTimeout();
 
@@ -284,6 +310,9 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
         setConnectionState('connected');
         connectionStateRef.current = 'connected';
         setPeerConnected(true);
+        if (msg.publicKey && !cryptoRef.current.hasPeerKey()) {
+          cryptoRef.current.setPeerPublicKey(msg.publicKey);
+        }
         setPendingStatus('Key exchange');
         startHandshakeTimeout('Secure pairing timed out. Go back and reconnect.');
 
@@ -292,6 +321,7 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
             type: 'key_exchange',
             publicKey: cryptoRef.current.getPublicKeyBase64(),
           } satisfies WsMessage));
+          beginSecureHandshake();
         }
         break;
 
@@ -302,6 +332,7 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
         setPeerConnected(true);
         if (msg.role === 'pc' && wsRef.current?.readyState === WebSocket.OPEN) {
           setEncryptionState(false);
+          handshakeStartedRef.current = false;
           setPendingStatus('Key exchange');
           startHandshakeTimeout('Secure pairing timed out. Go back and reconnect.');
           cryptoRef.current.reset();
@@ -312,10 +343,12 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
             type: 'key_exchange',
             publicKey: cryptoRef.current.getPublicKeyBase64(),
           } satisfies WsMessage));
+          beginSecureHandshake();
         }
         break;
 
       case 'peer_left':
+        handshakeStartedRef.current = false;
         setPeerConnected(false);
         setEncryptionState(false);
         clearHandshakeTimer();
@@ -336,19 +369,7 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
         if (msg.publicKey && !cryptoRef.current.hasPeerKey()) {
           cryptoRef.current.setPeerPublicKey(msg.publicKey);
         }
-        setPendingStatus('Securing session');
-        startHandshakeTimeout('Secure pairing timed out. Go back and reconnect.');
-
-        try {
-          const { seed } = cryptoRef.current.initRatchet();
-          const initCmd = JSON.stringify({ type: 'ratchet_init', seed });
-          const { payload, nonce } = cryptoRef.current.encrypt(initCmd);
-          if (wsRef.current?.readyState === WebSocket.OPEN) {
-            wsRef.current.send(JSON.stringify({ type: 'encrypted', payload, nonce } satisfies WsMessage));
-          }
-        } catch (err) {
-          console.error('Failed to initialize ratchet:', err);
-        }
+        beginSecureHandshake();
         break;
 
       case 'encrypted': {
@@ -503,6 +524,7 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
         clearHandshakeTimer();
         setLastError(msg.error || 'Unknown error');
         setPendingStatus(null);
+        handshakeStartedRef.current = false;
         if (!encryptionReadyRef.current) {
           intentionalCloseRef.current = true;
           closeSocket('server-error');
@@ -525,11 +547,13 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
     startHandshakeTimeout,
     triggerFileDownload,
     updateIncomingTransferBatch,
+    beginSecureHandshake,
   ]);
 
   const connectWs = useCallback((info: ConnectionInfo) => {
     cleanup();
     intentionalCloseRef.current = false;
+    handshakeStartedRef.current = false;
     connInfoRef.current = info;
 
     cryptoRef.current.reset();
