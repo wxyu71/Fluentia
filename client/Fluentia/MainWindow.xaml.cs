@@ -70,6 +70,7 @@ public partial class MainWindow : Window
     private DispatcherTimer? _disconnectTimer;
     private DispatcherTimer? _receivedFilesRevealTimer;
     private DispatcherTimer? _transferProgressHideTimer;
+    private DispatcherTimer? _trayCreationRetryTimer;
 
     private DateTime _sessionCreatedAt;
     private DateTime _sessionExpiresAt;
@@ -91,6 +92,7 @@ public partial class MainWindow : Window
     private string? _deviceCode;
     private string? _activeOutgoingTransferId;
     private string? _activeOutgoingUiFileId;
+    private int _trayCreationRetriesRemaining;
     private string _fileSavePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
     private IntPtr _inputTargetWindow;
     private IntPtr _windowHandle;
@@ -186,6 +188,7 @@ public partial class MainWindow : Window
             {
                 _handshakePending = false;
                 _inputTargetWindow = IntPtr.Zero;
+                CancelOngoingTransfers();
             }
 
             RefreshStatusFromState();
@@ -254,6 +257,7 @@ public partial class MainWindow : Window
             _mobileConnected = false;
             _handshakePending = false;
             _inputTargetWindow = IntPtr.Zero;
+            CancelOngoingTransfers();
 
             if (_roomManager.HasTrustedSession && !IsSessionExpired())
             {
@@ -889,6 +893,18 @@ public partial class MainWindow : Window
         ScheduleTransferProgressHide();
     }
 
+    private void CancelOngoingTransfers()
+    {
+        _fileTransfers.Clear();
+        _outgoingTransferCancelRequested = true;
+        _outgoingTransferPaused = false;
+        _outgoingTransferResumeTcs?.TrySetResult(true);
+        _outgoingTransferResumeTcs = null;
+        _activeOutgoingTransferId = null;
+        _activeOutgoingUiFileId = null;
+        CancelPendingTransferProgress();
+    }
+
     private Task WaitForOutgoingTransferResumeAsync()
     {
         if (!_outgoingTransferPaused)
@@ -1294,9 +1310,56 @@ public partial class MainWindow : Window
         menu.Items.Add(_trayExitItem);
 
         _trayIcon.ContextMenu = menu;
-        _trayIcon.ForceCreate();
+        EnsureTrayIconCreated();
         RefreshTrayMenuText();
         SetTrayIconColor(disconnected: !_serverConnected || !CanUseConfiguredServer());
+    }
+
+    private void EnsureTrayIconCreated()
+    {
+        if (_trayIcon == null)
+        {
+            return;
+        }
+
+        TryForceCreateTrayIcon();
+
+        if (_trayCreationRetryTimer == null)
+        {
+            _trayCreationRetryTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+            _trayCreationRetryTimer.Tick += (_, _) =>
+            {
+                if (_trayIcon == null || _trayCreationRetriesRemaining <= 0)
+                {
+                    _trayCreationRetryTimer?.Stop();
+                    return;
+                }
+
+                _trayCreationRetriesRemaining -= 1;
+                TryForceCreateTrayIcon();
+            };
+        }
+
+        _trayCreationRetriesRemaining = 12;
+        _trayCreationRetryTimer.Stop();
+        _trayCreationRetryTimer.Start();
+    }
+
+    private void TryForceCreateTrayIcon()
+    {
+        if (_trayIcon == null)
+        {
+            return;
+        }
+
+        try
+        {
+            _trayIcon.ForceCreate();
+            SetTrayIconColor(disconnected: !_serverConnected || !CanUseConfiguredServer());
+        }
+        catch
+        {
+        }
     }
 
     private void RefreshTrayMenuText()
@@ -2382,6 +2445,7 @@ public partial class MainWindow : Window
     {
         if (_closeToTray)
         {
+            EnsureTrayIconCreated();
             Hide();
         }
         else
@@ -2408,6 +2472,7 @@ public partial class MainWindow : Window
         _sessionTimer?.Stop();
         _disconnectTimer?.Stop();
         _receivedFilesRevealTimer?.Stop();
+        _trayCreationRetryTimer?.Stop();
 
         if (_winEventHook != IntPtr.Zero)
         {

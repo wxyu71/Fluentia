@@ -9,9 +9,16 @@ import type {
 } from '../types';
 import { PROTOCOL_VERSION } from '../types';
 
-const RECONNECT_DELAY = 1200;
+const BASE_RECONNECT_DELAY_MS = 150;
+const MAX_RECONNECT_DELAY_MS = 1200;
 const MAX_RECONNECT_ATTEMPTS = 300;
 const HANDSHAKE_TIMEOUT_MS = 12000;
+const HEARTBEAT_INTERVAL_MS = 1000;
+const HEARTBEAT_TIMEOUT_MS = 2500;
+
+function getReconnectDelay(attempt: number): number {
+  return Math.min(BASE_RECONNECT_DELAY_MS * (2 ** Math.max(0, attempt - 1)), MAX_RECONNECT_DELAY_MS);
+}
 
 interface UseWebSocketReturn {
   connectionState: ConnectionState;
@@ -41,6 +48,8 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
   const reconnectAttemptRef = useRef(0);
   const reconnectTimerRef = useRef<number | null>(null);
   const handshakeTimerRef = useRef<number | null>(null);
+  const heartbeatIntervalRef = useRef<number | null>(null);
+  const heartbeatTimeoutRef = useRef<number | null>(null);
   const intentionalCloseRef = useRef(false);
   const suspendedRef = useRef(false);
   const connectionStateRef = useRef<ConnectionState>('disconnected');
@@ -124,6 +133,20 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
     }
   }, []);
 
+  const clearHeartbeatInterval = useCallback(() => {
+    if (heartbeatIntervalRef.current !== null) {
+      clearInterval(heartbeatIntervalRef.current);
+      heartbeatIntervalRef.current = null;
+    }
+  }, []);
+
+  const clearHeartbeatTimeout = useCallback(() => {
+    if (heartbeatTimeoutRef.current !== null) {
+      clearTimeout(heartbeatTimeoutRef.current);
+      heartbeatTimeoutRef.current = null;
+    }
+  }, []);
+
   const closeSocket = useCallback((reason: string) => {
     const ws = wsRef.current;
     wsRef.current = null;
@@ -135,6 +158,49 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
       // Ignore close errors for stale sockets.
     }
   }, []);
+
+  const startHeartbeat = useCallback((ws: WebSocket) => {
+    const sendPing = () => {
+      if (wsRef.current !== ws || ws.readyState !== WebSocket.OPEN) {
+        return;
+      }
+
+      clearHeartbeatTimeout();
+      heartbeatTimeoutRef.current = window.setTimeout(() => {
+        if (wsRef.current !== ws) {
+          return;
+        }
+
+        setPeerConnected(false);
+        setEncryptionState(false);
+        setPendingStatus('Reconnecting');
+        setConnectionState('connecting');
+        connectionStateRef.current = 'connecting';
+
+        try {
+          ws.close(1000, 'heartbeat-timeout');
+        } catch {
+          // Ignore close errors for stale sockets.
+        }
+      }, HEARTBEAT_TIMEOUT_MS);
+
+      try {
+        ws.send(JSON.stringify({ type: 'ping' } satisfies WsMessage));
+      } catch {
+        clearHeartbeatTimeout();
+        try {
+          ws.close(1000, 'ping-failed');
+        } catch {
+          // Ignore close errors for stale sockets.
+        }
+      }
+    };
+
+    clearHeartbeatInterval();
+    clearHeartbeatTimeout();
+    sendPing();
+    heartbeatIntervalRef.current = window.setInterval(sendPing, HEARTBEAT_INTERVAL_MS);
+  }, [clearHeartbeatInterval, clearHeartbeatTimeout, setEncryptionState]);
 
   const failHandshake = useCallback((message: string) => {
     if (encryptionReadyRef.current) return;
@@ -161,6 +227,8 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
   const cleanup = useCallback((clearConnectionInfo = false) => {
     clearReconnectTimer();
     clearHandshakeTimer();
+    clearHeartbeatInterval();
+    clearHeartbeatTimeout();
     clearIncomingTransferHideTimer();
     incomingFilesRef.current.clear();
     incomingTransferBatchRef.current = null;
@@ -175,7 +243,7 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
     if (clearConnectionInfo) {
       connInfoRef.current = null;
     }
-  }, [clearHandshakeTimer, clearIncomingTransferHideTimer, clearReconnectTimer, closeSocket, setEncryptionState]);
+  }, [clearHandshakeTimer, clearHeartbeatInterval, clearHeartbeatTimeout, clearIncomingTransferHideTimer, clearReconnectTimer, closeSocket, setEncryptionState]);
 
   const sendEncryptedPayload = useCallback((plaintext: string) => {
     const ws = wsRef.current;
@@ -200,6 +268,8 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
   }, []);
 
   const handleMessage = useCallback((msg: WsMessage) => {
+    clearHeartbeatTimeout();
+
     switch (msg.type) {
       case 'joined':
         if (msg.version && msg.version !== PROTOCOL_VERSION) {
@@ -223,6 +293,9 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
             publicKey: cryptoRef.current.getPublicKeyBase64(),
           } satisfies WsMessage));
         }
+        break;
+
+      case 'pong':
         break;
 
       case 'peer_joined':
@@ -441,6 +514,7 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
         break;
     }
   }, [
+    clearHeartbeatTimeout,
     clearHandshakeTimer,
     clearIncomingTransferHideTimer,
     closeSocket,
@@ -474,6 +548,7 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
     ws.onopen = () => {
       suspendedRef.current = false;
       reconnectAttemptRef.current = 0;
+      startHeartbeat(ws);
       ws.send(JSON.stringify({
         type: 'join_session',
         token: info.t,
@@ -495,6 +570,8 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
 
       wsRef.current = null;
       clearHandshakeTimer();
+      clearHeartbeatInterval();
+      clearHeartbeatTimeout();
 
       if (intentionalCloseRef.current) {
         setConnectionState('disconnected');
@@ -521,7 +598,7 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
           if (connInfoRef.current) {
             connectWs(connInfoRef.current);
           }
-        }, RECONNECT_DELAY);
+        }, getReconnectDelay(reconnectAttemptRef.current));
       } else {
         setConnectionState('disconnected');
         connectionStateRef.current = 'disconnected';
@@ -533,7 +610,7 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
         setLastError('Connection error');
       }
     };
-  }, [cleanup, clearHandshakeTimer, deviceId, handleMessage, setEncryptionState]);
+  }, [cleanup, clearHandshakeTimer, clearHeartbeatInterval, clearHeartbeatTimeout, deviceId, handleMessage, setEncryptionState, startHeartbeat]);
 
   const disconnect = useCallback(() => {
     intentionalCloseRef.current = true;
@@ -592,6 +669,8 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
     const handlePageHide = () => {
       clearReconnectTimer();
       clearHandshakeTimer();
+      clearHeartbeatInterval();
+      clearHeartbeatTimeout();
       suspendedRef.current = true;
       if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
       closeSocket('pagehide');
@@ -599,7 +678,7 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
 
     window.addEventListener('pagehide', handlePageHide);
     return () => window.removeEventListener('pagehide', handlePageHide);
-  }, [clearHandshakeTimer, clearReconnectTimer, closeSocket]);
+  }, [clearHandshakeTimer, clearHeartbeatInterval, clearHeartbeatTimeout, clearReconnectTimer, closeSocket]);
 
   useEffect(() => {
     return () => cleanup();

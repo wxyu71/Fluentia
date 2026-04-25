@@ -66,7 +66,7 @@ export const FileTransfer = forwardRef<FileTransferHandle, FileTransferProps>(
   useImperativeHandle(ref, () => ({
     open: () => {
       if (fileInputRef.current) {
-        fileInputRef.current.accept = 'image/*,*/*';
+        fileInputRef.current.accept = '*/*';
         fileInputRef.current.click();
       }
     },
@@ -280,7 +280,7 @@ export const FileTransfer = forwardRef<FileTransferHandle, FileTransferProps>(
   if (compact) {
     return (
       <div style={{ position: 'relative' }}>
-        <input ref={fileInputRef} type="file" accept="image/*,*/*" multiple style={{ display: 'none' }} onChange={handleFileChange} />
+        <input ref={fileInputRef} type="file" accept="*/*" multiple style={{ display: 'none' }} onChange={handleFileChange} />
         <button
           onClick={() => fileInputRef.current?.click()}
           disabled={!encryptionReady || transferBusy}
@@ -307,7 +307,7 @@ export const FileTransfer = forwardRef<FileTransferHandle, FileTransferProps>(
 
   return (
     <div style={{ marginTop: 8 }}>
-      <input ref={fileInputRef} type="file" accept="image/*,*/*" multiple style={{ display: 'none' }} onChange={handleFileChange} />
+      <input ref={fileInputRef} type="file" accept="*/*" multiple style={{ display: 'none' }} onChange={handleFileChange} />
       {error && <div style={{ fontSize: 12, color: 'var(--danger)' }}>{error}</div>}
     </div>
   );
