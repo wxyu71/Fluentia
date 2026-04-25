@@ -554,6 +554,18 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
   ]);
 
   const connectWs = useCallback((info: ConnectionInfo) => {
+    const activeSocket = wsRef.current;
+    const activeInfo = connInfoRef.current;
+    if (
+      activeSocket &&
+      (activeSocket.readyState === WebSocket.CONNECTING || activeSocket.readyState === WebSocket.OPEN) &&
+      activeInfo?.s === info.s &&
+      activeInfo?.t === info.t &&
+      activeInfo?.k === info.k
+    ) {
+      return;
+    }
+
     cleanup();
     intentionalCloseRef.current = false;
     handshakeStartedRef.current = false;

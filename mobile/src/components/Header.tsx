@@ -2,7 +2,7 @@ import React from 'react';
 import { LockIcon } from './Icons';
 import type { ConnectionState } from '../types';
 
-const BUILD_MARKER = 'B0425D';
+const BUILD_MARKER = 'B0425E';
 
 interface HeaderProps {
   connectionState: ConnectionState;

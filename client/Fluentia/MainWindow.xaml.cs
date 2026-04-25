@@ -128,7 +128,7 @@ public partial class MainWindow : Window
     private const uint WINEVENT_OUTOFCONTEXT = 0;
     private const string StartupRegistryPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private const string StartupRegistryValue = "Fluentia";
-    private const string BuildMarker = "B0425D";
+    private const string BuildMarker = "B0425E";
 
     private WinEventDelegate? _winEventDelegate;
     private IntPtr _winEventHook;
