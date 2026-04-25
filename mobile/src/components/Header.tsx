@@ -2,6 +2,8 @@ import React from 'react';
 import { LockIcon } from './Icons';
 import type { ConnectionState } from '../types';
 
+const BUILD_MARKER = 'B0425D';
+
 interface HeaderProps {
   connectionState: ConnectionState;
   peerConnected: boolean;
@@ -50,6 +52,14 @@ export const Header: React.FC<HeaderProps> = ({ connectionState, peerConnected, 
         }}>
           Fluentia
         </h1>
+        <span style={{
+          fontSize: 11,
+          fontWeight: 700,
+          letterSpacing: '0.08em',
+          color: 'var(--accent)',
+        }}>
+          {BUILD_MARKER}
+        </span>
       </div>
 
       <div className="glass glass-xs" style={{

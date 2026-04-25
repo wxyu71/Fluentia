@@ -128,6 +128,7 @@ public partial class MainWindow : Window
     private const uint WINEVENT_OUTOFCONTEXT = 0;
     private const string StartupRegistryPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private const string StartupRegistryValue = "Fluentia";
+    private const string BuildMarker = "B0425D";
 
     private WinEventDelegate? _winEventDelegate;
     private IntPtr _winEventHook;
@@ -2474,7 +2475,7 @@ public partial class MainWindow : Window
     private void ApplyLocalizedText()
     {
         Title = L("MainWindowTitle");
-        TitleLabel.Text = L("AppName");
+        TitleLabel.Text = $"{L("AppName")} · {BuildMarker}";
         BtnMinimize.ToolTip = L("TooltipMinimize");
         BtnMaximize.ToolTip = L("TooltipMaximizeRestore");
         SettingsTitleButton.ToolTip = L("TooltipOpenSettings");
