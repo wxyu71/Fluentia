@@ -42,6 +42,7 @@ type Message struct {
 	Nonce     string `json:"nonce,omitempty"`
 	Error     string `json:"error,omitempty"`
 	Version   string `json:"version,omitempty"`
+	ExpiresAt string `json:"expiresAt,omitempty"`
 	Seq       *int   `json:"seq,omitempty"`
 
 	// Device code auth fields

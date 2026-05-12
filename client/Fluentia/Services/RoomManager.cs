@@ -24,6 +24,7 @@ public class RoomManager : IDisposable
     private int _maxFileMB = 0;
     private bool _encryptionConfirmed;
     private bool _trustedSessionEstablished;
+    private DateTimeOffset? _sessionExpiresAtUtc;
 
     public event Action<string>? OnSessionCreated;     // token
     public event Action<string>? OnMobileConnected;    // deviceId
@@ -46,6 +47,7 @@ public class RoomManager : IDisposable
     public int MaxFileMB => _maxFileMB;
     public bool IsConnected => _ws.IsConnected;
     public bool HasTrustedSession => _trustedSessionEstablished;
+    public DateTimeOffset? SessionExpiresAtUtc => _sessionExpiresAtUtc;
 
     public PersistedDesktopSession? ExportPersistedSession()
     {
@@ -144,6 +146,7 @@ public class RoomManager : IDisposable
             _crypto.Reset();
             _encryptionConfirmed = false;
             _trustedSessionEstablished = false;
+            _sessionExpiresAtUtc = null;
         }
         OnStatusChanged?.Invoke("Connecting...");
         // Fetch server config (non-blocking — best effort)
@@ -180,6 +183,7 @@ public class RoomManager : IDisposable
         _crypto.Reset();
         _encryptionConfirmed = false;
         _trustedSessionEstablished = false;
+        _sessionExpiresAtUtc = null;
         if (_ws.IsConnected)
         {
             await _ws.SendAsync(new WsMessage { Type = MsgTypes.CreateSession, Version = MsgTypes.ProtocolVersion });
@@ -248,6 +252,7 @@ public class RoomManager : IDisposable
                 _currentToken = msg.Token;
                 _encryptionConfirmed = false;
                 _trustedSessionEstablished = false;
+                _sessionExpiresAtUtc = ParseSessionExpiry(msg.ExpiresAt);
                 _rejoinPending = false;
                 OnSessionCreated?.Invoke(msg.Token!);
                 OnStatusChanged?.Invoke($"Session ready: {msg.Token?[..8]}...");
@@ -256,6 +261,7 @@ public class RoomManager : IDisposable
             case MsgTypes.Rejoined:
                 // Successfully reclaimed session within grace period.
                 _rejoinPending = false;
+                _sessionExpiresAtUtc = ParseSessionExpiry(msg.ExpiresAt) ?? _sessionExpiresAtUtc;
                 OnStatusChanged?.Invoke($"Reconnected to session: {msg.Token?[..8]}...");
                 OnSessionRecovered?.Invoke();
                 // Token is the same, crypto keys are the same — mobile is still connected.
@@ -303,6 +309,7 @@ public class RoomManager : IDisposable
                     _crypto.Reset();
                     _encryptionConfirmed = false;
                     _trustedSessionEstablished = false;
+                    _sessionExpiresAtUtc = null;
                     _ = _ws.SendAsync(new WsMessage { Type = MsgTypes.CreateSession, Version = MsgTypes.ProtocolVersion });
                     break;
                 }
@@ -391,5 +398,15 @@ public class RoomManager : IDisposable
     public void Dispose()
     {
         _ws.Dispose();
+    }
+
+    private static DateTimeOffset? ParseSessionExpiry(string? expiresAt)
+    {
+        if (string.IsNullOrWhiteSpace(expiresAt))
+        {
+            return null;
+        }
+
+        return DateTimeOffset.TryParse(expiresAt, out var parsed) ? parsed.ToUniversalTime() : null;
     }
 }

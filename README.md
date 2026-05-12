@@ -9,7 +9,7 @@ Cross-device wireless input — use your phone as a wireless keyboard for your P
 - **Voice & text input** — real-time injection at cursor position via SendInput API
 - **Clipboard sync** — send text from phone directly to PC clipboard
 - **File transfer** — encrypted file sharing between devices (configurable size limit)
-- **Auto-reconnect** — persistent connections with exponential backoff
+- **Auto-reconnect** — persistent connections with exponential backoff, plus desktop session recovery after restart or longer outages
 - **Apple-inspired UI** — liquid glass design, light/dark theme, SVG icons
 - **Privacy first** — no logs by default, optional local history on mobile, zero server-side storage
 
@@ -47,8 +47,10 @@ All settings via environment variables in `docker-compose.yml`:
 | `IP_WHITELIST` | `false` | Enable IP-based access control |
 | `ALLOWED_IPS` | — | Comma-separated IPs/CIDRs |
 | `MAX_FILE_MB` | `100` | Max file size (-1=disabled, 0=unlimited) |
-| `SESSION_MAX_AGE_DAYS` | `7` | How long a session token can be reused before a new session is required |
+| `SESSION_MAX_AGE_DAYS` | `7` | How long a session token and its trusted desktop key remain reusable before a new session is required |
 | `MOBILE_EXPIRY_SECS` | `60` | How long the desktop waits before surfacing itself after the phone disconnects |
+
+Desktop session state is stored locally and protected with the current Windows user account so the client can restore the same trusted keypair after restart.
 
 ## Architecture
 

@@ -13,7 +13,7 @@ type Session struct {
 	Mobile     *Client
 	CreatedAt  time.Time
 	ExpiresAt  time.Time
-	GraceTimer *time.Timer // set when PC disconnects; fires to destroy session
+	GraceTimer *time.Timer // set when PC disconnects; fires when the reusable session finally expires
 }
 
 // NewSession creates a new session with a random token, owned by the given PC client.

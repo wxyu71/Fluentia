@@ -204,7 +204,7 @@ public partial class MainWindow : Window
             _qrVisible = true;
             _inputTargetWindow = IntPtr.Zero;
             _sessionCreatedAt = DateTime.Now;
-            _sessionExpiresAt = _sessionCreatedAt.AddDays(_roomManager.SessionMaxAgeDays);
+            _sessionExpiresAt = ResolveSessionExpiry(_sessionCreatedAt);
             PersistSettings();
             UpdateQRCode();
             UpdateSessionCountdown();
@@ -310,8 +310,9 @@ public partial class MainWindow : Window
             if (_sessionCreatedAt == default)
             {
                 _sessionCreatedAt = DateTime.Now;
-                _sessionExpiresAt = _sessionCreatedAt.AddDays(_roomManager.SessionMaxAgeDays);
             }
+
+            _sessionExpiresAt = ResolveSessionExpiry(_sessionCreatedAt);
 
             UpdateQRCode();
             UpdateSessionCountdown();
@@ -532,8 +533,12 @@ public partial class MainWindow : Window
 
         if (_sessionExpiresAt == default)
         {
-            _sessionCreatedAt = DateTime.Now;
-            _sessionExpiresAt = _sessionCreatedAt.AddDays(_roomManager.SessionMaxAgeDays);
+            if (_sessionCreatedAt == default)
+            {
+                _sessionCreatedAt = DateTime.Now;
+            }
+
+            _sessionExpiresAt = ResolveSessionExpiry(_sessionCreatedAt);
         }
 
         var remaining = _sessionExpiresAt - DateTime.Now;
@@ -1517,6 +1522,8 @@ public partial class MainWindow : Window
 
     private void LoadSettings()
     {
+        var migrateLegacySession = false;
+
         try
         {
             if (File.Exists(SettingsFile))
@@ -1559,10 +1566,26 @@ public partial class MainWindow : Window
                     DateTime.TryParse(sessionCreatedElement.GetString(), null, System.Globalization.DateTimeStyles.RoundtripKind, out var restoredCreatedAt))
                 {
                     _sessionCreatedAt = restoredCreatedAt.ToLocalTime();
-                    _sessionExpiresAt = _sessionCreatedAt.AddDays(_roomManager.SessionMaxAgeDays);
                 }
 
-                if (doc.RootElement.TryGetProperty("sessionToken", out var tokenElement) &&
+                if (doc.RootElement.TryGetProperty("sessionExpiresAtUtc", out var sessionExpiresElement) &&
+                    DateTimeOffset.TryParse(sessionExpiresElement.GetString(), out var restoredExpiresAt))
+                {
+                    _sessionExpiresAt = restoredExpiresAt.LocalDateTime;
+                }
+                else if (_sessionCreatedAt != default)
+                {
+                    _sessionExpiresAt = ResolveSessionExpiry(_sessionCreatedAt);
+                }
+
+                PersistedDesktopSession? restoredSession = null;
+                if (doc.RootElement.TryGetProperty("protectedSession", out var protectedSessionElement))
+                {
+                    restoredSession = DesktopSessionProtector.Unprotect(protectedSessionElement.GetString() ?? string.Empty);
+                }
+
+                if (restoredSession == null &&
+                    doc.RootElement.TryGetProperty("sessionToken", out var tokenElement) &&
                     doc.RootElement.TryGetProperty("sessionPublicKey", out var publicKeyElement) &&
                     doc.RootElement.TryGetProperty("sessionPrivateKey", out var privateKeyElement))
                 {
@@ -1575,8 +1598,14 @@ public partial class MainWindow : Window
                         !string.IsNullOrWhiteSpace(publicKey) &&
                         !string.IsNullOrWhiteSpace(privateKey))
                     {
-                        _roomManager.RestorePersistedSession(new PersistedDesktopSession(token, publicKey, privateKey, trusted));
+                        restoredSession = new PersistedDesktopSession(token, publicKey, privateKey, trusted);
+                        migrateLegacySession = true;
                     }
+                }
+
+                if (restoredSession != null)
+                {
+                    _roomManager.RestorePersistedSession(restoredSession);
                 }
             }
         }
@@ -1589,6 +1618,11 @@ public partial class MainWindow : Window
         CloseToTrayToggle.IsChecked = _closeToTray;
         LaunchAtStartupToggle.IsChecked = _launchAtStartup;
         UpdateLanguageSelectorSelection();
+
+        if (migrateLegacySession)
+        {
+            PersistSettings();
+        }
     }
 
     private void PersistSettings()
@@ -1604,17 +1638,20 @@ public partial class MainWindow : Window
                 closeToTray = _closeToTray,
                 launchAtStartup = _launchAtStartup,
                 language = LocalizationService.CurrentLanguageSetting,
-                sessionToken = persistedSession?.Token,
-                sessionPublicKey = persistedSession?.PublicKey,
-                sessionPrivateKey = persistedSession?.PrivateKey,
-                sessionTrusted = persistedSession?.TrustedSessionEstablished ?? false,
+                protectedSession = persistedSession == null ? null : DesktopSessionProtector.Protect(persistedSession),
                 sessionCreatedAtUtc = _sessionCreatedAt == default ? null : _sessionCreatedAt.ToUniversalTime().ToString("O"),
+                sessionExpiresAtUtc = _sessionExpiresAt == default ? null : _sessionExpiresAt.ToUniversalTime().ToString("O"),
             });
             File.WriteAllText(SettingsFile, payload);
         }
         catch
         {
         }
+    }
+
+    private DateTime ResolveSessionExpiry(DateTime fallbackCreatedAt)
+    {
+        return _roomManager.SessionExpiresAtUtc?.LocalDateTime ?? fallbackCreatedAt.AddDays(_roomManager.SessionMaxAgeDays);
     }
 
     private bool IsLaunchAtStartupEnabled()

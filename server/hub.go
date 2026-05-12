@@ -146,16 +146,26 @@ func (h *Hub) Unregister(c *Client) {
 	session := c.session
 	if c.role == "pc" {
 		session.PC = nil
-		// Grace period: keep session alive for 30s so PC can rejoin.
-		// Notify mobile that PC is temporarily gone.
+		// Keep the session reusable until its configured expiry so the desktop can
+		// recover after a restart, power loss, or a longer network outage.
 		if session.Mobile != nil {
 			session.Mobile.SendMessage(Message{Type: MsgPeerLeft, Role: "pc", Error: "temporary"})
 		}
+		if session.GraceTimer != nil {
+			session.GraceTimer.Stop()
+			session.GraceTimer = nil
+		}
 		token := session.Token
-		session.GraceTimer = time.AfterFunc(30*time.Second, func() {
-			h.expireSession(token)
-		})
-		log.Printf("Session %s: PC disconnected, grace period started (30s)", token)
+		remaining := time.Until(session.ExpiresAt)
+		if remaining <= 0 {
+			go h.expireSession(token)
+			log.Printf("Session %s: PC disconnected after session expiry", token)
+		} else {
+			session.GraceTimer = time.AfterFunc(remaining, func() {
+				h.expireSession(token)
+			})
+			log.Printf("Session %s: PC disconnected, reusable until %s", token, session.ExpiresAt.Format(time.RFC3339))
+		}
 	} else if c.role == "mobile" {
 		session.Mobile = nil
 		if session.PC != nil {
@@ -166,7 +176,7 @@ func (h *Hub) Unregister(c *Client) {
 	c.session = nil
 }
 
-// expireSession destroys a session after the grace period if PC hasn't rejoined.
+// expireSession destroys a reusable session once it is no longer valid.
 func (h *Hub) expireSession(token string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -175,11 +185,11 @@ func (h *Hub) expireSession(token string) {
 	if !ok {
 		return // already destroyed
 	}
-	// If PC has rejoined during the grace period, don't destroy.
+	// If PC has rejoined and the session is still valid, keep it.
 	if session.PC != nil {
 		return
 	}
-	// Grace period expired — destroy session and kick mobile.
+	// Session validity window expired — destroy session and kick mobile.
 	if session.Mobile != nil {
 		mobile := session.Mobile
 		session.Mobile = nil
@@ -188,7 +198,7 @@ func (h *Hub) expireSession(token string) {
 		mobile.SendAndClose(Message{Type: MsgPeerLeft, Role: "pc"})
 	}
 	delete(h.sessions, token)
-	log.Printf("Session %s destroyed (PC grace period expired)", token)
+	log.Printf("Session %s destroyed (session expired while PC offline)", token)
 }
 
 // HandleMessage is called from a client's ReadPump goroutine.
@@ -256,10 +266,15 @@ func (h *Hub) handleCreateSession(c *Client) {
 	h.sessions[session.Token] = session
 
 	log.Printf("Session created: %s (expires %s)", session.Token, session.ExpiresAt.Format(time.RFC3339))
-	c.SendMessage(Message{Type: MsgSessionCreated, Token: session.Token, Version: ProtocolVersion})
+	c.SendMessage(Message{
+		Type:      MsgSessionCreated,
+		Token:     session.Token,
+		Version:   ProtocolVersion,
+		ExpiresAt: session.ExpiresAt.Format(time.RFC3339),
+	})
 }
 
-// handleRejoinSession lets PC reclaim an existing session within the grace period.
+// handleRejoinSession lets PC reclaim an existing reusable session before expiry.
 func (h *Hub) handleRejoinSession(c *Client, msg Message) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -299,7 +314,12 @@ func (h *Hub) handleRejoinSession(c *Client, msg Message) {
 	session.PC = c
 
 	log.Printf("Session %s: PC rejoined", session.Token)
-	c.SendMessage(Message{Type: MsgRejoined, Token: session.Token, Version: ProtocolVersion})
+	c.SendMessage(Message{
+		Type:      MsgRejoined,
+		Token:     session.Token,
+		Version:   ProtocolVersion,
+		ExpiresAt: session.ExpiresAt.Format(time.RFC3339),
+	})
 
 	// Notify both sides about each other.
 	if session.Mobile != nil {

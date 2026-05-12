@@ -9,16 +9,19 @@ public class WebSocketService : IDisposable
     private ClientWebSocket? _webSocket;
     private CancellationTokenSource? _cts;
     private readonly SemaphoreSlim _sendLock = new(1, 1);
+    private readonly SemaphoreSlim _connectLock = new(1, 1);
+    private readonly object _reconnectSync = new();
     private string? _serverUrl;
     private bool _intentionalClose;
     private int _reconnectAttempts;
-    private const int MaxReconnectAttempts = 10;
     private const int InitialReconnectDelayMs = 200;
-    private const int MaxReconnectDelayMs = 1500;
-    private static readonly TimeSpan HeartbeatInterval = TimeSpan.FromMilliseconds(1000);
-    private static readonly TimeSpan HeartbeatTimeout = TimeSpan.FromMilliseconds(2500);
+    private const int MaxReconnectDelayMs = 5000;
+    private static readonly TimeSpan HeartbeatInterval = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan HeartbeatTimeout = TimeSpan.FromSeconds(10);
     private DateTime _lastServerActivityUtc = DateTime.UtcNow;
     private int _disconnectHandled;
+    private CancellationTokenSource? _reconnectCts;
+    private Task? _reconnectLoopTask;
 
     public event Action<WsMessage>? OnMessage;
     public event Action? OnConnected;
@@ -31,48 +34,69 @@ public class WebSocketService : IDisposable
         _serverUrl = serverUrl;
         _intentionalClose = false;
         _reconnectAttempts = 0;
-        await ConnectInternal(serverUrl);
+        CancelReconnectLoop();
+        await ConnectInternal(serverUrl, CancellationToken.None, notifyDisconnect: true);
     }
 
-    private async Task ConnectInternal(string serverUrl)
+    private async Task<bool> ConnectInternal(string serverUrl, CancellationToken cancellationToken, bool notifyDisconnect)
     {
-        Dispose(disposeUrl: false);
-        _cts = new CancellationTokenSource();
-        _webSocket = new ClientWebSocket();
-        _webSocket.Options.KeepAliveInterval = TimeSpan.FromSeconds(15);
-        _lastServerActivityUtc = DateTime.UtcNow;
-        _disconnectHandled = 0;
-
+        await _connectLock.WaitAsync(cancellationToken);
         try
         {
+            DisposeConnection(disposeUrl: false);
+            _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            _webSocket = new ClientWebSocket();
+            _webSocket.Options.KeepAliveInterval = TimeSpan.FromSeconds(15);
+            _lastServerActivityUtc = DateTime.UtcNow;
+
             await _webSocket.ConnectAsync(new Uri(serverUrl), _cts.Token);
             _reconnectAttempts = 0;
+            _disconnectHandled = 0;
             _lastServerActivityUtc = DateTime.UtcNow;
             OnConnected?.Invoke();
             _ = Task.Run(() => ReceiveLoop(_cts.Token));
             _ = Task.Run(() => HeartbeatLoop(_cts.Token));
+            return true;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested || _intentionalClose)
+        {
+            return false;
         }
         catch (Exception ex)
         {
-            HandleDisconnect(ex.Message);
+            DisposeConnection(disposeUrl: false);
+            if (notifyDisconnect)
+            {
+                HandleDisconnect(ex.Message);
+            }
+
+            return false;
+        }
+        finally
+        {
+            _connectLock.Release();
         }
     }
 
-    private void ScheduleReconnect()
+    private void EnsureReconnectLoop()
     {
-        if (_intentionalClose || _serverUrl == null) return;
-        if (_reconnectAttempts >= MaxReconnectAttempts) return;
-
-        _reconnectAttempts++;
-        var delayMs = GetReconnectDelayMs(_reconnectAttempts);
-        _ = Task.Run(async () =>
+        if (_intentionalClose || string.IsNullOrWhiteSpace(_serverUrl))
         {
-            await Task.Delay(delayMs);
-            if (!_intentionalClose && _serverUrl != null)
+            return;
+        }
+
+        lock (_reconnectSync)
+        {
+            if (_reconnectLoopTask is { IsCompleted: false })
             {
-                await ConnectInternal(_serverUrl);
+                return;
             }
-        });
+
+            _reconnectCts?.Cancel();
+            _reconnectCts?.Dispose();
+            _reconnectCts = new CancellationTokenSource();
+            _reconnectLoopTask = Task.Run(() => ReconnectLoopAsync(_reconnectCts.Token));
+        }
     }
 
     private static int GetReconnectDelayMs(int attempt)
@@ -94,7 +118,56 @@ public class WebSocketService : IDisposable
         }
 
         OnDisconnected?.Invoke(reason);
-        ScheduleReconnect();
+        EnsureReconnectLoop();
+    }
+
+    private async Task ReconnectLoopAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested && !_intentionalClose && !string.IsNullOrWhiteSpace(_serverUrl))
+            {
+                _reconnectAttempts++;
+                var delayMs = GetReconnectDelayMs(_reconnectAttempts);
+                await Task.Delay(delayMs, cancellationToken);
+
+                if (_serverUrl == null || _intentionalClose)
+                {
+                    return;
+                }
+
+                if (await ConnectInternal(_serverUrl, cancellationToken, notifyDisconnect: false))
+                {
+                    return;
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        finally
+        {
+            lock (_reconnectSync)
+            {
+                if (_reconnectLoopTask?.Id == Task.CurrentId)
+                {
+                    _reconnectLoopTask = null;
+                    _reconnectCts?.Dispose();
+                    _reconnectCts = null;
+                }
+            }
+        }
+    }
+
+    private void CancelReconnectLoop()
+    {
+        lock (_reconnectSync)
+        {
+            _reconnectCts?.Cancel();
+            _reconnectCts?.Dispose();
+            _reconnectCts = null;
+            _reconnectLoopTask = null;
+        }
     }
 
     private async Task ReceiveLoop(CancellationToken ct)
@@ -202,7 +275,7 @@ public class WebSocketService : IDisposable
         }
     }
 
-    private void Dispose(bool disposeUrl)
+    private void DisposeConnection(bool disposeUrl)
     {
         _cts?.Cancel();
         if (_webSocket != null)
@@ -228,6 +301,7 @@ public class WebSocketService : IDisposable
     public void Dispose()
     {
         _intentionalClose = true;
-        Dispose(disposeUrl: true);
+        CancelReconnectLoop();
+        DisposeConnection(disposeUrl: true);
     }
 }
