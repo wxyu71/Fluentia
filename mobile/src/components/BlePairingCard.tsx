@@ -11,6 +11,8 @@ interface BlePairingCardProps {
   verificationCode: string | null;
   onRequestPairing: () => void;
   onDisconnect: () => void;
+  onCollapse: () => void;
+  onHide: () => void;
 }
 
 export const BlePairingCard: React.FC<BlePairingCardProps> = ({
@@ -23,8 +25,11 @@ export const BlePairingCard: React.FC<BlePairingCardProps> = ({
   verificationCode,
   onRequestPairing,
   onDisconnect,
+  onCollapse,
+  onHide,
 }) => {
   const statusLine = [status, deviceName].filter(Boolean).join(' · ');
+  const showCodePlaceholder = !verificationCode && (isConnecting || status === 'Waiting for PC code');
 
   return (
     <div className="glass glass-xs" style={{ padding: '12px 14px', marginBottom: 12, width: '100%' }}>
@@ -33,9 +38,37 @@ export const BlePairingCard: React.FC<BlePairingCardProps> = ({
           <BluetoothIcon size={16} color="var(--accent)" />
           <h3 style={{ fontSize: 13, fontWeight: 600, margin: 0 }}>BLE</h3>
         </div>
-        <span style={{ fontSize: 11, color: 'var(--text-secondary)', flexShrink: 0 }}>
-          {isAvailable ? 'Nearby' : 'Off'}
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+          <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+            {isAvailable ? 'Nearby' : 'Off'}
+          </span>
+          <button
+            type="button"
+            onClick={onCollapse}
+            style={{
+              border: 'none',
+              background: 'transparent',
+              color: 'var(--text-secondary)',
+              fontSize: 11,
+              padding: 0,
+            }}
+          >
+            Min
+          </button>
+          <button
+            type="button"
+            onClick={onHide}
+            style={{
+              border: 'none',
+              background: 'transparent',
+              color: 'var(--text-secondary)',
+              fontSize: 11,
+              padding: 0,
+            }}
+          >
+            Hide
+          </button>
+        </div>
       </div>
 
       <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 10, lineHeight: 1.35 }}>
@@ -58,6 +91,20 @@ export const BlePairingCard: React.FC<BlePairingCardProps> = ({
           color: 'var(--text-primary)',
         }}>
           Code <strong>{verificationCode}</strong>
+        </div>
+      )}
+
+      {showCodePlaceholder && (
+        <div style={{
+          marginBottom: 10,
+          padding: '8px 10px',
+          borderRadius: 10,
+          background: 'rgba(255,255,255,0.04)',
+          fontSize: 11,
+          color: 'var(--text-secondary)',
+          lineHeight: 1.35,
+        }}>
+          Code will appear here after the PC responds.
         </div>
       )}
 

@@ -116,12 +116,14 @@ export function useBlePairing(onConnectionInfo: (info: ConnectionInfo) => void, 
     }
 
     if (message.type === 'desktop_hello' && message.publicKey) {
+      setError(null);
       setVerificationCode(deriveBleVerificationCode(handshakeRef.current.secretKey, handshakeRef.current.publicKey, message.publicKey));
       setStatus('Compare the 6-digit code with your PC');
       return;
     }
 
     if (message.type === 'verification_code' && message.code) {
+      setError(null);
       setVerificationCode(message.code);
       setStatus('Compare the 6-digit code with your PC');
       return;
@@ -130,6 +132,8 @@ export function useBlePairing(onConnectionInfo: (info: ConnectionInfo) => void, 
     if (message.type === 'verified') {
       const info = parseBleConnectionInfo(message);
       if (info) {
+        setError(null);
+        setVerificationCode(null);
         setStatus('BLE pairing approved');
         setIsTransportReady(true);
         onConnectionInfo(info);
@@ -192,7 +196,7 @@ export function useBlePairing(onConnectionInfo: (info: ConnectionInfo) => void, 
         version: PROTOCOL_VERSION,
       })));
 
-      setStatus('Check the 6-digit code');
+      setStatus('Waiting for PC code');
     } catch (caughtError) {
       const message = caughtError instanceof Error ? caughtError.message : 'BLE pairing failed';
       setError(message);

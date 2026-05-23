@@ -58,10 +58,32 @@ export const InputArea: React.FC<InputAreaProps> = ({
   const fileTransferRef = useRef<FileTransferHandle>(null);
   const [resetNotice, setResetNotice] = useState(false);
   const [outgoingTransferBatch, setOutgoingTransferBatch] = useState<TransferBatchProgress | null>(null);
+  const [blePanelMode, setBlePanelMode] = useState<'expanded' | 'collapsed' | 'hidden'>('collapsed');
+
+  const showBlePanel = Boolean(encryptionReady && blePairing && blePairing.isSupported && !blePairing.isTransportReady);
+  const bleNeedsAttention = Boolean(blePairing && (blePairing.isConnecting || blePairing.verificationCode || blePairing.error));
+  const bleChipLabel = blePairing?.error
+    ? 'BLE error'
+    : blePairing?.verificationCode
+      ? 'BLE code'
+      : blePairing?.isConnecting
+        ? 'BLE connecting'
+        : 'BLE optional';
 
   useEffect(() => {
     textRef.current = text;
   }, [text]);
+
+  useEffect(() => {
+    if (!showBlePanel) {
+      setBlePanelMode('collapsed');
+      return;
+    }
+
+    if (bleNeedsAttention) {
+      setBlePanelMode('expanded');
+    }
+  }, [bleNeedsAttention, showBlePanel]);
 
   const sendDiff = useCallback((newText: string) => {
     const diff = computeDiff(lastSentRef.current, newText);
@@ -235,7 +257,7 @@ export const InputArea: React.FC<InputAreaProps> = ({
         </div>
       )}
 
-      {encryptionReady && blePairing && blePairing.isSupported && !blePairing.isTransportReady && (
+      {showBlePanel && blePairing && blePanelMode === 'expanded' && (
         <BlePairingCard
           isSupported={blePairing.isSupported}
           isAvailable={blePairing.isAvailable}
@@ -246,7 +268,39 @@ export const InputArea: React.FC<InputAreaProps> = ({
           verificationCode={blePairing.verificationCode}
           onRequestPairing={() => { void blePairing.requestPairing(); }}
           onDisconnect={() => { void blePairing.disconnect(); }}
+          onCollapse={() => setBlePanelMode('collapsed')}
+          onHide={() => setBlePanelMode('hidden')}
         />
+      )}
+
+      {showBlePanel && blePairing && blePanelMode !== 'expanded' && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+          <button
+            className="glass-btn"
+            style={blePanelMode === 'hidden'
+              ? {
+                  width: 38,
+                  height: 38,
+                  minWidth: 38,
+                  borderRadius: 999,
+                  padding: 0,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }
+              : {
+                  fontSize: 11,
+                  padding: '8px 10px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                }}
+            onClick={() => setBlePanelMode('expanded')}
+          >
+            <BluetoothIcon size={14} color="var(--accent)" />
+            {blePanelMode === 'collapsed' && <span>{bleChipLabel}</span>}
+          </button>
+        </div>
       )}
 
       {encryptionReady && (
