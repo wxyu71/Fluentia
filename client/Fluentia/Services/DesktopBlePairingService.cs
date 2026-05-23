@@ -21,6 +21,8 @@ public sealed class DesktopBlePairingService : IDisposable
     private readonly SemaphoreSlim _pairingGate = new(1, 1);
     private readonly HashSet<string> _authorizedRemotePublicKeys = new(StringComparer.Ordinal);
     private readonly object _authorizationGate = new();
+    private static readonly TimeSpan NotificationSubscriberWait = TimeSpan.FromMilliseconds(150);
+    private const int NotificationSubscriberRetryCount = 10;
 
     private GattServiceProvider? _serviceProvider;
     private GattLocalCharacteristic? _notifyCharacteristic;
@@ -82,6 +84,7 @@ public sealed class DesktopBlePairingService : IDisposable
         }
 
         _notifyCharacteristic = notifyResult.Characteristic;
+        _notifyCharacteristic.SubscribedClientsChanged += NotifyCharacteristic_SubscribedClientsChanged;
 
         var writeParameters = new GattLocalCharacteristicParameters
         {
@@ -112,6 +115,11 @@ public sealed class DesktopBlePairingService : IDisposable
 
     public void Dispose()
     {
+        if (_notifyCharacteristic is not null)
+        {
+            _notifyCharacteristic.SubscribedClientsChanged -= NotifyCharacteristic_SubscribedClientsChanged;
+        }
+
         if (_writeCharacteristic is not null)
         {
             _writeCharacteristic.WriteRequested -= WriteCharacteristic_WriteRequested;
@@ -231,6 +239,11 @@ public sealed class DesktopBlePairingService : IDisposable
         }
     }
 
+    private void NotifyCharacteristic_SubscribedClientsChanged(GattLocalCharacteristic sender, object args)
+    {
+        _statusSink?.Invoke($"BLE notify subscribers: {sender.SubscribedClients.Count}");
+    }
+
     private void HandleEncryptedEnvelope(BleEnvelope envelope)
     {
         if (_encryptedMessageSink is null || string.IsNullOrWhiteSpace(envelope.Payload) || string.IsNullOrWhiteSpace(envelope.Nonce))
@@ -254,10 +267,53 @@ public sealed class DesktopBlePairingService : IDisposable
             throw new InvalidOperationException("BLE notify characteristic is not initialized.");
         }
 
+        await WaitForSubscribedClientAsync(_notifyCharacteristic);
+
+        if (_notifyCharacteristic.SubscribedClients.Count == 0)
+        {
+            _statusSink?.Invoke($"BLE notify aborted: no subscribed clients for {envelope.Type}");
+            throw new InvalidOperationException("No BLE subscribers are listening for notifications.");
+        }
+
         var bytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(envelope));
         var writer = new DataWriter();
         writer.WriteBytes(bytes);
-        await _notifyCharacteristic.NotifyValueAsync(writer.DetachBuffer());
+        var results = await _notifyCharacteristic.NotifyValueAsync(writer.DetachBuffer());
+
+        _statusSink?.Invoke($"BLE notify {envelope.Type}: subscribers={_notifyCharacteristic.SubscribedClients.Count}, results={results.Count}");
+
+        var delivered = false;
+        foreach (var result in results)
+        {
+            _statusSink?.Invoke($"BLE notify result: status={result.Status}, bytes={result.BytesSent}, protocolError={result.ProtocolError}");
+            if (result.Status == GattCommunicationStatus.Success)
+            {
+                delivered = true;
+            }
+        }
+
+        if (!delivered)
+        {
+            throw new InvalidOperationException($"BLE notification delivery failed for {envelope.Type}.");
+        }
+    }
+
+    private async Task WaitForSubscribedClientAsync(GattLocalCharacteristic characteristic)
+    {
+        if (characteristic.SubscribedClients.Count > 0)
+        {
+            return;
+        }
+
+        for (var attempt = 0; attempt < NotificationSubscriberRetryCount; attempt++)
+        {
+            await Task.Delay(NotificationSubscriberWait);
+            if (characteristic.SubscribedClients.Count > 0)
+            {
+                _statusSink?.Invoke($"BLE notify subscriber became ready after {attempt + 1} wait(s)");
+                return;
+            }
+        }
     }
 
     private static string ReadString(IBuffer buffer)
