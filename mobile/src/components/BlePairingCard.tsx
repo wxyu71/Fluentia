@@ -29,7 +29,7 @@ export const BlePairingCard: React.FC<BlePairingCardProps> = ({
   onHide,
 }) => {
   const statusLine = [status, deviceName].filter(Boolean).join(' · ');
-  const showCodePlaceholder = !verificationCode && (isConnecting || status === 'Waiting for PC code');
+  const showCodePlaceholder = !verificationCode && (isConnecting || status === 'Waiting for PC approval');
 
   return (
     <div className="glass glass-xs" style={{ padding: '12px 14px', marginBottom: 12, width: '100%' }}>
@@ -73,7 +73,7 @@ export const BlePairingCard: React.FC<BlePairingCardProps> = ({
 
       <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 10, lineHeight: 1.35 }}>
         {isSupported
-          ? 'Optional nearby fallback after QR pairing.'
+          ? 'Nearby direct path after QR pairing.'
           : 'Web Bluetooth is unavailable in this browser.'}
       </div>
 
@@ -104,7 +104,7 @@ export const BlePairingCard: React.FC<BlePairingCardProps> = ({
           color: 'var(--text-secondary)',
           lineHeight: 1.35,
         }}>
-          Code will appear here after the PC responds.
+          Authorizing this BLE link through the encrypted session.
         </div>
       )}
 

@@ -93,6 +93,7 @@ export const App: React.FC = () => {
   );
   const connectRef = useRef<(info: ConnectionInfo) => void>(() => undefined);
   const fetchConfigRef = useRef<(info: ConnectionInfo) => void>(() => undefined);
+  const authorizeBleRef = useRef<(publicKey: string) => void>(() => undefined);
 
   useEffect(() => {
     document.title = `Fluentia v${APP_VERSION}`;
@@ -120,7 +121,7 @@ export const App: React.FC = () => {
     setScannerOverlay(false);
   }, []);
 
-  const blePairing = useBlePairing(handleBleConnectionInfo, deviceId);
+  const blePairing = useBlePairing(handleBleConnectionInfo, deviceId, (publicKey) => authorizeBleRef.current(publicKey));
   const {
     connectionState,
     peerConnected,
@@ -139,7 +140,10 @@ export const App: React.FC = () => {
   useEffect(() => {
     connectRef.current = connect;
     fetchConfigRef.current = fetchServerConfig;
-  }, [connect, fetchServerConfig]);
+    authorizeBleRef.current = (publicKey: string) => {
+      sendEncrypted({ type: 'ble_auth', publicKey });
+    };
+  }, [connect, fetchServerConfig, sendEncrypted]);
 
   useEffect(() => {
     if (!blePairing.isSupported) {
@@ -158,12 +162,7 @@ export const App: React.FC = () => {
     }
 
     if (blePairing.isTransportReady) {
-      setTransportSummary('WS + BLE ready');
-      return;
-    }
-
-    if (blePairing.verificationCode) {
-      setTransportSummary('BLE verify');
+      setTransportSummary('Encrypted + BLE');
       return;
     }
 
@@ -184,7 +183,6 @@ export const App: React.FC = () => {
     blePairing.isConnecting,
     blePairing.isSupported,
     blePairing.isTransportReady,
-    blePairing.verificationCode,
     encryptionReady,
   ]);
 
@@ -468,6 +466,7 @@ export const App: React.FC = () => {
         pendingStatus={pendingStatus}
         transportSummary={transportSummary}
         showBluetoothIndicator={blePairing.isSupported}
+        bleTransportReady={blePairing.isTransportReady}
       />
 
       {/* Error banner */}

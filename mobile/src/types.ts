@@ -1,5 +1,5 @@
 // Protocol version — must match server and Windows client
-export const PROTOCOL_VERSION = '1.4.0';
+export const PROTOCOL_VERSION = '1.4.1';
 
 // Protocol message types matching the Go server
 export interface WsMessage {
@@ -32,10 +32,11 @@ export interface TextDiff {
 // Encrypted inner message (after decryption)
 export interface InputCommand {
   type: 'diff' | 'enter' | 'backspace' | 'clear' | 'ratchet_init' | 'pc_ratchet_init'
-  | 'handshake_ack' | 'clipboard' | 'file_start' | 'file_chunk' | 'file_abort' | 'regex_config';
+  | 'handshake_ack' | 'clipboard' | 'file_start' | 'file_chunk' | 'file_abort' | 'regex_config' | 'ble_auth';
   text?: string;
   count?: number;
   seed?: string;
+  publicKey?: string;
   // file transfer fields
   fileName?: string;
   fileSize?: number;     // total bytes

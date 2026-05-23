@@ -65,10 +65,10 @@ export const InputArea: React.FC<InputAreaProps> = ({
   const bleChipLabel = blePairing?.error
     ? 'BLE error'
     : blePairing?.verificationCode
-      ? 'BLE code'
+      ? 'BLE verify'
       : blePairing?.isConnecting
         ? 'BLE connecting'
-        : 'BLE optional';
+        : 'Nearby BLE';
 
   useEffect(() => {
     textRef.current = text;
@@ -340,7 +340,7 @@ export const InputArea: React.FC<InputAreaProps> = ({
                 color: blePairing.isTransportReady ? 'var(--accent)' : 'var(--text-secondary)',
               }}>
                 <BluetoothIcon size={14} color={blePairing.isTransportReady ? 'var(--accent)' : 'var(--text-secondary)'} />
-                {blePairing.isTransportReady ? 'BLE ready' : 'BLE optional'}
+                {blePairing.isTransportReady ? 'BLE ready' : 'Nearby BLE'}
               </div>
             )}
             {fileTransferEnabled && (

@@ -5,7 +5,6 @@ import {
   BLE_SERVICE_UUID,
   BLE_WRITE_CHARACTERISTIC_UUID,
   createBlePairingHandshake,
-  deriveBleVerificationCode,
   parseBleConnectionInfo,
   type BleEnvelope,
 } from '../utils/ble';
@@ -42,7 +41,11 @@ function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
 }
 
-export function useBlePairing(onConnectionInfo: (info: ConnectionInfo) => void, deviceId: string): UseBlePairingResult {
+export function useBlePairing(
+  onConnectionInfo: (info: ConnectionInfo) => void,
+  deviceId: string,
+  onAuthorizePublicKey: (publicKey: string) => void,
+): UseBlePairingResult {
   const [isAvailable, setIsAvailable] = useState(false);
   const [status, setStatus] = useState('BLE not requested');
   const [error, setError] = useState<string | null>(null);
@@ -115,20 +118,6 @@ export function useBlePairing(onConnectionInfo: (info: ConnectionInfo) => void, 
       return;
     }
 
-    if (message.type === 'desktop_hello' && message.publicKey) {
-      setError(null);
-      setVerificationCode(deriveBleVerificationCode(handshakeRef.current.secretKey, handshakeRef.current.publicKey, message.publicKey));
-      setStatus('Compare the 6-digit code with your PC');
-      return;
-    }
-
-    if (message.type === 'verification_code' && message.code) {
-      setError(null);
-      setVerificationCode(message.code);
-      setStatus('Compare the 6-digit code with your PC');
-      return;
-    }
-
     if (message.type === 'verified') {
       const info = parseBleConnectionInfo(message);
       if (info) {
@@ -158,6 +147,7 @@ export function useBlePairing(onConnectionInfo: (info: ConnectionInfo) => void, 
     setStatus('Searching nearby PC');
     setVerificationCode(null);
     handshakeRef.current = createBlePairingHandshake();
+    onAuthorizePublicKey(handshakeRef.current.publicKey);
 
     try {
       const device = await navigator.bluetooth.requestDevice({
@@ -196,7 +186,7 @@ export function useBlePairing(onConnectionInfo: (info: ConnectionInfo) => void, 
         version: PROTOCOL_VERSION,
       })));
 
-      setStatus('Waiting for PC code');
+      setStatus('Waiting for PC approval');
     } catch (caughtError) {
       const message = caughtError instanceof Error ? caughtError.message : 'BLE pairing failed';
       setError(message);
@@ -205,7 +195,7 @@ export function useBlePairing(onConnectionInfo: (info: ConnectionInfo) => void, 
     } finally {
       setIsConnecting(false);
     }
-  }, [deviceId, disconnect, handleNotify, isSupported]);
+  }, [deviceId, disconnect, handleNotify, isSupported, onAuthorizePublicKey]);
 
   const sendEncryptedMessage = useCallback((message: Pick<WsMessage, 'payload' | 'nonce' | 'seq'>) => {
     const writeCharacteristic = writeCharacteristicRef.current;

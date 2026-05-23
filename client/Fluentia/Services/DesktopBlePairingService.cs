@@ -16,11 +16,11 @@ public sealed class DesktopBlePairingService : IDisposable
     private static readonly Guid WriteCharacteristicUuid = Guid.Parse("21e2f7d4-4dc0-4b0d-a145-5f9b6459be12");
 
     private readonly Func<BleDesktopSessionInfo?> _sessionProvider;
-    private readonly Func<string, string> _verificationCodeProvider;
-    private readonly Func<BlePairingRequest, Task<bool>> _confirmPairingAsync;
     private readonly Action<WsMessage>? _encryptedMessageSink;
     private readonly Action<string>? _statusSink;
     private readonly SemaphoreSlim _pairingGate = new(1, 1);
+    private readonly HashSet<string> _authorizedRemotePublicKeys = new(StringComparer.Ordinal);
+    private readonly object _authorizationGate = new();
 
     private GattServiceProvider? _serviceProvider;
     private GattLocalCharacteristic? _notifyCharacteristic;
@@ -29,19 +29,28 @@ public sealed class DesktopBlePairingService : IDisposable
 
     public DesktopBlePairingService(
         Func<BleDesktopSessionInfo?> sessionProvider,
-        Func<string, string> verificationCodeProvider,
-        Func<BlePairingRequest, Task<bool>> confirmPairingAsync,
         Action<WsMessage>? encryptedMessageSink = null,
         Action<string>? statusSink = null)
     {
         _sessionProvider = sessionProvider;
-        _verificationCodeProvider = verificationCodeProvider;
-        _confirmPairingAsync = confirmPairingAsync;
         _encryptedMessageSink = encryptedMessageSink;
         _statusSink = statusSink;
     }
 
     public bool IsAdvertising => _started;
+
+    public void AuthorizeRemotePublicKey(string remotePublicKey)
+    {
+        if (string.IsNullOrWhiteSpace(remotePublicKey))
+        {
+            return;
+        }
+
+        lock (_authorizationGate)
+        {
+            _authorizedRemotePublicKeys.Add(remotePublicKey);
+        }
+    }
 
     public async Task StartAsync()
     {
@@ -172,6 +181,13 @@ public sealed class DesktopBlePairingService : IDisposable
             return;
         }
 
+        if (!ConsumeAuthorizedRemotePublicKey(envelope.PublicKey))
+        {
+            await SendAsync(new BleEnvelope { Type = "error", Payload = "Authorize BLE from the encrypted session first." });
+            _statusSink?.Invoke("BLE pairing blocked: missing encrypted-session authorization");
+            return;
+        }
+
         await _pairingGate.WaitAsync();
         try
         {
@@ -182,35 +198,12 @@ public sealed class DesktopBlePairingService : IDisposable
                 return;
             }
 
-            var verificationCode = _verificationCodeProvider(envelope.PublicKey);
             var deviceId = envelope.Payload ?? string.Empty;
             var deviceLabel = string.IsNullOrWhiteSpace(deviceId)
                 ? "Nearby BLE device"
                 : $"BLE nearby device · {deviceId}";
 
             _statusSink?.Invoke($"BLE pairing request: {deviceLabel}");
-
-            await SendAsync(new BleEnvelope
-            {
-                Type = "desktop_hello",
-                PublicKey = session.PublicKey,
-                Version = MsgTypes.ProtocolVersion,
-            });
-
-            await SendAsync(new BleEnvelope
-            {
-                Type = "verification_code",
-                Code = verificationCode,
-                Version = MsgTypes.ProtocolVersion,
-            });
-
-            var approved = await _confirmPairingAsync(new BlePairingRequest(verificationCode, deviceLabel, deviceId, envelope.PublicKey));
-            if (!approved)
-            {
-                await SendAsync(new BleEnvelope { Type = "error", Payload = "BLE pairing rejected on PC." });
-                _statusSink?.Invoke("BLE pairing rejected");
-                return;
-            }
 
             await SendAsync(new BleEnvelope
             {
@@ -227,6 +220,14 @@ public sealed class DesktopBlePairingService : IDisposable
         finally
         {
             _pairingGate.Release();
+        }
+    }
+
+    private bool ConsumeAuthorizedRemotePublicKey(string remotePublicKey)
+    {
+        lock (_authorizationGate)
+        {
+            return _authorizedRemotePublicKeys.Remove(remotePublicKey);
         }
     }
 

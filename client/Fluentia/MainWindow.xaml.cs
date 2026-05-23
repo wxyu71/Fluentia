@@ -162,8 +162,6 @@ public partial class MainWindow : Window
         _roomManager = new RoomManager();
         _desktopBlePairingService = new DesktopBlePairingService(
             () => _roomManager.GetBleSessionInfo(),
-            remotePublicKey => _roomManager.CreateBleVerificationCode(remotePublicKey),
-            ConfirmBlePairingAsync,
             msg => _roomManager.HandleBleEncryptedMessage(msg),
             message =>
             {
@@ -372,7 +370,20 @@ public partial class MainWindow : Window
             }
         });
 
-        _roomManager.OnInputCommand += (cmd) => _cmdChannel.Writer.TryWrite(cmd);
+        _roomManager.OnInputCommand += (cmd) =>
+        {
+            if (cmd.Type == "ble_auth" && !string.IsNullOrWhiteSpace(cmd.PublicKey))
+            {
+                _desktopBlePairingService.AuthorizeRemotePublicKey(cmd.PublicKey);
+                if (_devMode)
+                {
+                    _ = Dispatcher.BeginInvoke(() => AppendLog("BLE upgrade authorized from encrypted session"));
+                }
+                return;
+            }
+
+            _cmdChannel.Writer.TryWrite(cmd);
+        };
 
         _roomManager.OnStatusChanged += (status) => Dispatcher.Invoke(() =>
         {
@@ -411,20 +422,6 @@ public partial class MainWindow : Window
                 AppendLog($"BLE unavailable: {ex.Message}");
             }
         }
-    }
-
-    private async Task<bool> ConfirmBlePairingAsync(BlePairingRequest request)
-    {
-        return await Dispatcher.InvokeAsync(() =>
-        {
-            RememberExternalForegroundWindow(GetForegroundWindow());
-            Show();
-            WindowState = WindowState.Normal;
-            Activate();
-
-            var dialog = new ConfirmConnectionDialog(request.VerificationCode, request.DeviceLabel) { Owner = this };
-            return dialog.ShowDialog() == true;
-        });
     }
 
     private void SetupSessionTimer()

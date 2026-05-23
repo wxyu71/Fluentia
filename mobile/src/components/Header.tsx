@@ -11,9 +11,10 @@ interface HeaderProps {
   pendingStatus?: string | null;
   transportSummary?: string;
   showBluetoothIndicator?: boolean;
+  bleTransportReady?: boolean;
 }
 
-export const Header: React.FC<HeaderProps> = ({ connectionState, peerConnected, encryptionReady, pendingStatus, transportSummary, showBluetoothIndicator }) => {
+export const Header: React.FC<HeaderProps> = ({ connectionState, peerConnected, encryptionReady, pendingStatus, transportSummary, showBluetoothIndicator, bleTransportReady }) => {
   const statusText = (): string => {
     if (pendingStatus && connectionState !== 'preempted' && !encryptionReady) {
       return pendingStatus;
@@ -89,7 +90,10 @@ export const Header: React.FC<HeaderProps> = ({ connectionState, peerConnected, 
         <span className={`status-dot ${dotClass()}`} />
         <span style={{ color: 'var(--text-secondary)' }}>{statusText()}</span>
         {encryptionReady && peerConnected && (
-          <LockIcon size={12} color="var(--success)" />
+          <>
+            <LockIcon size={12} color="var(--success)" />
+            {bleTransportReady && <BluetoothIcon size={12} color="var(--accent)" />}
+          </>
         )}
       </div>
     </header>

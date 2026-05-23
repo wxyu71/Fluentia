@@ -92,6 +92,10 @@ public class InputCommand
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Seed { get; set; }
 
+    [JsonPropertyName("publicKey")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? PublicKey { get; set; }
+
     // File transfer fields
     [JsonPropertyName("transferId")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -129,7 +133,7 @@ public class InputCommand
 
 public static class MsgTypes
 {
-    public const string ProtocolVersion  = "1.4.0";
+    public const string ProtocolVersion  = "1.4.1";
     public const string CreateSession    = "create_session";
     public const string SessionCreated   = "session_created";
     public const string JoinSession      = "join_session";
