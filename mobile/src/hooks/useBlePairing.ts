@@ -69,7 +69,6 @@ export function useBlePairing(
   const handshakeRef = useRef(createBlePairingHandshake());
   const helloSentRef = useRef(false);
   const authTimeoutRef = useRef<number | null>(null);
-  const responseTimeoutRef = useRef<number | null>(null);
   const [isBleChannelReady, setIsBleChannelReady] = useState(false);
 
   const isSupported = useMemo(() => typeof navigator !== 'undefined' && 'bluetooth' in navigator, []);
@@ -78,13 +77,6 @@ export function useBlePairing(
     if (authTimeoutRef.current !== null) {
       window.clearTimeout(authTimeoutRef.current);
       authTimeoutRef.current = null;
-    }
-  }, []);
-
-  const clearResponseTimeout = useCallback(() => {
-    if (responseTimeoutRef.current !== null) {
-      window.clearTimeout(responseTimeoutRef.current);
-      responseTimeoutRef.current = null;
     }
   }, []);
 
@@ -114,7 +106,6 @@ export function useBlePairing(
 
   const disconnect = useCallback(async () => {
     clearAuthTimeout();
-    clearResponseTimeout();
     try {
       notifyCharacteristicRef.current?.removeEventListener('characteristicvaluechanged', () => undefined);
     } catch {
@@ -135,7 +126,7 @@ export function useBlePairing(
     setIsTransportReady(false);
     setIsConnecting(false);
     setStatus('BLE disconnected');
-  }, [clearAuthTimeout, clearResponseTimeout]);
+  }, [clearAuthTimeout]);
 
   const sendClientHelloIfAuthorized = useCallback(async (candidatePublicKey: string | null) => {
     const writeCharacteristic = writeCharacteristicRef.current;
@@ -158,13 +149,9 @@ export function useBlePairing(
         version: PROTOCOL_VERSION,
       });
 
-      setStatus('Waiting for PC response');
       setError(null);
-      clearResponseTimeout();
-      responseTimeoutRef.current = window.setTimeout(() => {
-        setError('PC did not send a BLE reply. This usually means the desktop notify channel was not subscribed in time.');
-        setStatus('BLE response timeout');
-      }, 8000);
+      setStatus('BLE ready');
+      setIsTransportReady(true);
     } catch (caughtError) {
       helloSentRef.current = false;
       const message = caughtError instanceof Error ? caughtError.message : 'BLE pairing failed';
@@ -192,7 +179,6 @@ export function useBlePairing(
     if (message.type === 'verified') {
       const info = parseBleConnectionInfo(message);
       if (info) {
-        clearResponseTimeout();
         setError(null);
         setVerificationCode(null);
         setStatus('BLE pairing approved');
@@ -203,11 +189,11 @@ export function useBlePairing(
     }
 
     if (message.type === 'error') {
-      clearResponseTimeout();
       setError(message.payload || 'BLE pairing failed');
       setStatus('BLE error');
+      setIsTransportReady(false);
     }
-  }, [clearResponseTimeout, onConnectionInfo]);
+  }, [onConnectionInfo]);
 
   const requestPairing = useCallback(async () => {
     if (!isSupported) {
