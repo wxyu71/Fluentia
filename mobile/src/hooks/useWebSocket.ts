@@ -349,7 +349,9 @@ export function useWebSocket(
   const startConnectTimeout = useCallback(() => {
     clearConnectTimeout();
     connectTimeoutRef.current = window.setTimeout(() => {
+      console.log('[connectTimeout] fired, encRef:', encryptionReadyRef.current, 'connState:', connectionStateRef.current, 'bleReady:', bleTransportReadyRef.current);
       if (encryptionReadyRef.current || connectionStateRef.current === 'preempted') {
+        console.log('[connectTimeout] returning early (enc ready or preempted)');
         return;
       }
 
@@ -480,6 +482,7 @@ export function useWebSocket(
         setConnectionState('connected');
         connectionStateRef.current = 'connected';
         setLastError(null);
+        console.log('[joined] setting peerConnected to', bleTransportReadyRef.current);
         setPeerConnected(bleTransportReadyRef.current);
         if (msg.publicKey && !cryptoRef.current.hasPeerKey()) {
           cryptoRef.current.setPeerPublicKey(msg.publicKey);
@@ -497,6 +500,7 @@ export function useWebSocket(
         break;
 
       case 'peer_joined':
+        console.log('[peer_joined] role:', msg.role, 'bleReady:', bleTransportReadyRef.current, 'wsState:', wsRef.current?.readyState);
         clearConnectTimeout();
         setPeerConnected(true);
         if (msg.role === 'pc' && wsRef.current?.readyState === TRANSPORT_READY_STATE.OPEN) {
@@ -755,6 +759,7 @@ export function useWebSocket(
       return;
     }
 
+    console.log('[connectWs] called, bleReady:', bleTransportReadyRef.current, 'encRef:', encryptionReadyRef.current, 'connState:', connectionStateRef.current);
     cleanup();
     intentionalCloseRef.current = false;
     handshakeStartedRef.current = false;
@@ -827,12 +832,14 @@ export function useWebSocket(
       }
 
       if (bleTransportReadyRef.current) {
+        console.log('[onclose] BLE ready — keeping encryption, setting connecting');
         // BLE transport is still active — keep encryption state intact,
         // just mark WS as reconnecting so the UI shows BLE-only mode.
         setConnectionState('connecting');
         connectionStateRef.current = 'connecting';
         setPendingStatus('Reconnecting...');
       } else if (encryptionReadyRef.current || bufferedInputActiveRef.current) {
+        console.log('[onclose] BLE NOT ready — starting offline grace');
         startOfflineGrace();
       }
 
@@ -888,6 +895,7 @@ export function useWebSocket(
   const sendEncrypted = useCallback((cmd: InputCommand) => {
     const ws = wsRef.current;
     const sent = sendEncryptedPayload(JSON.stringify(cmd));
+    console.log('[sendEncrypted]', { sent, bleReady: bleTransportReadyRef.current, encReady: encryptionReadyRef.current, wsState: ws?.readyState, connState: connectionStateRef.current, cryptoReady: cryptoRef.current.isReady() });
     if (sent) {
       return;
     }
