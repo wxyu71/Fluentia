@@ -27,6 +27,8 @@ type Hub struct {
 	deviceCodes map[string]*DeviceCodeEntry // code → entry
 	mu          sync.RWMutex
 	MaxFileMB   int
+	MinVersion  string
+	SessionStorePath string
 	SessionMaxAge time.Duration
 
 	// Rate limiting for device code attempts
@@ -45,6 +47,7 @@ func NewHub(sessionMaxAgeDays int) *Hub {
 		clients:      make(map[*Client]bool),
 		deviceCodes:  make(map[string]*DeviceCodeEntry),
 		codeAttempts: make(map[string][]time.Time),
+		MinVersion:   ProtocolVersion,
 		SessionMaxAge: time.Duration(sessionMaxAgeDays) * 24 * time.Hour,
 	}
 }
@@ -198,6 +201,7 @@ func (h *Hub) expireSession(token string) {
 		mobile.SendAndClose(Message{Type: MsgPeerLeft, Role: "pc"})
 	}
 	delete(h.sessions, token)
+	h.saveSessionsLocked()
 	log.Printf("Session %s destroyed (session expired while PC offline)", token)
 }
 
@@ -258,17 +262,20 @@ func (h *Hub) handleCreateSession(c *Client) {
 			mobile.SendAndClose(Message{Type: MsgPeerLeft, Role: "pc"})
 		}
 		delete(h.sessions, oldSession.Token)
+		h.saveSessionsLocked()
 	}
 
 	session := NewSession(c, h.SessionMaxAge)
 	c.session = session
 	c.role = "pc"
 	h.sessions[session.Token] = session
+	h.saveSessionsLocked()
 
 	log.Printf("Session created: %s (expires %s)", session.Token, session.ExpiresAt.Format(time.RFC3339))
 	c.SendMessage(Message{
 		Type:      MsgSessionCreated,
 		Token:     session.Token,
+		MinVersion: h.MinVersion,
 		Version:   ProtocolVersion,
 		ExpiresAt: session.ExpiresAt.Format(time.RFC3339),
 	})
@@ -292,6 +299,7 @@ func (h *Hub) handleRejoinSession(c *Client, msg Message) {
 	}
 	if h.sessionExpiredLocked(session) {
 		delete(h.sessions, session.Token)
+		h.saveSessionsLocked()
 		c.SendMessage(Message{Type: MsgError, Error: "session expired, create a new session"})
 		return
 	}
@@ -317,6 +325,7 @@ func (h *Hub) handleRejoinSession(c *Client, msg Message) {
 	c.SendMessage(Message{
 		Type:      MsgRejoined,
 		Token:     session.Token,
+		MinVersion: h.MinVersion,
 		Version:   ProtocolVersion,
 		ExpiresAt: session.ExpiresAt.Format(time.RFC3339),
 	})
@@ -344,6 +353,7 @@ func (h *Hub) handleJoinSession(c *Client, msg Message) {
 	}
 	if h.sessionExpiredLocked(session) {
 		delete(h.sessions, session.Token)
+		h.saveSessionsLocked()
 		c.SendMessage(Message{Type: MsgError, Error: "session expired, scan a new code"})
 		return
 	}
@@ -371,7 +381,7 @@ func (h *Hub) handleJoinSession(c *Client, msg Message) {
 	session.Mobile = c
 	log.Printf("Device %s joined session %s", c.deviceID, session.Token)
 
-	c.SendMessage(Message{Type: MsgJoined, Role: "mobile", Token: session.Token, Version: ProtocolVersion})
+	c.SendMessage(Message{Type: MsgJoined, Role: "mobile", Token: session.Token, Version: ProtocolVersion, MinVersion: h.MinVersion})
 	if session.PC != nil {
 		c.SendMessage(Message{Type: MsgPeerJoined, Role: "pc"})
 		session.PC.SendMessage(Message{Type: MsgPeerJoined, Role: "mobile", DeviceID: c.deviceID})

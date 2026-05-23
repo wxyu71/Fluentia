@@ -40,6 +40,10 @@ public class WsMessage
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Version { get; set; }
 
+    [JsonPropertyName("min_version")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? MinVersion { get; set; }
+
     [JsonPropertyName("expiresAt")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? ExpiresAt { get; set; }

@@ -488,36 +488,32 @@ body {
 }
 
 .transfer-card {
-  position: relative;
-  overflow: hidden;
-  border-radius: 24px;
-  background: rgba(255, 255, 255, 0.98);
-  color: #181825;
-  box-shadow: 0 16px 34px rgba(81, 88, 122, 0.18);
-  border: 1px solid rgba(123, 131, 173, 0.08);
-  transform-origin: top center;
-  animation: transferCardIn 0.42s cubic-bezier(0.2, 0.9, 0.2, 1);
-  transition: box-shadow 0.22s ease, transform 0.22s ease;
-}
-
-.transfer-card:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 22px 52px rgba(36, 42, 82, 0.18);
+  border-radius: 18px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.14);
 }
 
 .transfer-card-inner {
   display: flex;
-  align-items: stretch;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  min-height: 110px;
-  padding: 26px 18px 18px 34px;
+  padding: 16px;
 }
 
 .transfer-copy {
   min-width: 0;
   flex: 1;
-  align-self: center;
+}
+
+.transfer-headline-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .transfer-title {
@@ -525,61 +521,48 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 24px;
+  font-size: 15px;
   font-weight: 700;
-  letter-spacing: -0.03em;
+  color: var(--text-primary);
+}
+
+.transfer-percent-pill {
+  flex-shrink: 0;
+  min-width: 52px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(10, 132, 255, 0.12);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
 }
 
 .transfer-subtitle {
-  margin-top: 8px;
-  font-size: 17px;
-  color: #7b7d95;
-  letter-spacing: -0.01em;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
 }
 
 .transfer-action-rail {
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 8px;
-  min-width: 176px;
-  justify-content: flex-end;
-  margin: -26px -18px -18px 0;
-  padding: 0 20px 0 32px;
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.9) 26%, rgba(255, 255, 255, 1) 44%);
 }
 
 .transfer-actions {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  flex-shrink: 0;
-}
-
-.transfer-actions.hover-actions {
-  opacity: 0;
-  transform: translateX(8px);
-  transition: opacity 0.2s ease-out, transform 0.2s ease-out;
-}
-
-.transfer-card:hover .transfer-actions.hover-actions,
-.transfer-card:focus-within .transfer-actions.hover-actions {
-  opacity: 1;
-  transform: translateX(0);
-}
-
-.transfer-actions.static-actions {
-  opacity: 1;
-  transform: none;
 }
 
 .transfer-action-btn {
-  width: 38px;
-  height: 38px;
+  width: 34px;
+  height: 34px;
   border: none;
   border-radius: 999px;
-  background: rgba(237, 239, 248, 0.96);
-  color: #7d7a97;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -592,15 +575,11 @@ body {
 }
 
 .transfer-action-btn:hover {
-  background: rgba(229, 232, 243, 1);
+  background: rgba(255, 255, 255, 0.14);
 }
 
 .transfer-action-btn.icon-plain {
-  background: transparent;
-}
-
-.transfer-action-btn.icon-plain:hover {
-  background: transparent;
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .transfer-action-morph svg {
@@ -650,83 +629,44 @@ body {
 }
 
 .transfer-success-mark {
-  width: 40px;
-  height: 40px;
+  width: 34px;
+  height: 34px;
   border-radius: 999px;
-  background: transparent;
-  color: #14a565;
+  background: rgba(48, 209, 88, 0.12);
+  color: var(--success);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  animation: transferCheckPop 0.42s cubic-bezier(0.22, 1.2, 0.2, 1);
 }
 
 .transfer-progress-track {
   position: relative;
   height: 8px;
-  margin: 0 0 0 0;
+  margin-top: 12px;
   border-radius: 999px;
-  background: transparent;
+  background: rgba(255, 255, 255, 0.08);
   overflow: hidden;
 }
 
 .transfer-progress-line {
   position: absolute;
-  left: -10px;
-  right: 0;
-  bottom: 2px;
-  height: 2px;
-  background: linear-gradient(90deg, #6a54e6, #8d6cff);
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, var(--accent), #63b3ff);
   border-radius: 999px;
-  transform-origin: left center;
-  transition: transform 0.26s ease-out, opacity 0.22s ease-out;
-  box-shadow: 0 0 12px rgba(106, 84, 230, 0.22);
-}
-
-.transfer-progress-slack {
-  position: absolute;
-  left: -10px;
-  right: 0;
-  bottom: -1px;
-  height: 14px;
-  width: calc(100% + 10px);
-  transform-origin: left center;
-  opacity: 0;
-  pointer-events: none;
-  transition: transform 0.26s ease-out, opacity 0.18s ease-out;
-}
-
-.transfer-progress-slack path {
-  fill: none;
-  stroke: #6a54e6;
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+  transition: width 0.18s ease-out, opacity 0.22s ease-out;
 }
 
 .transfer-card.is-paused .transfer-progress-line {
-  opacity: 0;
-}
-
-.transfer-progress-slack.visible {
-  opacity: 1;
-  animation: transferSlack 1.6s linear infinite;
-}
-
-.transfer-card.is-complete .transfer-progress-line {
-  opacity: 0;
-}
-
-.transfer-card.is-complete .transfer-title,
-.transfer-card.is-complete .transfer-subtitle {
-  animation: transferTextSwap 0.28s ease-out;
+  opacity: 0.6;
 }
 
 .transfer-details-shell {
   max-height: 0;
   opacity: 0;
   overflow: hidden;
-  transition: max-height 0.42s cubic-bezier(0.2, 1.02, 0.24, 1), opacity 0.22s ease-out;
+  transition: max-height 0.24s ease-out, opacity 0.18s ease-out;
 }
 
 .transfer-details-shell.expanded {
@@ -736,8 +676,8 @@ body {
 
 .transfer-details {
   display: grid;
-  gap: 10px;
-  padding: 2px 18px 16px;
+  gap: 8px;
+  padding: 0 16px 16px;
 }
 
 .transfer-file-row {
@@ -746,9 +686,8 @@ body {
   justify-content: space-between;
   gap: 10px;
   padding: 10px 12px;
-  border-radius: 14px;
-  background: rgba(236, 239, 249, 0.8);
-  animation: transferFileIn 0.22s ease-out both;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .transfer-file-copy {
@@ -761,20 +700,20 @@ body {
   white-space: nowrap;
   font-size: 13px;
   font-weight: 600;
-  color: #21253d;
+  color: var(--text-primary);
 }
 
 .transfer-file-meta {
   margin-top: 3px;
   font-size: 11px;
-  color: #6f7693;
+  color: var(--text-secondary);
 }
 
 .transfer-file-percent {
   flex-shrink: 0;
   font-size: 12px;
   font-weight: 700;
-  color: #4f45b7;
+  color: var(--accent);
 }
 
 @media (hover: none), (pointer: coarse) {

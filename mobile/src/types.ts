@@ -32,7 +32,7 @@ export interface TextDiff {
 // Encrypted inner message (after decryption)
 export interface InputCommand {
   type: 'diff' | 'enter' | 'backspace' | 'clear' | 'ratchet_init' | 'pc_ratchet_init'
-      | 'handshake_ack' | 'clipboard' | 'file_start' | 'file_chunk' | 'file_abort';
+  | 'handshake_ack' | 'clipboard' | 'file_start' | 'file_chunk' | 'file_abort' | 'regex_config';
   text?: string;
   count?: number;
   seed?: string;
@@ -79,6 +79,8 @@ export interface TransferBatchProgress {
 // App settings persisted in localStorage
 export interface AppSettings {
   autoSaveHistory: boolean;
+  regexFilterEnabled: boolean;
+  regexFilterMarkdown: string;
 }
 
 export type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'preempted';

@@ -204,6 +204,7 @@ export const QRScanner: React.FC<QRScannerProps> = ({ onScan, overlay = false, o
 };
 
 const ManualConnect: React.FC<{ onConnect: (info: ConnectionInfo) => void }> = ({ onConnect }) => {
+  const timeoutRef = useRef<number | null>(null);
   const [chars, setChars] = useState<string[]>(Array(8).fill(''));
   const [status, setStatus] = useState('');
   const [verifyId, setVerifyId] = useState('');
@@ -220,6 +221,10 @@ const ManualConnect: React.FC<{ onConnect: (info: ConnectionInfo) => void }> = (
 
   const cancelPending = useCallback(() => {
     handoffPendingRef.current = false;
+    if (timeoutRef.current !== null) {
+      window.clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
     wsRef.current?.close();
     wsRef.current = null;
     setWaiting(false);
@@ -235,6 +240,13 @@ const ManualConnect: React.FC<{ onConnect: (info: ConnectionInfo) => void }> = (
     const wsUrl = window.location.origin.replace(/^http/, 'ws') + '/ws';
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
+    timeoutRef.current = window.setTimeout(() => {
+      handoffPendingRef.current = false;
+      setStatus('Connection failed. Check your network.');
+      setWaiting(false);
+      ws.close();
+      timeoutRef.current = null;
+    }, 8000);
 
     ws.onopen = () => {
       ws.send(JSON.stringify({
@@ -252,10 +264,18 @@ const ManualConnect: React.FC<{ onConnect: (info: ConnectionInfo) => void }> = (
           setVerifyId(msg.verifyId);
           setStatus('Waiting for approval on your PC');
         } else if (msg.type === 'joined' && msg.approved) {
+          if (timeoutRef.current !== null) {
+            window.clearTimeout(timeoutRef.current);
+            timeoutRef.current = null;
+          }
           handoffPendingRef.current = true;
           const info: ConnectionInfo = { s: wsUrl, t: msg.token, k: msg.publicKey || '' };
           onConnect(info);
         } else if (msg.type === 'error') {
+          if (timeoutRef.current !== null) {
+            window.clearTimeout(timeoutRef.current);
+            timeoutRef.current = null;
+          }
           handoffPendingRef.current = false;
           setStatus(msg.error || 'Connection failed');
           setWaiting(false);
@@ -267,12 +287,20 @@ const ManualConnect: React.FC<{ onConnect: (info: ConnectionInfo) => void }> = (
     };
 
     ws.onerror = () => {
+      if (timeoutRef.current !== null) {
+        window.clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
       handoffPendingRef.current = false;
       setStatus('Connection failed');
       setWaiting(false);
     };
 
     ws.onclose = () => {
+      if (timeoutRef.current !== null && !handoffPendingRef.current) {
+        window.clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
       if (!handoffPendingRef.current) {
         setWaiting(false);
       }

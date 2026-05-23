@@ -1,20 +1,37 @@
 import React from 'react';
 import { EmptyIcon, ResendIcon, TrashIcon } from './Icons';
 import type { HistoryEntry, InputCommand } from '../types';
+import { REGEX_SKILL_TEMPLATE, parseRegexMarkdown } from '../utils/regex';
 
 interface HistoryProps {
   entries: HistoryEntry[];
   encryptionReady: boolean;
+  regexFilterEnabled: boolean;
+  regexFilterMarkdown: string;
   onResend: (cmd: InputCommand) => void;
   onClearHistory: () => void;
   autoSaveHistory: boolean;
   onToggleAutoSave: () => void;
+  onRegexSettingsChange: (enabled: boolean, markdown: string) => void;
 }
 
 export const History: React.FC<HistoryProps> = ({
   entries, encryptionReady, onResend, onClearHistory,
   autoSaveHistory, onToggleAutoSave,
+  regexFilterEnabled, regexFilterMarkdown, onRegexSettingsChange,
 }) => {
+  const [regexEnabled, setRegexEnabled] = React.useState(regexFilterEnabled);
+  const [regexDraft, setRegexDraft] = React.useState(regexFilterMarkdown);
+  const [regexStatus, setRegexStatus] = React.useState('');
+
+  React.useEffect(() => {
+    setRegexEnabled(regexFilterEnabled);
+  }, [regexFilterEnabled]);
+
+  React.useEffect(() => {
+    setRegexDraft(regexFilterMarkdown);
+  }, [regexFilterMarkdown]);
+
   const handleResend = (entry: HistoryEntry) => {
     // Send the text as a diff (insert), then an enter to commit it
     onResend({ type: 'diff', text: entry.text, count: 0 });
@@ -24,6 +41,26 @@ export const History: React.FC<HistoryProps> = ({
   const formatTime = (ts: number) => {
     const d = new Date(ts);
     return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  };
+
+  const handleCopyTemplate = async () => {
+    try {
+      await navigator.clipboard.writeText(REGEX_SKILL_TEMPLATE);
+      setRegexStatus('Skill template copied.');
+    } catch {
+      setRegexStatus('Failed to copy template.');
+    }
+  };
+
+  const handleSaveRegex = () => {
+    try {
+      const normalizedMarkdown = regexDraft.trim() ? parseRegexMarkdown(regexDraft).normalizedMarkdown : '';
+      onRegexSettingsChange(regexEnabled, normalizedMarkdown);
+      setRegexDraft(normalizedMarkdown);
+      setRegexStatus(regexEnabled && normalizedMarkdown ? 'Regex rules saved.' : 'Regex filter disabled.');
+    } catch (error) {
+      setRegexStatus(error instanceof Error ? error.message : 'Regex rules are invalid.');
+    }
   };
 
   return (
@@ -55,6 +92,43 @@ export const History: React.FC<HistoryProps> = ({
               Clear
             </button>
           )}
+        </div>
+      </div>
+
+      <div className="glass glass-sm" style={{ padding: 14, display: 'grid', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 600 }}>Regex Filter</div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
+              Remove filler words before text leaves the phone.
+            </div>
+          </div>
+          <button
+            className={`toggle-switch ${regexEnabled ? 'on' : ''}`}
+            onClick={() => setRegexEnabled((value) => !value)}
+          />
+        </div>
+
+        <textarea
+          className="glass-input"
+          value={regexDraft}
+          onChange={(event) => setRegexDraft(event.target.value)}
+          placeholder="Paste the AI-generated Markdown regex block here"
+          style={{ minHeight: 120, fontSize: 13, lineHeight: 1.5 }}
+        />
+
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ fontSize: 12, color: regexStatus.includes('invalid') || regexStatus.includes('Failed') ? 'var(--danger)' : 'var(--text-secondary)' }}>
+            {regexStatus || 'Paste Markdown code blocks with one regex rule per line.'}
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="glass-btn" style={{ fontSize: 12, padding: '6px 12px' }} onClick={handleCopyTemplate}>
+              Copy Skill Template
+            </button>
+            <button className="glass-btn accent" style={{ fontSize: 12, padding: '6px 12px' }} onClick={handleSaveRegex}>
+              Save Rules
+            </button>
+          </div>
         </div>
       </div>
 

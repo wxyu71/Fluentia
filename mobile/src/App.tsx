@@ -53,12 +53,26 @@ function saveHistory(entries: HistoryEntry[]) {
 function loadSettings(): AppSettings {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
-    return raw ? JSON.parse(raw) : { autoSaveHistory: false };
-  } catch { return { autoSaveHistory: false }; }
+    return raw ? JSON.parse(raw) : { autoSaveHistory: false, regexFilterEnabled: false, regexFilterMarkdown: '' };
+  } catch { return { autoSaveHistory: false, regexFilterEnabled: false, regexFilterMarkdown: '' }; }
 }
 
 function saveSettings(s: AppSettings) {
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
+}
+
+function loadStoredConnection(): ConnectionInfo | null {
+  try {
+    const raw = localStorage.getItem(CONN_KEY);
+    if (!raw) {
+      return null;
+    }
+
+    const info = JSON.parse(raw) as ConnectionInfo;
+    return info.s && info.t && info.k ? info : null;
+  } catch {
+    return null;
+  }
 }
 
 export const App: React.FC = () => {
@@ -72,6 +86,8 @@ export const App: React.FC = () => {
     sendEncrypted,
     lastError,
     pendingStatus,
+    bufferedInputActive,
+    queuedCommandCount,
     inputResetVersion,
     incomingTransferBatch,
   } = useWebSocket(deviceId);
@@ -173,6 +189,17 @@ export const App: React.FC = () => {
     fetchServerConfig(info);
   }, [connect, fetchServerConfig]);
 
+  const retryStoredConnection = useCallback(() => {
+    const info = loadStoredConnection();
+    if (!info) {
+      return;
+    }
+
+    connect(info);
+    fetchServerConfig(info);
+    setActiveTab('input');
+  }, [connect, fetchServerConfig]);
+
   // Auto-reconnect from localStorage on mount (survives page refresh)
   useEffect(() => {
     try {
@@ -225,6 +252,17 @@ export const App: React.FC = () => {
     }
   }, [connectionState, fetchServerConfig]);
 
+  useEffect(() => {
+    if (!encryptionReady || !settings.regexFilterEnabled || !settings.regexFilterMarkdown.trim()) {
+      return;
+    }
+
+    sendEncrypted({
+      type: 'regex_config',
+      text: settings.regexFilterMarkdown,
+    });
+  }, [encryptionReady, sendEncrypted, settings.regexFilterEnabled, settings.regexFilterMarkdown]);
+
   const handleSendCommand = useCallback((cmd: InputCommand) => {
     sendEncrypted(cmd);
   }, [sendEncrypted]);
@@ -261,6 +299,22 @@ export const App: React.FC = () => {
       return next;
     });
   }, []);
+
+  const handleRegexSettingsChange = useCallback((regexFilterEnabled: boolean, regexFilterMarkdown: string) => {
+    setSettings((prev) => {
+      const next = {
+        ...prev,
+        regexFilterEnabled,
+        regexFilterMarkdown,
+      };
+      saveSettings(next);
+      return next;
+    });
+
+    if (encryptionReady && regexFilterEnabled && regexFilterMarkdown.trim()) {
+      sendEncrypted({ type: 'regex_config', text: regexFilterMarkdown });
+    }
+  }, [encryptionReady, sendEncrypted]);
 
   const handleCancelPendingConnection = useCallback(() => {
     disconnect();
@@ -367,9 +421,16 @@ export const App: React.FC = () => {
           <button
             className="glass-btn"
             style={{ fontSize: 12, padding: '6px 14px', flexShrink: 0 }}
-            onClick={() => { disconnect(); localStorage.removeItem(CONN_KEY); }}
+            onClick={() => {
+              if (loadStoredConnection()) {
+                retryStoredConnection();
+              } else {
+                disconnect();
+                localStorage.removeItem(CONN_KEY);
+              }
+            }}
           >
-            Reconnect
+            Try again
           </button>
         </div>
       )}
@@ -387,6 +448,10 @@ export const App: React.FC = () => {
             <div className="swipe-page">
               <InputArea
                 encryptionReady={encryptionReady}
+                bufferedInputActive={bufferedInputActive}
+                queuedCommandCount={queuedCommandCount}
+                regexFilterEnabled={settings.regexFilterEnabled}
+                regexFilterMarkdown={settings.regexFilterMarkdown}
                 text={inputText}
                 setText={setInputText}
                 onSendCommand={handleSendCommand}
@@ -405,10 +470,13 @@ export const App: React.FC = () => {
               <History
                 entries={history}
                 encryptionReady={encryptionReady}
+                regexFilterEnabled={settings.regexFilterEnabled}
+                regexFilterMarkdown={settings.regexFilterMarkdown}
                 onResend={handleResend}
                 onClearHistory={handleClearHistory}
                 autoSaveHistory={settings.autoSaveHistory}
                 onToggleAutoSave={handleToggleAutoSave}
+                onRegexSettingsChange={handleRegexSettingsChange}
               />
             </div>
           </div>

@@ -1,6 +1,12 @@
 import nacl from 'tweetnacl';
 import { encodeBase64, decodeBase64 } from 'tweetnacl-util';
 
+export interface PersistedCryptoSession {
+  publicKey: string;
+  secretKey: string;
+  peerPublicKey: string | null;
+}
+
 /**
  * KDF: SHA-512(key || label)[0:32]
  * Must match the C# implementation exactly.
@@ -39,8 +45,32 @@ export class CryptoService {
     this.keyPair = nacl.box.keyPair();
   }
 
+  importSession(session: PersistedCryptoSession): void {
+    this.keyPair = {
+      publicKey: decodeBase64(session.publicKey),
+      secretKey: decodeBase64(session.secretKey),
+    };
+    this.resetPeerState();
+    if (session.peerPublicKey) {
+      this.peerPublicKey = decodeBase64(session.peerPublicKey);
+      this.ready = true;
+    }
+  }
+
+  exportSession(): PersistedCryptoSession {
+    return {
+      publicKey: encodeBase64(this.keyPair.publicKey),
+      secretKey: encodeBase64(this.keyPair.secretKey),
+      peerPublicKey: this.peerPublicKey ? encodeBase64(this.peerPublicKey) : null,
+    };
+  }
+
   getPublicKeyBase64(): string {
     return encodeBase64(this.keyPair.publicKey);
+  }
+
+  getPeerPublicKeyBase64(): string | null {
+    return this.peerPublicKey ? encodeBase64(this.peerPublicKey) : null;
   }
 
   setPeerPublicKey(base64Key: string): void {
@@ -50,6 +80,17 @@ export class CryptoService {
 
   isReady(): boolean {
     return this.ready;
+  }
+
+  resetPeerState(): void {
+    this.peerPublicKey = null;
+    this.ready = false;
+    this.sendChainKey = null;
+    this.sendSeq = 0;
+    this._ratchetReady = false;
+    this.recvChainKey = null;
+    this.expectedSeq = 0;
+    this._recvRatchetReady = false;
   }
 
   /** Returns true if we already have a peer public key (e.g. from QR code). */
@@ -180,13 +221,6 @@ export class CryptoService {
 
   reset(): void {
     this.keyPair = nacl.box.keyPair();
-    this.peerPublicKey = null;
-    this.ready = false;
-    this.sendChainKey = null;
-    this.sendSeq = 0;
-    this._ratchetReady = false;
-    this.recvChainKey = null;
-    this.expectedSeq = 0;
-    this._recvRatchetReady = false;
+    this.resetPeerState();
   }
 }

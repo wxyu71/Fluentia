@@ -15,6 +15,8 @@ import (
 type ServerConfig struct {
 	Port          string
 	StaticDir     string
+	MinVersion    string
+	SessionStorePath string
 	SecretPath    string   // if set, WS is served at /ws/<secret> instead of /ws
 	AllowedIPs    []string // if non-empty, only these IPs may connect
 	MaxFileMB     int      // -1=disabled, 0=unlimited, N=N MB
@@ -28,6 +30,8 @@ func loadConfig() ServerConfig {
 	cfg := ServerConfig{
 		Port:         envOr("PORT", "8080"),
 		StaticDir:    envOr("STATIC_DIR", "./static"),
+		MinVersion:   envOr("MIN_VERSION", ProtocolVersion),
+		SessionStorePath: envOr("SESSION_STORE_PATH", "./data/sessions.json"),
 		MaxFileMB:    envInt("MAX_FILE_MB", -1),
 		MobileExpiry: envInt("MOBILE_EXPIRY_SECS", 60),
 		SessionMaxAge: envInt("SESSION_MAX_AGE_DAYS", 7),
@@ -130,6 +134,11 @@ func main() {
 	cfg := loadConfig()
 	hub := NewHub(cfg.SessionMaxAge)
 	hub.MaxFileMB = cfg.MaxFileMB
+	hub.MinVersion = cfg.MinVersion
+	hub.SessionStorePath = cfg.SessionStorePath
+	if err := hub.LoadPersistedSessions(); err != nil {
+		log.Printf("Failed to load persisted sessions: %v", err)
+	}
 
 	mux := http.NewServeMux()
 
@@ -156,7 +165,7 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 		fileEnabled := cfg.MaxFileMB != -1
 		maxMB := cfg.MaxFileMB
-		w.Write([]byte(`{"version":"` + ProtocolVersion + `","fileTransfer":` +
+		w.Write([]byte(`{"version":"` + ProtocolVersion + `","minVersion":"` + cfg.MinVersion + `","fileTransfer":` +
 			strconv.FormatBool(fileEnabled) + `,"maxFileMB":` + strconv.Itoa(maxMB) +
 			`,"mobileExpirySecs":` + strconv.Itoa(cfg.MobileExpiry) +
 			`,"sessionMaxAgeDays":` + strconv.Itoa(cfg.SessionMaxAge) + `}`))

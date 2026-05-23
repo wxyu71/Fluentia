@@ -1,8 +1,15 @@
-﻿import React, { useRef, useState, useCallback, forwardRef, useImperativeHandle } from 'react';
+﻿import React, { useRef, useState, useCallback, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { AttachIcon } from './Icons';
 import type { InputCommand, TransferBatchProgress } from '../types';
 
-const CHUNK_SIZE = 16 * 1024;
+const CHUNK_SIZE = 64 * 1024;
+const CHUNK_CONCURRENCY = 3;
+const WORKER_POOL_SIZE = 2;
+
+interface ChunkEncodeResponse {
+  id: number;
+  base64: string;
+}
 
 interface FileTransferProps {
   encryptionReady: boolean;
@@ -31,6 +38,33 @@ export const FileTransfer = forwardRef<FileTransferHandle, FileTransferProps>(
   const pausedRef = useRef(false);
   const resumeRef = useRef<(() => void) | null>(null);
   const clearTimerRef = useRef<number | null>(null);
+  const workersRef = useRef<Worker[]>([]);
+  const pendingEncodesRef = useRef(new Map<number, (value: string) => void>());
+  const nextWorkerRef = useRef(0);
+  const nextEncodeIdRef = useRef(0);
+
+  useEffect(() => {
+    const workers = Array.from({ length: WORKER_POOL_SIZE }, () => new Worker(new URL('../workers/fileChunk.worker.ts', import.meta.url), { type: 'module' }));
+    workers.forEach((worker) => {
+      worker.onmessage = (event: MessageEvent<ChunkEncodeResponse>) => {
+        const resolve = pendingEncodesRef.current.get(event.data.id);
+        if (!resolve) {
+          return;
+        }
+
+        pendingEncodesRef.current.delete(event.data.id);
+        resolve(event.data.base64);
+      };
+    });
+
+    workersRef.current = workers;
+
+    return () => {
+      pendingEncodesRef.current.clear();
+      workers.forEach((worker) => worker.terminate());
+      workersRef.current = [];
+    };
+  }, []);
 
   const updateBatch = useCallback((updater: TransferBatchProgress | null | ((prev: TransferBatchProgress | null) => TransferBatchProgress | null)) => {
     setBatch((prev) => {
@@ -113,6 +147,22 @@ export const FileTransfer = forwardRef<FileTransferHandle, FileTransferProps>(
     }
   }, []);
 
+  const encodeChunk = useCallback((chunk: Uint8Array) => {
+    const workers = workersRef.current;
+    if (workers.length === 0) {
+      return Promise.resolve(btoa(String.fromCharCode(...chunk)));
+    }
+
+    const worker = workers[nextWorkerRef.current % workers.length];
+    nextWorkerRef.current += 1;
+    const id = nextEncodeIdRef.current++;
+
+    return new Promise<string>((resolve) => {
+      pendingEncodesRef.current.set(id, resolve);
+      worker.postMessage({ id, bytes: chunk.buffer.slice(chunk.byteOffset, chunk.byteOffset + chunk.byteLength) }, [chunk.buffer.slice(chunk.byteOffset, chunk.byteOffset + chunk.byteLength)]);
+    });
+  }, []);
+
   const sendFiles = useCallback(async (files: File[]) => {
     setError('');
     clearHideTimer();
@@ -152,8 +202,7 @@ export const FileTransfer = forwardRef<FileTransferHandle, FileTransferProps>(
       for (const [index, file] of files.entries()) {
         const transferId = transferFiles[index].id;
         const fileStartedAt = Date.now();
-        const chunkSize = file.size <= 3 * 1024 * 1024 ? 8 * 1024 : CHUNK_SIZE;
-        const interChunkDelayMs = file.size <= 3 * 1024 * 1024 ? 12 : 4;
+        const chunkSize = CHUNK_SIZE;
 
         updateBatch((current) => current ? {
           ...current,
@@ -174,8 +223,6 @@ export const FileTransfer = forwardRef<FileTransferHandle, FileTransferProps>(
         });
 
         const totalChunks = Math.ceil(file.size / chunkSize);
-        const arrayBuffer = await file.arrayBuffer();
-        const bytes = new Uint8Array(arrayBuffer);
 
         if (file.size === 0) {
           onSendCommand({ type: 'file_chunk', transferId, chunkIndex: 0, chunkData: '', isLast: true });
@@ -190,46 +237,65 @@ export const FileTransfer = forwardRef<FileTransferHandle, FileTransferProps>(
           continue;
         }
 
-        for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex += 1) {
-          if (abortRef.current) {
-            onSendCommand({ type: 'file_abort', transferId });
+        let completedChunks = 0;
+        let nextChunkIndex = 0;
+
+        const sendChunk = async () => {
+          while (nextChunkIndex < totalChunks) {
+            const chunkIndex = nextChunkIndex;
+            nextChunkIndex += 1;
+
+            if (abortRef.current) {
+              return;
+            }
+
+            await waitWhilePaused();
+
+            const start = chunkIndex * chunkSize;
+            const end = Math.min(start + chunkSize, file.size);
+            const chunkBuffer = await file.slice(start, end).arrayBuffer();
+            const chunk = new Uint8Array(chunkBuffer);
+            const b64 = await encodeChunk(chunk);
+
+            if (abortRef.current) {
+              return;
+            }
+
+            onSendCommand({ type: 'file_chunk', transferId, chunkIndex, chunkData: b64, isLast: chunkIndex === totalChunks - 1 });
+            completedChunks += 1;
+
             updateBatch((current) => current ? {
               ...current,
-              status: 'cancelled',
+              status: pausedRef.current ? 'paused' : 'active',
               updatedAt: Date.now(),
               files: current.files.map((item) =>
                 item.id === transferId
-                  ? { ...item, status: 'cancelled', updatedAt: Date.now() }
+                  ? {
+                      ...item,
+                      transferredBytes: Math.min(file.size, item.transferredBytes + chunk.byteLength),
+                      status: completedChunks === totalChunks ? 'completed' : (pausedRef.current ? 'paused' : 'active'),
+                      updatedAt: Date.now(),
+                    }
                   : item),
             } : current);
-            scheduleBatchClear();
-            return;
           }
+        };
 
-          await waitWhilePaused();
+        await Promise.all(Array.from({ length: Math.min(CHUNK_CONCURRENCY, totalChunks) }, () => sendChunk()));
 
-          const start = chunkIndex * chunkSize;
-          const end = Math.min(start + chunkSize, file.size);
-          const chunk = bytes.slice(start, end);
-          const b64 = btoa(String.fromCharCode(...chunk));
-          onSendCommand({ type: 'file_chunk', transferId, chunkIndex, chunkData: b64, isLast: chunkIndex === totalChunks - 1 });
-
+        if (abortRef.current) {
+          onSendCommand({ type: 'file_abort', transferId });
           updateBatch((current) => current ? {
             ...current,
-            status: pausedRef.current ? 'paused' : 'active',
+            status: 'cancelled',
             updatedAt: Date.now(),
             files: current.files.map((item) =>
               item.id === transferId
-                ? {
-                    ...item,
-                    transferredBytes: end,
-                    status: chunkIndex === totalChunks - 1 ? 'completed' : (pausedRef.current ? 'paused' : 'active'),
-                    updatedAt: Date.now(),
-                  }
+                ? { ...item, status: 'cancelled', updatedAt: Date.now() }
                 : item),
           } : current);
-
-          await new Promise((resolve) => setTimeout(resolve, interChunkDelayMs));
+          scheduleBatchClear();
+          return;
         }
       }
 

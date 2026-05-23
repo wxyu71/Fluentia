@@ -2,7 +2,7 @@ import React from 'react';
 import { LockIcon } from './Icons';
 import type { ConnectionState } from '../types';
 
-const BUILD_MARKER = 'B0425E';
+const APP_VERSION = __APP_VERSION__;
 
 interface HeaderProps {
   connectionState: ConnectionState;
@@ -58,7 +58,7 @@ export const Header: React.FC<HeaderProps> = ({ connectionState, peerConnected, 
           letterSpacing: '0.08em',
           color: 'var(--accent)',
         }}>
-          {BUILD_MARKER}
+          v{APP_VERSION}
         </span>
       </div>
 

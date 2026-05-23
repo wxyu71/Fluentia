@@ -9,6 +9,8 @@ public sealed record PersistedDesktopSession(
     string PrivateKey,
     bool TrustedSessionEstablished);
 
+public sealed record VersionRequirementResult(bool IsCompatible, string? Message);
+
 /// <summary>
 /// Manages the session lifecycle: connect to server, create session, handle messages, key exchange.
 /// </summary>
@@ -34,6 +36,7 @@ public class RoomManager : IDisposable
     public event Action<InputCommand>? OnInputCommand;
     public event Action<string>? OnStatusChanged;
     public event Action<string>? OnError;
+    public event Action<string>? OnVersionIncompatible;
     public event Action<string>? OnDeviceCodeCreated;  // code
     public event Action<string, string, string>? OnDeviceCodePending; // code, verifyId, userAgent
     public event Action<bool>? OnServerConnectionChanged;
@@ -240,6 +243,20 @@ public class RoomManager : IDisposable
 
     private void HandleMessage(WsMessage msg)
     {
+        var versionRequirement = ValidateVersionRequirement(msg);
+        if (!versionRequirement.IsCompatible)
+        {
+            var error = versionRequirement.Message ?? $"Version incompatible. Minimum required version is {msg.MinVersion}.";
+            _ws.Disconnect();
+            _currentToken = null;
+            _encryptionConfirmed = false;
+            _trustedSessionEstablished = false;
+            _sessionExpiresAtUtc = null;
+            OnVersionIncompatible?.Invoke(error);
+            OnError?.Invoke(error);
+            return;
+        }
+
         switch (msg.Type)
         {
             case MsgTypes.SessionCreated:
@@ -408,5 +425,23 @@ public class RoomManager : IDisposable
         }
 
         return DateTimeOffset.TryParse(expiresAt, out var parsed) ? parsed.ToUniversalTime() : null;
+    }
+
+    private static VersionRequirementResult ValidateVersionRequirement(WsMessage msg)
+    {
+        if (string.IsNullOrWhiteSpace(msg.MinVersion))
+        {
+            return new VersionRequirementResult(true, null);
+        }
+
+        if (!Version.TryParse(MsgTypes.ProtocolVersion, out var currentVersion) ||
+            !Version.TryParse(msg.MinVersion, out var minimumVersion))
+        {
+            return new VersionRequirementResult(true, null);
+        }
+
+        return currentVersion < minimumVersion
+            ? new VersionRequirementResult(false, $"Version incompatible. Minimum required version is {minimumVersion}.")
+            : new VersionRequirementResult(true, null);
     }
 }

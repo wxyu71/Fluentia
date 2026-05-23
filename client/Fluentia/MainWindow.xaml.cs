@@ -128,17 +128,24 @@ public partial class MainWindow : Window
     private const uint WINEVENT_OUTOFCONTEXT = 0;
     private const string StartupRegistryPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private const string StartupRegistryValue = "Fluentia";
-    private const string BuildMarker = "B0425E";
+    private static readonly string AppVersion = typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? MsgTypes.ProtocolVersion;
+    private static readonly TimeSpan DiffBatchWindow = TimeSpan.FromMilliseconds(45);
 
     private WinEventDelegate? _winEventDelegate;
     private IntPtr _winEventHook;
     private IntPtr _lastForegroundWindow;
     private IntPtr _lastExternalForegroundWindow;
+    private string _appliedInputBuffer = string.Empty;
 
     private static readonly string SettingsFile = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "Fluentia", "settings.json");
+    private static readonly string SessionBackupFile = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        "Fluentia", "protected-session.backup");
     private static readonly string TrayIconSourceFile = Path.Combine(AppContext.BaseDirectory, "fluentia-icon-source.png");
+    private string _regexFilterMarkdown = string.Empty;
+    private bool _persistedSessionLost;
 
     private static string L(string key, params object[] args) => LocalizationService.Get(key, args);
 
@@ -158,7 +165,14 @@ public partial class MainWindow : Window
         RefreshVisualState();
 
         Closing += MainWindow_Closing;
-        Loaded += async (_, _) => await AutoConnectAsync();
+        Loaded += async (_, _) =>
+        {
+            await AutoConnectAsync();
+            if (_persistedSessionLost)
+            {
+                ShowPersistedSessionLostPrompt();
+            }
+        };
         MouseEnter += (_, _) => ShowTrafficIcons(true);
         MouseLeave += (_, _) => ShowTrafficIcons(false);
 
@@ -198,6 +212,7 @@ public partial class MainWindow : Window
 
         _roomManager.OnSessionCreated += (token) => Dispatcher.Invoke(async () =>
         {
+            _persistedSessionLost = false;
             _deviceCode = null;
             _mobileConnected = false;
             _handshakePending = false;
@@ -338,6 +353,16 @@ public partial class MainWindow : Window
             SetStatus(L("StatusErrorFormat", error), false);
             RefreshVisualState();
             if (_devMode) AppendLog($"Error: {error}");
+        });
+
+        _roomManager.OnVersionIncompatible += (error) => Dispatcher.Invoke(() =>
+        {
+            _mobileConnected = false;
+            _handshakePending = false;
+            _inputTargetWindow = IntPtr.Zero;
+            SetStatus(error, false);
+            RefreshVisualState();
+            MessageBox.Show(error, L("VersionIncompatibleTitle"), MessageBoxButton.OK, MessageBoxImage.Warning);
         });
     }
 
@@ -619,10 +644,50 @@ public partial class MainWindow : Window
 
     private async Task ProcessCommandQueue()
     {
-        await foreach (var cmd in _cmdChannel.Reader.ReadAllAsync())
+        InputCommand? deferredCommand = null;
+
+        while (true)
         {
             try
             {
+                var cmd = deferredCommand ?? await _cmdChannel.Reader.ReadAsync();
+                deferredCommand = null;
+
+                if (cmd.Type == "diff")
+                {
+                    var nextText = ApplyDiffToBuffer(_appliedInputBuffer, cmd.Count, cmd.Text);
+
+                    while (true)
+                    {
+                        var waitForMore = _cmdChannel.Reader.WaitToReadAsync().AsTask();
+                        var completed = await Task.WhenAny(waitForMore, Task.Delay(DiffBatchWindow));
+                        if (completed != waitForMore || !await waitForMore)
+                        {
+                            break;
+                        }
+
+                        while (_cmdChannel.Reader.TryRead(out var queuedCommand))
+                        {
+                            if (queuedCommand.Type == "diff")
+                            {
+                                nextText = ApplyDiffToBuffer(nextText, queuedCommand.Count, queuedCommand.Text);
+                                continue;
+                            }
+
+                            deferredCommand = queuedCommand;
+                            break;
+                        }
+
+                        if (deferredCommand != null)
+                        {
+                            break;
+                        }
+                    }
+
+                    FlushBufferedDiff(nextText);
+                    continue;
+                }
+
                 HandleInputCommand(cmd);
             }
             catch (Exception ex)
@@ -635,19 +700,45 @@ public partial class MainWindow : Window
         }
     }
 
+    private static string ApplyDiffToBuffer(string current, int backspace, string? insertText)
+    {
+        var safeBackspace = Math.Max(0, Math.Min(backspace, current.Length));
+        var prefixLength = current.Length - safeBackspace;
+        return current[..prefixLength] + (insertText ?? string.Empty);
+    }
+
+    private void FlushBufferedDiff(string nextText)
+    {
+        if (!EnsureInputTarget())
+        {
+            return;
+        }
+
+        var prefix = 0;
+        var limit = Math.Min(_appliedInputBuffer.Length, nextText.Length);
+        while (prefix < limit && _appliedInputBuffer[prefix] == nextText[prefix])
+        {
+            prefix++;
+        }
+
+        var backspace = _appliedInputBuffer.Length - prefix;
+        var insert = nextText[prefix..];
+        TextInjector.ApplyDiff(backspace, insert);
+        _appliedInputBuffer = nextText;
+    }
+
     private void HandleInputCommand(InputCommand cmd)
     {
         switch (cmd.Type)
         {
             case "diff":
-                if (!EnsureInputTarget()) return;
-                TextInjector.ApplyDiff(cmd.Count, cmd.Text ?? string.Empty);
                 break;
 
             case "enter":
                 if (!EnsureInputTarget()) return;
                 TextInjector.SendEnter();
                 _inputTargetWindow = IntPtr.Zero;
+                _appliedInputBuffer = string.Empty;
                 break;
 
             case "backspace":
@@ -655,6 +746,7 @@ public partial class MainWindow : Window
                 if (cmd.Count > 0)
                 {
                     TextInjector.SendBackspace(cmd.Count);
+                    _appliedInputBuffer = ApplyDiffToBuffer(_appliedInputBuffer, cmd.Count, string.Empty);
                 }
                 break;
 
@@ -669,8 +761,25 @@ public partial class MainWindow : Window
                 }
                 break;
 
+            case "regex_config":
+                Dispatcher.Invoke(() =>
+                {
+                    if (!RegexRuleImportService.TryImport(cmd.Text ?? string.Empty, out var result, out var error))
+                    {
+                        SetStatus(L("StatusRegexConfigInvalidFormat", error ?? L("StatusRegexConfigInvalid")), false);
+                        MessageBox.Show(error ?? L("StatusRegexConfigInvalid"), L("RegexConfigErrorTitle"), MessageBoxButton.OK, MessageBoxImage.Warning);
+                        return;
+                    }
+
+                    _regexFilterMarkdown = result!.NormalizedMarkdown;
+                    PersistSettings();
+                    SetStatus(L("StatusRegexConfigSavedFormat", result.Rules.Count), true);
+                });
+                break;
+
             case "clear":
                 _inputTargetWindow = IntPtr.Zero;
+                _appliedInputBuffer = string.Empty;
                 break;
 
             case "file_start":
@@ -1523,6 +1632,9 @@ public partial class MainWindow : Window
     private void LoadSettings()
     {
         var migrateLegacySession = false;
+        var hadProtectedSession = false;
+        var recoveredFromBackup = false;
+        var restoredFromPrimary = false;
 
         try
         {
@@ -1562,6 +1674,11 @@ public partial class MainWindow : Window
                     LocalizationService.SetLanguagePreference(languageElement.GetString());
                 }
 
+                if (doc.RootElement.TryGetProperty("regexFilterMarkdown", out var regexMarkdownElement))
+                {
+                    _regexFilterMarkdown = regexMarkdownElement.GetString() ?? string.Empty;
+                }
+
                 if (doc.RootElement.TryGetProperty("sessionCreatedAtUtc", out var sessionCreatedElement) &&
                     DateTime.TryParse(sessionCreatedElement.GetString(), null, System.Globalization.DateTimeStyles.RoundtripKind, out var restoredCreatedAt))
                 {
@@ -1581,6 +1698,7 @@ public partial class MainWindow : Window
                 PersistedDesktopSession? restoredSession = null;
                 if (doc.RootElement.TryGetProperty("protectedSession", out var protectedSessionElement))
                 {
+                    hadProtectedSession = !string.IsNullOrWhiteSpace(protectedSessionElement.GetString());
                     restoredSession = DesktopSessionProtector.Unprotect(protectedSessionElement.GetString() ?? string.Empty);
                 }
 
@@ -1605,8 +1723,33 @@ public partial class MainWindow : Window
 
                 if (restoredSession != null)
                 {
+                    _persistedSessionLost = false;
+                    restoredFromPrimary = true;
                     _roomManager.RestorePersistedSession(restoredSession);
                 }
+            }
+
+            if (!restoredFromPrimary && File.Exists(SessionBackupFile))
+            {
+                var backupProtectedSession = File.ReadAllText(SessionBackupFile);
+                if (!string.IsNullOrWhiteSpace(backupProtectedSession))
+                {
+                    var restoredFromBackup = DesktopSessionProtector.Unprotect(backupProtectedSession);
+                    if (restoredFromBackup != null)
+                    {
+                        recoveredFromBackup = true;
+                        _persistedSessionLost = false;
+                        _roomManager.RestorePersistedSession(restoredFromBackup);
+                    }
+                    else if (hadProtectedSession)
+                    {
+                        _persistedSessionLost = true;
+                    }
+                }
+            }
+            else if (hadProtectedSession)
+            {
+                _persistedSessionLost = true;
             }
         }
         catch
@@ -1619,7 +1762,7 @@ public partial class MainWindow : Window
         LaunchAtStartupToggle.IsChecked = _launchAtStartup;
         UpdateLanguageSelectorSelection();
 
-        if (migrateLegacySession)
+        if (migrateLegacySession || recoveredFromBackup)
         {
             PersistSettings();
         }
@@ -1638,15 +1781,35 @@ public partial class MainWindow : Window
                 closeToTray = _closeToTray,
                 launchAtStartup = _launchAtStartup,
                 language = LocalizationService.CurrentLanguageSetting,
+                regexFilterMarkdown = _regexFilterMarkdown,
                 protectedSession = persistedSession == null ? null : DesktopSessionProtector.Protect(persistedSession),
                 sessionCreatedAtUtc = _sessionCreatedAt == default ? null : _sessionCreatedAt.ToUniversalTime().ToString("O"),
                 sessionExpiresAtUtc = _sessionExpiresAt == default ? null : _sessionExpiresAt.ToUniversalTime().ToString("O"),
             });
             File.WriteAllText(SettingsFile, payload);
+
+            if (persistedSession == null)
+            {
+                if (File.Exists(SessionBackupFile))
+                {
+                    File.Delete(SessionBackupFile);
+                }
+            }
+            else
+            {
+                File.WriteAllText(SessionBackupFile, DesktopSessionProtector.Protect(persistedSession));
+            }
         }
         catch
         {
         }
+    }
+
+    private void ShowPersistedSessionLostPrompt()
+    {
+        SetStatus(L("StatusSavedSessionLost"), false);
+        MessageBox.Show(L("SavedSessionLostBody"), L("SavedSessionLostTitle"), MessageBoxButton.OK, MessageBoxImage.Information);
+        _persistedSessionLost = false;
     }
 
     private DateTime ResolveSessionExpiry(DateTime fallbackCreatedAt)
@@ -2512,7 +2675,7 @@ public partial class MainWindow : Window
     private void ApplyLocalizedText()
     {
         Title = L("MainWindowTitle");
-        TitleLabel.Text = $"{L("AppName")} · {BuildMarker}";
+        TitleLabel.Text = $"{L("AppName")} · v{AppVersion}";
         BtnMinimize.ToolTip = L("TooltipMinimize");
         BtnMaximize.ToolTip = L("TooltipMaximizeRestore");
         SettingsTitleButton.ToolTip = L("TooltipOpenSettings");

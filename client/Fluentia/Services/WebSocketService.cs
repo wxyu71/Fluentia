@@ -298,6 +298,14 @@ public class WebSocketService : IDisposable
         if (disposeUrl) _serverUrl = null;
     }
 
+    public void Disconnect()
+    {
+        _intentionalClose = true;
+        CancelReconnectLoop();
+        DisposeConnection(disposeUrl: false);
+        OnDisconnected?.Invoke("Disconnected");
+    }
+
     public void Dispose()
     {
         _intentionalClose = true;

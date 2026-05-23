@@ -5,9 +5,14 @@ import { FileTransfer } from './FileTransfer';
 import { TransferStatusCard } from './TransferStatusCard';
 import type { FileTransferHandle } from './FileTransfer';
 import type { InputCommand, HistoryEntry, TransferBatchProgress } from '../types';
+import { applyRegexFilters } from '../utils/regex';
 
 interface InputAreaProps {
   encryptionReady: boolean;
+  bufferedInputActive: boolean;
+  queuedCommandCount: number;
+  regexFilterEnabled: boolean;
+  regexFilterMarkdown: string;
   text: string;
   setText: (text: string) => void;
   onSendCommand: (cmd: InputCommand) => void;
@@ -24,6 +29,10 @@ interface InputAreaProps {
 
 export const InputArea: React.FC<InputAreaProps> = ({
   encryptionReady,
+  bufferedInputActive,
+  queuedCommandCount,
+  regexFilterEnabled,
+  regexFilterMarkdown,
   text,
   setText,
   onSendCommand,
@@ -37,6 +46,7 @@ export const InputArea: React.FC<InputAreaProps> = ({
   inputResetVersion,
   incomingTransferBatch = null,
 }) => {
+  const inputEnabled = encryptionReady || bufferedInputActive;
   const lastSentRef = useRef('');
   const textRef = useRef(text);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -67,7 +77,7 @@ export const InputArea: React.FC<InputAreaProps> = ({
   }, [autoSaveHistory, onAddHistory]);
 
   const commitParagraph = useCallback((paragraphText: string) => {
-    const normalized = paragraphText.replace(/\r/g, '');
+    const normalized = applyRegexFilters(paragraphText.replace(/\r/g, ''), regexFilterMarkdown, regexFilterEnabled);
     if (normalized !== lastSentRef.current) {
       sendDiff(normalized);
     }
@@ -81,10 +91,10 @@ export const InputArea: React.FC<InputAreaProps> = ({
     if (textareaRef.current) {
       textareaRef.current.value = '';
     }
-  }, [addHistoryEntry, onSendCommand, sendDiff, setText]);
+  }, [addHistoryEntry, onSendCommand, regexFilterEnabled, regexFilterMarkdown, sendDiff, setText]);
 
   const processTextValue = useCallback((rawValue: string, source?: HTMLTextAreaElement | null) => {
-    const normalized = rawValue.replace(/\r/g, '');
+    const normalized = applyRegexFilters(rawValue.replace(/\r/g, ''), regexFilterMarkdown, regexFilterEnabled);
 
     if (normalized.includes('\n')) {
       const segments = normalized.split('\n');
@@ -120,7 +130,7 @@ export const InputArea: React.FC<InputAreaProps> = ({
     if (encryptionReady) {
       sendDiff(normalized);
     }
-  }, [addHistoryEntry, encryptionReady, onSendCommand, sendDiff, setText]);
+  }, [addHistoryEntry, encryptionReady, onSendCommand, regexFilterEnabled, regexFilterMarkdown, sendDiff, setText]);
 
   const handleInput = useCallback((e: React.FormEvent<HTMLTextAreaElement>) => {
     processTextValue(e.currentTarget.value, e.currentTarget);
@@ -144,8 +154,8 @@ export const InputArea: React.FC<InputAreaProps> = ({
 
   const handleCopyToClipboard = useCallback(() => {
     if (!text.trim() || !encryptionReady) return;
-    onSendCommand({ type: 'clipboard', text: text.trim() });
-  }, [text, encryptionReady, onSendCommand]);
+    onSendCommand({ type: 'clipboard', text: applyRegexFilters(text.trim(), regexFilterMarkdown, regexFilterEnabled) });
+  }, [text, encryptionReady, onSendCommand, regexFilterEnabled, regexFilterMarkdown]);
 
   useEffect(() => {
     if (inputResetVersion === 0) return;
@@ -179,15 +189,19 @@ export const InputArea: React.FC<InputAreaProps> = ({
             {pendingStatus || 'Waiting for encrypted connection'}
           </div>
           <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>
-            You can go back if the phone stays stuck on key exchange.
+            {bufferedInputActive
+              ? `You can keep typing. ${queuedCommandCount} buffered command${queuedCommandCount === 1 ? '' : 's'} will replay after reconnect.`
+              : 'You can go back if the phone stays stuck on key exchange.'}
           </div>
-          <button
-            className="glass-btn"
-            style={{ fontSize: 12, padding: '8px 14px', marginTop: 12 }}
-            onClick={onCancelPendingConnection}
-          >
-            Cancel and go back
-          </button>
+          {!bufferedInputActive && (
+            <button
+              className="glass-btn"
+              style={{ fontSize: 12, padding: '8px 14px', marginTop: 12 }}
+              onClick={onCancelPendingConnection}
+            >
+              Cancel and go back
+            </button>
+          )}
         </div>
       )}
 
@@ -256,7 +270,7 @@ export const InputArea: React.FC<InputAreaProps> = ({
             )}
             <button
               onClick={handleCopyToClipboard}
-              disabled={!text.trim()}
+              disabled={!text.trim() || !inputEnabled}
               style={{
                 background: 'none',
                 border: 'none',
@@ -268,7 +282,7 @@ export const InputArea: React.FC<InputAreaProps> = ({
                 gap: 6,
                 fontSize: 13,
                 fontWeight: 500,
-                opacity: text.trim() ? 1 : 0.4,
+                opacity: text.trim() && inputEnabled ? 1 : 0.4,
               }}
             >
               <ClipboardIcon size={16} />
@@ -287,9 +301,9 @@ export const InputArea: React.FC<InputAreaProps> = ({
           onKeyDown={handleKeyDown}
           onCompositionStart={handleCompositionStart}
           onCompositionEnd={handleCompositionEnd}
-          placeholder={encryptionReady ? 'Type or use voice input. Enter sends.' : 'Connect to a PC first.'}
-          disabled={!encryptionReady}
-          autoFocus={encryptionReady}
+          placeholder={inputEnabled ? 'Type or use voice input. Enter sends.' : 'Connect to a PC first.'}
+          disabled={!inputEnabled}
+          autoFocus={inputEnabled}
           style={{
             minHeight: 200,
             maxHeight: '50vh',

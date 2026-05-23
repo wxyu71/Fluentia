@@ -4,7 +4,6 @@ import {
   CloseIcon,
   CollapseIcon,
   ExpandIcon,
-  MoreIcon,
   PauseIcon,
   ResendIcon,
 } from './Icons';
@@ -89,23 +88,27 @@ export const TransferStatusCard: React.FC<TransferStatusCardProps> = ({
   const showPause = typeof onPauseToggle === 'function' && (batch.status === 'active' || batch.status === 'paused');
   const showCancel = typeof onCancel === 'function' && (batch.status === 'active' || batch.status === 'paused');
   const showExpand = batch.files.length > 1;
-  const showActions = batch.status !== 'completed';
   const showSuccess = batch.status === 'completed';
 
   return (
     <div className={`transfer-card ${batch.status === 'completed' ? 'is-complete' : ''} ${batch.status === 'paused' ? 'is-paused' : ''}`}>
       <div className="transfer-card-inner">
         <div className="transfer-copy">
-          <div className="transfer-title">{title}</div>
-          {!showSuccess && (
-            <div className="transfer-subtitle">
-              {summary.percent}% · {summary.secondaryText}
-            </div>
-          )}
+          <div className="transfer-headline-row">
+            <div className="transfer-title">{title}</div>
+            <div className="transfer-percent-pill">{summary.percent}%</div>
+          </div>
+          <div className="transfer-subtitle">{showSuccess ? 'Completed' : summary.secondaryText}</div>
+          <div className="transfer-progress-track" aria-hidden="true">
+            <div
+              className="transfer-progress-line"
+              style={{ width: `${summary.percent}%` }}
+            />
+          </div>
         </div>
 
-        <div className="transfer-action-rail" aria-hidden={!showActions && !showExpand}>
-          <div className="transfer-actions hover-actions">
+        <div className="transfer-action-rail" aria-hidden={!showExpand && !showPause && !showCancel}>
+          <div className="transfer-actions">
             {showPause && (
               <button type="button" className={`transfer-action-btn transfer-action-morph ${batch.status === 'paused' ? 'is-paused' : ''}`} onClick={onPauseToggle} aria-label={batch.status === 'paused' ? 'Resume transfer' : 'Pause transfer'}>
                 <span className="transfer-morph-icon" aria-hidden="true">
@@ -123,17 +126,9 @@ export const TransferStatusCard: React.FC<TransferStatusCardProps> = ({
                 <CloseIcon size={14} />
               </button>
             )}
-          </div>
-
-          <div className="transfer-actions static-actions">
             {showExpand && (
               <button type="button" className="transfer-action-btn icon-plain" onClick={() => setExpanded((value) => !value)} aria-label={expanded ? 'Collapse transfer details' : 'Expand transfer details'}>
                 {expanded ? <CollapseIcon size={15} /> : <ExpandIcon size={15} />}
-              </button>
-            )}
-            {!showSuccess && (
-              <button type="button" className="transfer-action-btn icon-plain muted" aria-label="More options" disabled>
-                <MoreIcon size={14} />
               </button>
             )}
             {showSuccess && (
@@ -143,21 +138,6 @@ export const TransferStatusCard: React.FC<TransferStatusCardProps> = ({
             )}
           </div>
         </div>
-      </div>
-
-      <div className="transfer-progress-track" aria-hidden="true">
-        <div
-          className="transfer-progress-line"
-          style={{ transform: `scaleX(${summary.percent / 100})` }}
-        />
-        <svg
-          className={`transfer-progress-slack ${batch.status === 'paused' ? 'visible' : ''}`}
-          viewBox="0 0 220 14"
-          preserveAspectRatio="none"
-          style={{ transform: `scaleX(${summary.percent / 100})` }}
-        >
-          <path d="M0 3 C36 8 72 8 108 3 S180 -1 220 3" />
-        </svg>
       </div>
 
       <div className={`transfer-details-shell ${expanded && showExpand ? 'expanded' : ''}`}>

@@ -46,8 +46,10 @@ All settings via environment variables in `docker-compose.yml`:
 | `SECRET_PATH` | — | Secret URL path (when private mode enabled) |
 | `IP_WHITELIST` | `false` | Enable IP-based access control |
 | `ALLOWED_IPS` | — | Comma-separated IPs/CIDRs |
+| `MIN_VERSION` | `1.3.0` | Minimum compatible client version enforced after handshake |
 | `MAX_FILE_MB` | `100` | Max file size (-1=disabled, 0=unlimited) |
 | `SESSION_MAX_AGE_DAYS` | `7` | How long a session token and its trusted desktop key remain reusable before a new session is required |
+| `SESSION_STORE_PATH` | `./data/sessions.json` | JSON file used by the relay to persist reusable session tokens across restarts |
 | `MOBILE_EXPIRY_SECS` | `60` | How long the desktop waits before surfacing itself after the phone disconnects |
 
 Desktop session state is stored locally and protected with the current Windows user account so the client can restore the same trusted keypair after restart.

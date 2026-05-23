@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { CryptoService } from '../utils/crypto';
+import { CryptoService, type PersistedCryptoSession } from '../utils/crypto';
 import type {
   WsMessage,
   ConnectionState,
@@ -10,15 +10,35 @@ import type {
 import { PROTOCOL_VERSION } from '../types';
 
 const STORED_CONN_KEY = 'fluentia_conn';
-const BASE_RECONNECT_DELAY_MS = 150;
-const MAX_RECONNECT_DELAY_MS = 1200;
+const STORED_CRYPTO_KEY = 'fluentia_crypto_session_v1';
+const FIXED_RECONNECT_DELAY_MS = 2000;
 const MAX_RECONNECT_ATTEMPTS = 300;
+const CONNECT_TIMEOUT_MS = 8000;
 const HANDSHAKE_TIMEOUT_MS = 12000;
 const HEARTBEAT_INTERVAL_MS = 1000;
 const HEARTBEAT_TIMEOUT_MS = 2500;
+const OFFLINE_GRACE_MS = 10000;
 
-function getReconnectDelay(attempt: number): number {
-  return Math.min(BASE_RECONNECT_DELAY_MS * (2 ** Math.max(0, attempt - 1)), MAX_RECONNECT_DELAY_MS);
+function buildSessionKey(info: ConnectionInfo): string {
+  return `${info.s}|${info.t}|${info.k}`;
+}
+
+function loadPersistedCrypto(info: ConnectionInfo): PersistedCryptoSession | null {
+  try {
+    const raw = localStorage.getItem(STORED_CRYPTO_KEY);
+    if (!raw) {
+      return null;
+    }
+
+    const parsed = JSON.parse(raw) as { sessionKey?: string; crypto?: PersistedCryptoSession };
+    if (parsed.sessionKey !== buildSessionKey(info) || !parsed.crypto) {
+      return null;
+    }
+
+    return parsed.crypto;
+  } catch {
+    return null;
+  }
 }
 
 interface UseWebSocketReturn {
@@ -30,6 +50,8 @@ interface UseWebSocketReturn {
   sendEncrypted: (cmd: InputCommand) => void;
   lastError: string | null;
   pendingStatus: string | null;
+  bufferedInputActive: boolean;
+  queuedCommandCount: number;
   inputResetVersion: number;
   incomingTransferBatch: TransferBatchProgress | null;
 }
@@ -40,6 +62,8 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
   const [encryptionReady, setEncryptionReady] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
   const [pendingStatus, setPendingStatus] = useState<string | null>(null);
+  const [bufferedInputActive, setBufferedInputActive] = useState(false);
+  const [queuedCommandCount, setQueuedCommandCount] = useState(0);
   const [inputResetVersion, setInputResetVersion] = useState(0);
   const [incomingTransferBatch, setIncomingTransferBatch] = useState<TransferBatchProgress | null>(null);
 
@@ -49,16 +73,58 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
   const reconnectAttemptRef = useRef(0);
   const reconnectTimerRef = useRef<number | null>(null);
   const handshakeTimerRef = useRef<number | null>(null);
+  const connectTimeoutRef = useRef<number | null>(null);
   const heartbeatIntervalRef = useRef<number | null>(null);
   const heartbeatTimeoutRef = useRef<number | null>(null);
+  const offlineGraceTimerRef = useRef<number | null>(null);
   const intentionalCloseRef = useRef(false);
   const suspendedRef = useRef(false);
   const handshakeStartedRef = useRef(false);
   const connectionStateRef = useRef<ConnectionState>('disconnected');
   const encryptionReadyRef = useRef(false);
+  const hadEncryptedSessionRef = useRef(false);
+  const bufferedInputActiveRef = useRef(false);
+  const queuedCommandsRef = useRef<InputCommand[]>([]);
   const incomingFilesRef = useRef(new Map<string, { fileName: string; mimeType: string; chunks: string[] }>());
   const incomingTransferBatchRef = useRef<TransferBatchProgress | null>(null);
   const incomingTransferHideTimerRef = useRef<number | null>(null);
+
+  const persistCryptoState = useCallback(() => {
+    const info = connInfoRef.current;
+    if (!info) {
+      return;
+    }
+
+    try {
+      localStorage.setItem(STORED_CRYPTO_KEY, JSON.stringify({
+        sessionKey: buildSessionKey(info),
+        crypto: cryptoRef.current.exportSession(),
+      }));
+    } catch {
+      // Ignore storage failures.
+    }
+  }, []);
+
+  const updateQueuedCommandCount = useCallback(() => {
+    setQueuedCommandCount(queuedCommandsRef.current.length);
+  }, []);
+
+  const clearOfflineGraceTimer = useCallback(() => {
+    if (offlineGraceTimerRef.current !== null) {
+      clearTimeout(offlineGraceTimerRef.current);
+      offlineGraceTimerRef.current = null;
+    }
+  }, []);
+
+  const setBufferedInputMode = useCallback((active: boolean) => {
+    bufferedInputActiveRef.current = active;
+    setBufferedInputActive(active);
+  }, []);
+
+  const dropQueuedCommands = useCallback(() => {
+    queuedCommandsRef.current = [];
+    updateQueuedCommandCount();
+  }, [updateQueuedCommandCount]);
 
   const clearIncomingTransferHideTimer = useCallback(() => {
     if (incomingTransferHideTimerRef.current !== null) {
@@ -117,12 +183,38 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
     encryptionReadyRef.current = ready;
     if (ready) {
       handshakeStartedRef.current = false;
+      hadEncryptedSessionRef.current = true;
+      clearOfflineGraceTimer();
+      setBufferedInputMode(false);
     }
     setEncryptionReady(ready);
     if (ready) {
       setPendingStatus(null);
     }
-  }, []);
+  }, [clearOfflineGraceTimer, setBufferedInputMode]);
+
+  const startOfflineGrace = useCallback((status = 'Network unstable, reconnecting...') => {
+    if (!hadEncryptedSessionRef.current || connectionStateRef.current === 'preempted') {
+      return;
+    }
+
+    clearOfflineGraceTimer();
+    setBufferedInputMode(true);
+    setPendingStatus(status);
+    setConnectionState('connecting');
+    connectionStateRef.current = 'connecting';
+
+    offlineGraceTimerRef.current = window.setTimeout(() => {
+      setBufferedInputMode(false);
+      dropQueuedCommands();
+      setPeerConnected(false);
+      setEncryptionState(false);
+      setPendingStatus(null);
+      setLastError('Reconnection timed out. Buffered input was not sent.');
+      setConnectionState('disconnected');
+      connectionStateRef.current = 'disconnected';
+    }, OFFLINE_GRACE_MS);
+  }, [clearOfflineGraceTimer, dropQueuedCommands, setBufferedInputMode, setEncryptionState]);
 
   const clearReconnectTimer = useCallback(() => {
     if (reconnectTimerRef.current !== null) {
@@ -135,6 +227,13 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
     if (handshakeTimerRef.current !== null) {
       clearTimeout(handshakeTimerRef.current);
       handshakeTimerRef.current = null;
+    }
+  }, []);
+
+  const clearConnectTimeout = useCallback(() => {
+    if (connectTimeoutRef.current !== null) {
+      clearTimeout(connectTimeoutRef.current);
+      connectTimeoutRef.current = null;
     }
   }, []);
 
@@ -229,9 +328,29 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
     }, HANDSHAKE_TIMEOUT_MS);
   }, [clearHandshakeTimer, failHandshake]);
 
+  const startConnectTimeout = useCallback(() => {
+    clearConnectTimeout();
+    connectTimeoutRef.current = window.setTimeout(() => {
+      if (encryptionReadyRef.current || connectionStateRef.current === 'preempted') {
+        return;
+      }
+
+      intentionalCloseRef.current = true;
+      closeSocket('connect-timeout');
+      setPeerConnected(false);
+      setEncryptionState(false);
+      setPendingStatus(null);
+      setLastError('Connection failed. Check your network and try again.');
+      setConnectionState('disconnected');
+      connectionStateRef.current = 'disconnected';
+    }, CONNECT_TIMEOUT_MS);
+  }, [clearConnectTimeout, closeSocket, setEncryptionState]);
+
   const cleanup = useCallback((clearConnectionInfo = false) => {
     clearReconnectTimer();
     clearHandshakeTimer();
+    clearConnectTimeout();
+    clearOfflineGraceTimer();
     clearHeartbeatInterval();
     clearHeartbeatTimeout();
     clearIncomingTransferHideTimer();
@@ -245,11 +364,14 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
     }
     setPeerConnected(false);
     setEncryptionState(false);
+    hadEncryptedSessionRef.current = false;
+    setBufferedInputMode(false);
+    dropQueuedCommands();
     setPendingStatus(null);
     if (clearConnectionInfo) {
       connInfoRef.current = null;
     }
-  }, [clearHandshakeTimer, clearHeartbeatInterval, clearHeartbeatTimeout, clearIncomingTransferHideTimer, clearReconnectTimer, closeSocket, setEncryptionState]);
+  }, [clearConnectTimeout, clearHandshakeTimer, clearHeartbeatInterval, clearHeartbeatTimeout, clearIncomingTransferHideTimer, clearOfflineGraceTimer, clearReconnectTimer, closeSocket, dropQueuedCommands, setBufferedInputMode, setEncryptionState]);
 
   const sendEncryptedPayload = useCallback((plaintext: string) => {
     const ws = wsRef.current;
@@ -273,6 +395,23 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
     }
   }, []);
 
+  const flushQueuedCommands = useCallback(() => {
+    if (!encryptionReadyRef.current) {
+      return;
+    }
+
+    const remaining: InputCommand[] = [];
+    for (const command of queuedCommandsRef.current) {
+      const sent = sendEncryptedPayload(JSON.stringify(command));
+      if (!sent) {
+        remaining.push(command);
+      }
+    }
+
+    queuedCommandsRef.current = remaining;
+    updateQueuedCommandCount();
+  }, [sendEncryptedPayload, updateQueuedCommandCount]);
+
   const beginSecureHandshake = useCallback(() => {
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
@@ -285,6 +424,7 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
 
     try {
       const { seed } = cryptoRef.current.initRatchet();
+      persistCryptoState();
       const initCmd = JSON.stringify({ type: 'ratchet_init', seed });
       const { payload, nonce } = cryptoRef.current.encrypt(initCmd);
       ws.send(JSON.stringify({ type: 'encrypted', payload, nonce } satisfies WsMessage));
@@ -292,13 +432,14 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
       handshakeStartedRef.current = false;
       console.error('Failed to initialize ratchet:', err);
     }
-  }, [startHandshakeTimeout]);
+  }, [persistCryptoState, startHandshakeTimeout]);
 
   const handleMessage = useCallback((msg: WsMessage) => {
     clearHeartbeatTimeout();
 
     switch (msg.type) {
       case 'joined':
+        clearConnectTimeout();
         if (msg.version && msg.version !== PROTOCOL_VERSION) {
           setLastError(`Protocol mismatch: mobile ${PROTOCOL_VERSION}, server ${msg.version}. Please update.`);
           intentionalCloseRef.current = true;
@@ -310,13 +451,16 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
 
         setConnectionState('connected');
         connectionStateRef.current = 'connected';
+        setLastError(null);
         setPeerConnected(false);
         if (msg.publicKey && !cryptoRef.current.hasPeerKey()) {
           cryptoRef.current.setPeerPublicKey(msg.publicKey);
+          persistCryptoState();
         }
         if (msg.publicKey && connInfoRef.current && connInfoRef.current.k !== msg.publicKey) {
           connInfoRef.current = { ...connInfoRef.current, k: msg.publicKey };
           localStorage.setItem(STORED_CONN_KEY, JSON.stringify(connInfoRef.current));
+          persistCryptoState();
         }
         setPendingStatus('Waiting for your PC');
         break;
@@ -325,15 +469,17 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
         break;
 
       case 'peer_joined':
+        clearConnectTimeout();
         setPeerConnected(true);
         if (msg.role === 'pc' && wsRef.current?.readyState === WebSocket.OPEN) {
           setEncryptionState(false);
           handshakeStartedRef.current = false;
           setPendingStatus('Key exchange');
           startHandshakeTimeout('Secure pairing timed out. Go back and reconnect.');
-          cryptoRef.current.reset();
+          cryptoRef.current.resetPeerState();
           if (connInfoRef.current) {
             cryptoRef.current.setPeerPublicKey(connInfoRef.current.k);
+            persistCryptoState();
           }
           wsRef.current.send(JSON.stringify({
             type: 'key_exchange',
@@ -355,6 +501,7 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
           setConnectionState('disconnected');
           connectionStateRef.current = 'disconnected';
         } else if (msg.role === 'pc') {
+          startConnectTimeout();
           setConnectionState('connecting');
           connectionStateRef.current = 'connecting';
           setPendingStatus('Waiting for your PC');
@@ -364,6 +511,7 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
       case 'key_exchange':
         if (msg.publicKey && !cryptoRef.current.hasPeerKey()) {
           cryptoRef.current.setPeerPublicKey(msg.publicKey);
+          persistCryptoState();
         }
         beginSecureHandshake();
         break;
@@ -379,9 +527,11 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
           const parsed = JSON.parse(plaintext) as InputCommand;
           if (parsed.type === 'pc_ratchet_init' && parsed.seed) {
             cryptoRef.current.initRecvRatchet(parsed.seed);
+            persistCryptoState();
             setEncryptionState(true);
             clearHandshakeTimer();
             sendEncryptedPayload(JSON.stringify({ type: 'handshake_ack' } satisfies InputCommand));
+            flushQueuedCommands();
           } else if (parsed.type === 'clear') {
             setInputResetVersion((version) => version + 1);
           } else if (parsed.type === 'file_start' && parsed.transferId) {
@@ -507,6 +657,7 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
       }
 
       case 'preempted':
+        clearConnectTimeout();
         clearHandshakeTimer();
         setConnectionState('preempted');
         connectionStateRef.current = 'preempted';
@@ -517,6 +668,7 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
         break;
 
       case 'error':
+        clearConnectTimeout();
         clearHandshakeTimer();
         setLastError(msg.error || 'Unknown error');
         if (!encryptionReadyRef.current && msg.error === 'no peer connected') {
@@ -571,10 +723,16 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
     handshakeStartedRef.current = false;
     connInfoRef.current = info;
 
-    cryptoRef.current.reset();
+    const persistedCrypto = loadPersistedCrypto(info);
+    if (persistedCrypto) {
+      cryptoRef.current.importSession(persistedCrypto);
+    } else {
+      cryptoRef.current.reset();
+    }
     if (info.k) {
       cryptoRef.current.setPeerPublicKey(info.k);
     }
+    persistCryptoState();
 
     setConnectionState('connecting');
     connectionStateRef.current = 'connecting';
@@ -582,6 +740,7 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
     setEncryptionState(false);
     setLastError(null);
     setPendingStatus('Joining session');
+    startConnectTimeout();
 
     const ws = new WebSocket(info.s);
     wsRef.current = ws;
@@ -610,6 +769,7 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
       if (wsRef.current !== ws) return;
 
       wsRef.current = null;
+      clearConnectTimeout();
       clearHandshakeTimer();
       clearHeartbeatInterval();
       clearHeartbeatTimeout();
@@ -621,9 +781,14 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
       }
 
       if (document.visibilityState !== 'visible' || suspendedRef.current) {
+        setBufferedInputMode(false);
         setConnectionState('disconnected');
         connectionStateRef.current = 'disconnected';
         return;
+      }
+
+      if (encryptionReadyRef.current || bufferedInputActiveRef.current) {
+        startOfflineGrace();
       }
 
       if (
@@ -634,12 +799,12 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
         reconnectAttemptRef.current += 1;
         setConnectionState('connecting');
         connectionStateRef.current = 'connecting';
-        setPendingStatus('Reconnecting');
+        setPendingStatus('Reconnecting...');
         reconnectTimerRef.current = window.setTimeout(() => {
           if (connInfoRef.current) {
             connectWs(connInfoRef.current);
           }
-        }, getReconnectDelay(reconnectAttemptRef.current));
+        }, FIXED_RECONNECT_DELAY_MS);
       } else {
         setConnectionState('disconnected');
         connectionStateRef.current = 'disconnected';
@@ -647,10 +812,18 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
     };
 
     ws.onerror = () => {
-      // Wait for onclose or a protocol error before surfacing failures.
-      // Browsers often emit a transient onerror immediately before a successful reconnect.
+      if (encryptionReadyRef.current || bufferedInputActiveRef.current) {
+        startOfflineGrace();
+      }
+
+      if (encryptionReadyRef.current) {
+        setPendingStatus('Reconnecting...');
+        return;
+      }
+
+      setLastError('Connection failed. Check your network and try again.');
     };
-  }, [cleanup, clearHandshakeTimer, clearHeartbeatInterval, clearHeartbeatTimeout, deviceId, handleMessage, setEncryptionState, startHeartbeat]);
+  }, [cleanup, clearConnectTimeout, clearHandshakeTimer, clearHeartbeatInterval, clearHeartbeatTimeout, deviceId, flushQueuedCommands, handleMessage, setBufferedInputMode, setEncryptionState, startConnectTimeout, startHeartbeat, startOfflineGrace]);
 
   const disconnect = useCallback(() => {
     intentionalCloseRef.current = true;
@@ -663,6 +836,20 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
   const sendEncrypted = useCallback((cmd: InputCommand) => {
     const ws = wsRef.current;
     const sent = sendEncryptedPayload(JSON.stringify(cmd));
+    if (sent) {
+      return;
+    }
+
+    if ((hadEncryptedSessionRef.current || bufferedInputActiveRef.current) && connectionStateRef.current !== 'preempted') {
+      queuedCommandsRef.current.push(cmd);
+      updateQueuedCommandCount();
+      startOfflineGrace();
+      if ((!ws || ws.readyState !== WebSocket.OPEN) && connInfoRef.current) {
+        connectWs(connInfoRef.current);
+      }
+      return;
+    }
+
     if (!sent && (!ws || ws.readyState !== WebSocket.OPEN)) {
       setPeerConnected(false);
       setEncryptionState(false);
@@ -670,7 +857,7 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
       setConnectionState('connecting');
       connectionStateRef.current = 'connecting';
     }
-  }, [sendEncryptedPayload, setEncryptionState]);
+  }, [connectWs, sendEncryptedPayload, setEncryptionState, startOfflineGrace, updateQueuedCommandCount]);
 
   useEffect(() => {
     const reconnectIfNeeded = () => {
@@ -716,6 +903,8 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
     const handlePageHide = () => {
       clearReconnectTimer();
       clearHandshakeTimer();
+      clearConnectTimeout();
+      clearOfflineGraceTimer();
       clearHeartbeatInterval();
       clearHeartbeatTimeout();
       suspendedRef.current = true;
@@ -730,7 +919,7 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
 
     window.addEventListener('pagehide', handlePageHide);
     return () => window.removeEventListener('pagehide', handlePageHide);
-  }, [clearHandshakeTimer, clearHeartbeatInterval, clearHeartbeatTimeout, clearReconnectTimer, closeSocket]);
+  }, [clearConnectTimeout, clearHandshakeTimer, clearHeartbeatInterval, clearHeartbeatTimeout, clearOfflineGraceTimer, clearReconnectTimer, closeSocket]);
 
   useEffect(() => {
     return () => cleanup();
@@ -745,6 +934,8 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
     sendEncrypted,
     lastError,
     pendingStatus,
+    bufferedInputActive,
+    queuedCommandCount,
     inputResetVersion,
     incomingTransferBatch,
   };
