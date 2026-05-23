@@ -28,6 +28,7 @@ interface InputAreaProps {
   inputResetVersion: number;
   incomingTransferBatch?: TransferBatchProgress | null;
   blePairing?: UseBlePairingResult;
+  bleOnly?: boolean;
 }
 
 export const InputArea: React.FC<InputAreaProps> = ({
@@ -49,6 +50,7 @@ export const InputArea: React.FC<InputAreaProps> = ({
   inputResetVersion,
   incomingTransferBatch = null,
   blePairing,
+  bleOnly = false,
 }) => {
   const inputEnabled = encryptionReady || bufferedInputActive;
   const lastSentRef = useRef('');
@@ -330,7 +332,7 @@ export const InputArea: React.FC<InputAreaProps> = ({
             Scan
           </button>
           <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-            {fileTransferEnabled && (
+            {fileTransferEnabled && !bleOnly && (
               <FileTransfer
                 ref={fileTransferRef}
                 encryptionReady={encryptionReady}
@@ -342,19 +344,20 @@ export const InputArea: React.FC<InputAreaProps> = ({
             )}
             <button
               onClick={handleCopyToClipboard}
-              disabled={!text.trim() || !inputEnabled}
+              disabled={!text.trim() || !inputEnabled || bleOnly}
+              title={bleOnly ? 'Clipboard unavailable in BLE-only mode' : undefined}
               style={{
                 background: 'none',
                 border: 'none',
-                color: text.trim() ? 'var(--accent)' : 'var(--text-tertiary)',
-                cursor: text.trim() ? 'pointer' : 'default',
+                color: bleOnly ? 'var(--text-tertiary)' : text.trim() ? 'var(--accent)' : 'var(--text-tertiary)',
+                cursor: (text.trim() && inputEnabled && !bleOnly) ? 'pointer' : 'default',
                 padding: '6px',
                 display: 'flex',
                 alignItems: 'center',
                 gap: 6,
                 fontSize: 13,
                 fontWeight: 500,
-                opacity: text.trim() && inputEnabled ? 1 : 0.4,
+                opacity: text.trim() && inputEnabled && !bleOnly ? 1 : 0.4,
               }}
             >
               <ClipboardIcon size={16} />

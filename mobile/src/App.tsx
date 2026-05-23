@@ -151,9 +151,16 @@ export const App: React.FC = () => {
     };
   }, [connect, fetchServerConfig, sendEncrypted]);
 
+  const bleOnly = connectionState === 'connecting' && encryptionReady && blePairing.isTransportReady;
+
   useEffect(() => {
     if (!blePairing.isSupported) {
       setTransportSummary('WS only');
+      return;
+    }
+
+    if (bleOnly) {
+      setTransportSummary('BLE only');
       return;
     }
 
@@ -184,6 +191,7 @@ export const App: React.FC = () => {
 
     setTransportSummary('WS + BLE available');
   }, [
+    bleOnly,
     blePairing.error,
     blePairing.isAvailable,
     blePairing.isConnecting,
@@ -473,7 +481,7 @@ export const App: React.FC = () => {
         transportSummary={transportSummary}
         showBluetoothIndicator={blePairing.isSupported}
         bleTransportReady={blePairing.isTransportReady}
-        wsDisconnected={connectionState === 'connecting' && encryptionReady && blePairing.isTransportReady}
+        wsDisconnected={bleOnly}
       />
 
       {/* Error banner */}
@@ -547,6 +555,7 @@ export const App: React.FC = () => {
                 inputResetVersion={inputResetVersion}
                 incomingTransferBatch={incomingTransferBatch}
                 blePairing={blePairing}
+                bleOnly={bleOnly}
               />
             </div>
             <div className="swipe-page">
