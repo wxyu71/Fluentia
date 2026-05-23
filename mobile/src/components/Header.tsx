@@ -9,9 +9,10 @@ interface HeaderProps {
   peerConnected: boolean;
   encryptionReady: boolean;
   pendingStatus?: string | null;
+  transportSummary?: string;
 }
 
-export const Header: React.FC<HeaderProps> = ({ connectionState, peerConnected, encryptionReady, pendingStatus }) => {
+export const Header: React.FC<HeaderProps> = ({ connectionState, peerConnected, encryptionReady, pendingStatus, transportSummary }) => {
   const statusText = (): string => {
     if (pendingStatus && connectionState !== 'preempted' && !encryptionReady) {
       return pendingStatus;
@@ -43,22 +44,31 @@ export const Header: React.FC<HeaderProps> = ({ connectionState, peerConnected, 
       alignItems: 'center',
       justifyContent: 'space-between',
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <h1 style={{
-          fontSize: 22,
-          fontWeight: 700,
-          letterSpacing: '-0.025em',
-          color: 'var(--text-primary)',
-        }}>
-          Fluentia
-        </h1>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <h1 style={{
+            fontSize: 22,
+            fontWeight: 700,
+            letterSpacing: '-0.025em',
+            color: 'var(--text-primary)',
+          }}>
+            Fluentia
+          </h1>
+          <span style={{
+            fontSize: 11,
+            fontWeight: 700,
+            letterSpacing: '0.08em',
+            color: 'var(--accent)',
+          }}>
+            v{APP_VERSION}
+          </span>
+        </div>
         <span style={{
           fontSize: 11,
-          fontWeight: 700,
-          letterSpacing: '0.08em',
-          color: 'var(--accent)',
+          color: 'var(--text-secondary)',
+          letterSpacing: '0.03em',
         }}>
-          v{APP_VERSION}
+          {transportSummary ?? 'Transport: WebSocket data channel · BLE pairing available'}
         </span>
       </div>
 

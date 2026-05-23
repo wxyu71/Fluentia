@@ -4,6 +4,7 @@ import { InputArea } from './components/InputArea';
 import { QRScanner } from './components/QRScanner';
 import { History } from './components/History';
 import { KeyboardIcon, HistoryIcon, WarningIcon } from './components/Icons';
+import { useBlePairing } from './hooks/useBlePairing';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useDeviceId } from './hooks/useDeviceId';
 import type { AppTab, ConnectionInfo, HistoryEntry, InputCommand, AppSettings } from './types';
@@ -11,6 +12,7 @@ import type { AppTab, ConnectionInfo, HistoryEntry, InputCommand, AppSettings } 
 const HISTORY_KEY = 'fluentia_history';
 const SETTINGS_KEY = 'fluentia_settings';
 const CONN_KEY = 'fluentia_conn';
+const APP_VERSION = __APP_VERSION__;
 
 function resolveThemeColor(): string {
   const cssColor = getComputedStyle(document.documentElement).getPropertyValue('--bg-primary').trim();
@@ -77,21 +79,6 @@ function loadStoredConnection(): ConnectionInfo | null {
 
 export const App: React.FC = () => {
   const deviceId = useDeviceId();
-  const {
-    connectionState,
-    peerConnected,
-    encryptionReady,
-    connect,
-    disconnect,
-    sendEncrypted,
-    lastError,
-    pendingStatus,
-    bufferedInputActive,
-    queuedCommandCount,
-    inputResetVersion,
-    incomingTransferBatch,
-  } = useWebSocket(deviceId);
-
   const [activeTab, setActiveTab] = useState<AppTab>('input');
   const [history, setHistory] = useState<HistoryEntry[]>(loadHistory);
   const [settings, setSettings] = useState<AppSettings>(loadSettings);
@@ -99,6 +86,17 @@ export const App: React.FC = () => {
   const [scannerOverlay, setScannerOverlay] = useState(false);
   const [fileTransferEnabled, setFileTransferEnabled] = useState(false);
   const [maxFileMB, setMaxFileMB] = useState(0);
+  const [transportSummary, setTransportSummary] = useState(() =>
+    typeof navigator !== 'undefined' && 'bluetooth' in navigator
+      ? 'Transport: WebSocket data channel · BLE pairing available'
+      : 'Transport: WebSocket only · BLE unsupported in this browser'
+  );
+  const connectRef = useRef<(info: ConnectionInfo) => void>(() => undefined);
+  const fetchConfigRef = useRef<(info: ConnectionInfo) => void>(() => undefined);
+
+  useEffect(() => {
+    document.title = `Fluentia v${APP_VERSION}`;
+  }, []);
 
   const fetchServerConfig = useCallback((info: ConnectionInfo) => {
     const httpBase = info.s.replace(/\/ws.*$/, '').replace('wss://', 'https://').replace('ws://', 'http://');
@@ -113,6 +111,76 @@ export const App: React.FC = () => {
         setMaxFileMB(0);
       });
   }, []);
+
+  const handleBleConnectionInfo = useCallback((info: ConnectionInfo) => {
+    localStorage.setItem(CONN_KEY, JSON.stringify(info));
+    connectRef.current(info);
+    fetchConfigRef.current(info);
+    setActiveTab('input');
+    setScannerOverlay(false);
+  }, []);
+
+  const blePairing = useBlePairing(handleBleConnectionInfo, deviceId);
+  const {
+    connectionState,
+    peerConnected,
+    encryptionReady,
+    connect,
+    disconnect,
+    sendEncrypted,
+    lastError,
+    pendingStatus,
+    bufferedInputActive,
+    queuedCommandCount,
+    inputResetVersion,
+    incomingTransferBatch,
+  } = useWebSocket(deviceId, blePairing.sendEncryptedMessage);
+
+  useEffect(() => {
+    connectRef.current = connect;
+    fetchConfigRef.current = fetchServerConfig;
+  }, [connect, fetchServerConfig]);
+
+  useEffect(() => {
+    if (!blePairing.isSupported) {
+      setTransportSummary('Transport: WebSocket only · BLE unsupported in this browser');
+      return;
+    }
+
+    if (blePairing.error) {
+      setTransportSummary('Transport: WebSocket active · BLE pairing error');
+      return;
+    }
+
+    if (blePairing.isTransportReady) {
+      setTransportSummary('Transport: WebSocket active · BLE fallback ready');
+      return;
+    }
+
+    if (blePairing.verificationCode) {
+      setTransportSummary('Transport: WebSocket active · BLE verification pending');
+      return;
+    }
+
+    if (blePairing.isConnecting) {
+      setTransportSummary('Transport: WebSocket active · Connecting over BLE');
+      return;
+    }
+
+    if (!blePairing.isAvailable) {
+      setTransportSummary('Transport: WebSocket active · BLE adapter unavailable');
+      return;
+    }
+
+    setTransportSummary('Transport: WebSocket active · BLE pairing available');
+  }, [
+    blePairing.error,
+    blePairing.isAvailable,
+    blePairing.isConnecting,
+    blePairing.isSupported,
+    blePairing.isTransportReady,
+    blePairing.verificationCode,
+  ]);
 
   // Swipe state
   const touchStartRef = useRef<{ x: number; y: number; t: number } | null>(null);
@@ -392,6 +460,7 @@ export const App: React.FC = () => {
         peerConnected={peerConnected}
         encryptionReady={encryptionReady}
         pendingStatus={pendingStatus}
+        transportSummary={transportSummary}
       />
 
       {/* Error banner */}
@@ -438,7 +507,7 @@ export const App: React.FC = () => {
       {/* Main Content — swipeable pages */}
       <div style={{ flex: 1, overflow: 'hidden' }}>
         {showFullScanner ? (
-          <QRScanner onScan={handleScan} />
+          <QRScanner onScan={handleScan} deviceId={deviceId} blePairing={blePairing} />
         ) : (
           <div
             ref={swipeContainerRef}
@@ -485,7 +554,13 @@ export const App: React.FC = () => {
 
       {/* Scanner overlay (modal) — only when connected */}
       {scannerOverlay && (
-        <QRScanner onScan={handleScan} overlay onClose={() => setScannerOverlay(false)} />
+        <QRScanner
+          onScan={handleScan}
+          deviceId={deviceId}
+          blePairing={blePairing}
+          overlay
+          onClose={() => setScannerOverlay(false)}
+        />
       )}
 
       {/* Tab Bar — only show when connected */}

@@ -167,6 +167,20 @@ public class CryptoService
         ResetPeerState();
     }
 
+    public string CreateBleVerificationCode(string remotePublicKeyBase64)
+    {
+        var remotePublicKey = Convert.FromBase64String(remotePublicKeyBase64);
+        var shared = ScalarMult.Mult(_keyPair.PrivateKey, remotePublicKey);
+        var combined = new byte[shared.Length + _keyPair.PublicKey.Length + remotePublicKey.Length];
+        Buffer.BlockCopy(shared, 0, combined, 0, shared.Length);
+        Buffer.BlockCopy(_keyPair.PublicKey, 0, combined, shared.Length, _keyPair.PublicKey.Length);
+        Buffer.BlockCopy(remotePublicKey, 0, combined, shared.Length + _keyPair.PublicKey.Length, remotePublicKey.Length);
+
+        var hash = SHA512.HashData(combined);
+        var numeric = ((hash[0] << 16) | (hash[1] << 8) | hash[2]) % 1_000_000;
+        return numeric.ToString("D6");
+    }
+
     private static byte[] Kdf(byte[] key, string label)
     {
         var labelBytes = Encoding.UTF8.GetBytes(label);

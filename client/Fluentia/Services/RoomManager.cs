@@ -9,6 +9,11 @@ public sealed record PersistedDesktopSession(
     string PrivateKey,
     bool TrustedSessionEstablished);
 
+public sealed record BleDesktopSessionInfo(
+    string ServerUrl,
+    string Token,
+    string PublicKey);
+
 public sealed record VersionRequirementResult(bool IsCompatible, string? Message);
 
 /// <summary>
@@ -16,7 +21,7 @@ public sealed record VersionRequirementResult(bool IsCompatible, string? Message
 /// </summary>
 public class RoomManager : IDisposable
 {
-    private readonly WebSocketService _ws;
+    private readonly IRelayTransport _transport;
     private readonly CryptoService _crypto;
     private string? _currentToken;
     private string? _serverUrl;
@@ -40,6 +45,7 @@ public class RoomManager : IDisposable
     public event Action<string>? OnDeviceCodeCreated;  // code
     public event Action<string, string, string>? OnDeviceCodePending; // code, verifyId, userAgent
     public event Action<bool>? OnServerConnectionChanged;
+    public event Action<RelayTransportKind>? OnTransportKindChanged;
 
     public string? CurrentToken => _currentToken;
     public string? ServerUrl => _serverUrl;
@@ -48,9 +54,33 @@ public class RoomManager : IDisposable
     public int SessionMaxAgeDays => _sessionMaxAgeDays;
     public bool FileTransferEnabled => _fileTransferEnabled;
     public int MaxFileMB => _maxFileMB;
-    public bool IsConnected => _ws.IsConnected;
+    public bool IsConnected => _transport.IsConnected;
     public bool HasTrustedSession => _trustedSessionEstablished;
     public DateTimeOffset? SessionExpiresAtUtc => _sessionExpiresAtUtc;
+    public RelayTransportKind ActiveTransportKind => _transport.TransportKind;
+
+    public BleDesktopSessionInfo? GetBleSessionInfo()
+    {
+        if (string.IsNullOrWhiteSpace(_serverUrl) || string.IsNullOrWhiteSpace(_currentToken))
+        {
+            return null;
+        }
+
+        return new BleDesktopSessionInfo(_serverUrl, _currentToken, _crypto.PublicKeyBase64);
+    }
+
+    public string CreateBleVerificationCode(string remotePublicKeyBase64) =>
+        _crypto.CreateBleVerificationCode(remotePublicKeyBase64);
+
+    public void HandleBleEncryptedMessage(WsMessage msg)
+    {
+        if (msg.Type != MsgTypes.Encrypted)
+        {
+            return;
+        }
+
+        HandleEncrypted(msg);
+    }
 
     public PersistedDesktopSession? ExportPersistedSession()
     {
@@ -79,7 +109,7 @@ public class RoomManager : IDisposable
     /// </summary>
     public async Task<bool> SendToMobileAsync(string jsonPayload)
     {
-        if (!_encryptionConfirmed || !_ws.IsConnected) return false;
+        if (!_encryptionConfirmed || !_transport.IsConnected) return false;
 
         try
         {
@@ -94,7 +124,7 @@ public class RoomManager : IDisposable
                 var (payload, nonce) = _crypto.Encrypt(jsonPayload);
                 msg = new WsMessage { Type = MsgTypes.Encrypted, Payload = payload, Nonce = nonce };
             }
-            await _ws.SendAsync(msg);
+            await _transport.SendAsync(msg);
             return true;
         }
         catch
@@ -104,20 +134,26 @@ public class RoomManager : IDisposable
     }
 
     public RoomManager()
+        : this(new WebSocketService())
     {
-        _ws = new WebSocketService();
+    }
+
+    public RoomManager(IRelayTransport transport)
+    {
+        _transport = transport;
         _crypto = new CryptoService();
 
-        _ws.OnConnected += () =>
+        _transport.OnConnected += () =>
         {
             OnServerConnectionChanged?.Invoke(true);
+            OnTransportKindChanged?.Invoke(_transport.TransportKind);
             OnStatusChanged?.Invoke("Connected to server");
             // If we have an existing token, try to rejoin (grace period).
             // Otherwise, create a new session.
             if (_currentToken != null)
             {
                 _rejoinPending = true;
-                _ = _ws.SendAsync(new WsMessage
+                _ = _transport.SendAsync(new WsMessage
                 {
                     Type = MsgTypes.RejoinSession,
                     Token = _currentToken,
@@ -126,17 +162,17 @@ public class RoomManager : IDisposable
             }
             else
             {
-                _ = _ws.SendAsync(new WsMessage { Type = MsgTypes.CreateSession, Version = MsgTypes.ProtocolVersion });
+                _ = _transport.SendAsync(new WsMessage { Type = MsgTypes.CreateSession, Version = MsgTypes.ProtocolVersion });
             }
         };
 
-        _ws.OnDisconnected += (reason) =>
+        _transport.OnDisconnected += (reason) =>
         {
             OnServerConnectionChanged?.Invoke(false);
             OnStatusChanged?.Invoke($"Disconnected: {reason}");
         };
 
-        _ws.OnMessage += HandleMessage;
+        _transport.OnMessage += HandleMessage;
     }
 
     public async Task ConnectAsync(string serverUrl)
@@ -154,7 +190,7 @@ public class RoomManager : IDisposable
         OnStatusChanged?.Invoke("Connecting...");
         // Fetch server config (non-blocking — best effort)
         _ = FetchServerConfigAsync(serverUrl);
-        await _ws.ConnectAsync(serverUrl);
+        await _transport.ConnectAsync(serverUrl);
     }
 
     private async Task FetchServerConfigAsync(string wsUrl)
@@ -187,25 +223,25 @@ public class RoomManager : IDisposable
         _encryptionConfirmed = false;
         _trustedSessionEstablished = false;
         _sessionExpiresAtUtc = null;
-        if (_ws.IsConnected)
+        if (_transport.IsConnected)
         {
-            await _ws.SendAsync(new WsMessage { Type = MsgTypes.CreateSession, Version = MsgTypes.ProtocolVersion });
+            await _transport.SendAsync(new WsMessage { Type = MsgTypes.CreateSession, Version = MsgTypes.ProtocolVersion });
         }
     }
 
     public async Task RequestDeviceCode()
     {
-        if (_ws.IsConnected)
+        if (_transport.IsConnected)
         {
-            await _ws.SendAsync(new WsMessage { Type = MsgTypes.DeviceCodeRequest });
+            await _transport.SendAsync(new WsMessage { Type = MsgTypes.DeviceCodeRequest });
         }
     }
 
     public async Task ConfirmDeviceCode(string code)
     {
-        if (_ws.IsConnected)
+        if (_transport.IsConnected)
         {
-            await _ws.SendAsync(new WsMessage
+            await _transport.SendAsync(new WsMessage
             {
                 Type = MsgTypes.DeviceCodeConfirm,
                 DeviceCode = code,
@@ -216,9 +252,9 @@ public class RoomManager : IDisposable
 
     public async Task RejectDeviceCode(string code)
     {
-        if (_ws.IsConnected)
+        if (_transport.IsConnected)
         {
-            await _ws.SendAsync(new WsMessage { Type = MsgTypes.DeviceCodeReject, DeviceCode = code });
+            await _transport.SendAsync(new WsMessage { Type = MsgTypes.DeviceCodeReject, DeviceCode = code });
         }
     }
 
@@ -247,7 +283,7 @@ public class RoomManager : IDisposable
         if (!versionRequirement.IsCompatible)
         {
             var error = versionRequirement.Message ?? $"Version incompatible. Minimum required version is {msg.MinVersion}.";
-            _ws.Disconnect();
+            _transport.Disconnect();
             _currentToken = null;
             _encryptionConfirmed = false;
             _trustedSessionEstablished = false;
@@ -327,7 +363,7 @@ public class RoomManager : IDisposable
                     _encryptionConfirmed = false;
                     _trustedSessionEstablished = false;
                     _sessionExpiresAtUtc = null;
-                    _ = _ws.SendAsync(new WsMessage { Type = MsgTypes.CreateSession, Version = MsgTypes.ProtocolVersion });
+                    _ = _transport.SendAsync(new WsMessage { Type = MsgTypes.CreateSession, Version = MsgTypes.ProtocolVersion });
                     break;
                 }
                 OnError?.Invoke(msg.Error ?? "Unknown error");
@@ -345,7 +381,7 @@ public class RoomManager : IDisposable
         OnStatusChanged?.Invoke("Key exchange complete");
 
         // Send our public key back as confirmation
-        _ = _ws.SendAsync(new WsMessage
+        _ = _transport.SendAsync(new WsMessage
         {
             Type = MsgTypes.KeyExchange,
             PublicKey = _crypto.PublicKeyBase64,
@@ -382,7 +418,7 @@ public class RoomManager : IDisposable
                     var initCmd = System.Text.Json.JsonSerializer.Serialize(
                         new { type = "pc_ratchet_init", seed = pcSeed });
                     var (payload, nonce) = _crypto.Encrypt(initCmd);
-                    _ = _ws.SendAsync(new WsMessage
+                    _ = _transport.SendAsync(new WsMessage
                     {
                         Type = MsgTypes.Encrypted,
                         Payload = payload,
@@ -414,7 +450,7 @@ public class RoomManager : IDisposable
 
     public void Dispose()
     {
-        _ws.Dispose();
+        _transport.Dispose();
     }
 
     private static DateTimeOffset? ParseSessionExpiry(string? expiresAt)

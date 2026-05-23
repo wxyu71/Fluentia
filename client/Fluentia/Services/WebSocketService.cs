@@ -4,7 +4,7 @@ using Fluentia.Models;
 
 namespace Fluentia.Services;
 
-public class WebSocketService : IDisposable
+public class WebSocketService : IRelayTransport
 {
     private ClientWebSocket? _webSocket;
     private CancellationTokenSource? _cts;
@@ -27,6 +27,7 @@ public class WebSocketService : IDisposable
     public event Action? OnConnected;
     public event Action<string>? OnDisconnected;
 
+    public RelayTransportKind TransportKind => RelayTransportKind.WebSocket;
     public bool IsConnected => _webSocket?.State == WebSocketState.Open;
 
     public async Task ConnectAsync(string serverUrl)

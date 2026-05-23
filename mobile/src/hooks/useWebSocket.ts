@@ -58,7 +58,7 @@ interface UseWebSocketReturn {
   incomingTransferBatch: TransferBatchProgress | null;
 }
 
-export function useWebSocket(deviceId: string): UseWebSocketReturn {
+export function useWebSocket(deviceId: string, sendViaBle?: (message: Pick<WsMessage, 'payload' | 'nonce' | 'seq'>) => boolean): UseWebSocketReturn {
   const [connectionState, setConnectionState] = useState<ConnectionState>('disconnected');
   const [peerConnected, setPeerConnected] = useState(false);
   const [encryptionReady, setEncryptionReady] = useState(false);
@@ -377,7 +377,6 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
 
   const sendEncryptedPayload = useCallback((plaintext: string) => {
     const ws = wsRef.current;
-    if (!ws || ws.readyState !== TRANSPORT_READY_STATE.OPEN) return false;
     if (!cryptoRef.current.isReady()) return false;
 
     try {
@@ -389,13 +388,22 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
         const { payload, nonce } = cryptoRef.current.encrypt(plaintext);
         msg = { type: 'encrypted', payload, nonce };
       }
-      ws.send(JSON.stringify(msg));
-      return true;
+
+      if (ws && ws.readyState === TRANSPORT_READY_STATE.OPEN) {
+        ws.send(JSON.stringify(msg));
+        return true;
+      }
+
+      if (sendViaBle && sendViaBle({ payload: msg.payload, nonce: msg.nonce, seq: msg.seq })) {
+        return true;
+      }
+
+      return false;
     } catch (err) {
       console.error('Encryption error:', err);
       return false;
     }
-  }, []);
+  }, [sendViaBle]);
 
   const flushQueuedCommands = useCallback(() => {
     if (!encryptionReadyRef.current) {

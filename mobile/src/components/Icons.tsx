@@ -44,6 +44,12 @@ export const LockIcon: React.FC<IconProps> = ({ size = 14, color = 'currentColor
   </svg>
 );
 
+export const BluetoothIcon: React.FC<IconProps> = ({ size = 18, color = 'currentColor' }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M7 7l10 10-5 4V3l5 4L7 17" />
+  </svg>
+);
+
 export const CloseIcon: React.FC<IconProps> = ({ size = 20, color = 'currentColor' }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round">
     <line x1="18" y1="6" x2="6" y2="18" />

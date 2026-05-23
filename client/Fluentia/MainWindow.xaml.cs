@@ -58,6 +58,7 @@ public partial class MainWindow : Window
     }
 
     private readonly RoomManager _roomManager;
+    private readonly DesktopBlePairingService _desktopBlePairingService;
     private readonly DesktopSettingsStore _settingsStore;
     private readonly WindowActivationCoordinator _windowActivationCoordinator;
     private readonly Channel<InputCommand> _cmdChannel =
@@ -159,6 +160,18 @@ public partial class MainWindow : Window
         InitializeComponent();
 
         _roomManager = new RoomManager();
+        _desktopBlePairingService = new DesktopBlePairingService(
+            () => _roomManager.GetBleSessionInfo(),
+            remotePublicKey => _roomManager.CreateBleVerificationCode(remotePublicKey),
+            ConfirmBlePairingAsync,
+            msg => _roomManager.HandleBleEncryptedMessage(msg),
+            message =>
+            {
+                if (_devMode)
+                {
+                    _ = Dispatcher.BeginInvoke(() => AppendLog(message));
+                }
+            });
         _settingsStore = new DesktopSettingsStore(SettingsFile, SessionBackupFile);
         _windowActivationCoordinator = new WindowActivationCoordinator(
             GetForegroundWindow,
@@ -186,6 +199,7 @@ public partial class MainWindow : Window
         Loaded += async (_, _) =>
         {
             await AutoConnectAsync();
+            await InitializeBlePairingAsync();
             if (_persistedSessionLost)
             {
                 ShowPersistedSessionLostPrompt();
@@ -381,6 +395,35 @@ public partial class MainWindow : Window
             SetStatus(error, false);
             RefreshVisualState();
             MessageBox.Show(error, L("VersionIncompatibleTitle"), MessageBoxButton.OK, MessageBoxImage.Warning);
+        });
+    }
+
+    private async Task InitializeBlePairingAsync()
+    {
+        try
+        {
+            await _desktopBlePairingService.StartAsync();
+        }
+        catch (Exception ex)
+        {
+            if (_devMode)
+            {
+                AppendLog($"BLE unavailable: {ex.Message}");
+            }
+        }
+    }
+
+    private async Task<bool> ConfirmBlePairingAsync(BlePairingRequest request)
+    {
+        return await Dispatcher.InvokeAsync(() =>
+        {
+            RememberExternalForegroundWindow(GetForegroundWindow());
+            Show();
+            WindowState = WindowState.Normal;
+            Activate();
+
+            var dialog = new ConfirmConnectionDialog(request.VerificationCode, request.DeviceLabel) { Owner = this };
+            return dialog.ShowDialog() == true;
         });
     }
 
@@ -2493,7 +2536,7 @@ public partial class MainWindow : Window
 
     private void ApplyLocalizedText()
     {
-        Title = L("MainWindowTitle");
+        Title = $"{L("MainWindowTitle")} · v{AppVersion}";
         TitleLabel.Text = $"{L("AppName")} · v{AppVersion}";
         BtnMinimize.ToolTip = L("TooltipMinimize");
         BtnMaximize.ToolTip = L("TooltipMaximizeRestore");
@@ -2599,6 +2642,7 @@ public partial class MainWindow : Window
         NetworkChange.NetworkAddressChanged -= NetworkAddressChanged;
         App.ThemeChanged -= App_ThemeChanged;
         _roomManager.Dispose();
+        _desktopBlePairingService.Dispose();
         _trayIcon?.Dispose();
         _appIcon?.Dispose();
     }
