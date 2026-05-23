@@ -140,7 +140,7 @@ export const App: React.FC = () => {
     if (cmd.type === 'ble_auth_ok' && cmd.publicKey) {
       setBleAuthorizedPublicKey(cmd.publicKey);
     }
-  });
+  }, blePairing.isTransportReady);
 
   useEffect(() => {
     connectRef.current = connect;
@@ -473,6 +473,7 @@ export const App: React.FC = () => {
         transportSummary={transportSummary}
         showBluetoothIndicator={blePairing.isSupported}
         bleTransportReady={blePairing.isTransportReady}
+        wsDisconnected={connectionState === 'connecting' && encryptionReady && blePairing.isTransportReady}
       />
 
       {/* Error banner */}

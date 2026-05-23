@@ -1,5 +1,5 @@
 import React from 'react';
-import { BluetoothIcon, LockIcon } from './Icons';
+import { BluetoothIcon, LockIcon, WifiOffIcon } from './Icons';
 import type { ConnectionState } from '../types';
 
 const APP_VERSION = __APP_VERSION__;
@@ -12,10 +12,14 @@ interface HeaderProps {
   transportSummary?: string;
   showBluetoothIndicator?: boolean;
   bleTransportReady?: boolean;
+  wsDisconnected?: boolean;
 }
 
-export const Header: React.FC<HeaderProps> = ({ connectionState, peerConnected, encryptionReady, pendingStatus, transportSummary, showBluetoothIndicator, bleTransportReady }) => {
+export const Header: React.FC<HeaderProps> = ({ connectionState, peerConnected, encryptionReady, pendingStatus, transportSummary, showBluetoothIndicator, bleTransportReady, wsDisconnected }) => {
+  const bleOnly = wsDisconnected && bleTransportReady && encryptionReady;
+
   const statusText = (): string => {
+    if (bleOnly) return 'BLE only';
     if (pendingStatus && connectionState !== 'preempted' && !encryptionReady) {
       return pendingStatus;
     }
@@ -32,6 +36,7 @@ export const Header: React.FC<HeaderProps> = ({ connectionState, peerConnected, 
   };
 
   const dotClass = (): string => {
+    if (bleOnly) return 'ble-only';
     if (connectionState === 'connected' && encryptionReady && peerConnected) return 'connected';
     if (connectionState === 'connecting') return 'connecting';
     if (connectionState === 'preempted') return 'preempted';
@@ -95,6 +100,7 @@ export const Header: React.FC<HeaderProps> = ({ connectionState, peerConnected, 
             {bleTransportReady && <BluetoothIcon size={12} color="var(--accent)" />}
           </>
         )}
+        {bleOnly && <WifiOffIcon size={12} color="var(--warning)" />}
       </div>
     </header>
   );

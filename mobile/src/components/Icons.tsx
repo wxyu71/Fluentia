@@ -50,6 +50,18 @@ export const BluetoothIcon: React.FC<IconProps> = ({ size = 18, color = 'current
   </svg>
 );
 
+export const WifiOffIcon: React.FC<IconProps> = ({ size = 18, color = 'currentColor' }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="2" y1="2" x2="22" y2="22" />
+    <path d="M8.5 16.5a5 5 0 017 0" />
+    <path d="M2 8.82a15 15 0 014.17-2.65" />
+    <path d="M10.66 5c4.01-.36 8.14.9 11.34 3.76" />
+    <path d="M16.85 11.25a10 10 0 012.22 1.68" />
+    <path d="M5 12.86a10 10 0 015.17-2.86" />
+    <line x1="12" y1="20" x2="12.01" y2="20" />
+  </svg>
+);
+
 export const CloseIcon: React.FC<IconProps> = ({ size = 20, color = 'currentColor' }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round">
     <line x1="18" y1="6" x2="6" y2="18" />

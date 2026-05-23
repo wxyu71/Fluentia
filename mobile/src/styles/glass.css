@@ -288,6 +288,10 @@ body {
   background: var(--danger);
   animation: pulse 1s ease-in-out infinite;
 }
+.status-dot.ble-only {
+  background: var(--warning);
+  box-shadow: 0 0 6px rgba(255, 159, 10, 0.4);
+}
 
 @keyframes pulse {
   0%, 100% { opacity: 1; }

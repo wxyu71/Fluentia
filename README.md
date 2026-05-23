@@ -10,6 +10,7 @@ Cross-device wireless input — use your phone as a wireless keyboard for your P
 - **Clipboard sync** — send text from phone directly to PC clipboard
 - **File transfer** — encrypted file sharing between devices (configurable size limit)
 - **Auto-reconnect** — persistent connections with fixed retry timing, offline input buffering, and desktop session recovery after restart or longer outages
+- **BLE-only fallback** — when the relay server is unreachable but Bluetooth is paired, input continues over BLE with a header indicator
 - **Apple-inspired UI** — liquid glass design, light/dark theme, SVG icons
 - **Privacy first** — no logs by default, optional local history on mobile, zero server-side storage
 
@@ -59,7 +60,7 @@ All settings via environment variables in `docker-compose.yml`:
 | `SECRET_PATH` | — | Secret URL path (when private mode enabled) |
 | `IP_WHITELIST` | `false` | Enable IP-based access control |
 | `ALLOWED_IPS` | — | Comma-separated IPs/CIDRs |
-| `MIN_VERSION` | `1.4.3` | Minimum compatible client version enforced after handshake |
+| `MIN_VERSION` | `1.5.0` | Minimum compatible client version enforced after handshake |
 | `MAX_FILE_MB` | `100` | Max file size (-1=disabled, 0=unlimited) |
 | `SESSION_MAX_AGE_DAYS` | `7` | How long a session token and its trusted desktop key remain reusable before a new session is required |
 | `SESSION_STORE_PATH` | `./data/sessions.json` | JSON file used by the relay to persist reusable session metadata only (token fingerprint + timestamps) across restarts |

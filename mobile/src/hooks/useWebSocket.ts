@@ -62,6 +62,7 @@ export function useWebSocket(
   deviceId: string,
   sendViaBle?: (message: Pick<WsMessage, 'payload' | 'nonce' | 'seq'>) => boolean,
   onEncryptedCommand?: (cmd: InputCommand) => void,
+  bleTransportReady?: boolean,
 ): UseWebSocketReturn {
   const [connectionState, setConnectionState] = useState<ConnectionState>('disconnected');
   const [peerConnected, setPeerConnected] = useState(false);
@@ -94,6 +95,11 @@ export function useWebSocket(
   const incomingFilesRef = useRef(new Map<string, { fileName: string; mimeType: string; chunks: string[] }>());
   const incomingTransferBatchRef = useRef<TransferBatchProgress | null>(null);
   const incomingTransferHideTimerRef = useRef<number | null>(null);
+  const bleTransportReadyRef = useRef(false);
+
+  useEffect(() => {
+    bleTransportReadyRef.current = bleTransportReady ?? false;
+  }, [bleTransportReady]);
 
   const persistCryptoState = useCallback(() => {
     const info = connInfoRef.current;
@@ -281,11 +287,17 @@ export function useWebSocket(
           return;
         }
 
-        setPeerConnected(false);
-        setEncryptionState(false);
-        setPendingStatus('Reconnecting');
-        setConnectionState('connecting');
-        connectionStateRef.current = 'connecting';
+        if (bleTransportReadyRef.current) {
+          setConnectionState('connecting');
+          connectionStateRef.current = 'connecting';
+          setPendingStatus('Reconnecting...');
+        } else {
+          setPeerConnected(false);
+          setEncryptionState(false);
+          setPendingStatus('Reconnecting');
+          setConnectionState('connecting');
+          connectionStateRef.current = 'connecting';
+        }
 
         try {
           ws.close(1000, 'heartbeat-timeout');
@@ -466,7 +478,7 @@ export function useWebSocket(
         setConnectionState('connected');
         connectionStateRef.current = 'connected';
         setLastError(null);
-        setPeerConnected(false);
+        setPeerConnected(bleTransportReadyRef.current);
         if (msg.publicKey && !cryptoRef.current.hasPeerKey()) {
           cryptoRef.current.setPeerPublicKey(msg.publicKey);
           persistCryptoState();
@@ -486,9 +498,11 @@ export function useWebSocket(
         clearConnectTimeout();
         setPeerConnected(true);
         if (msg.role === 'pc' && wsRef.current?.readyState === TRANSPORT_READY_STATE.OPEN) {
-          setEncryptionState(false);
+          if (!bleTransportReadyRef.current) {
+            setEncryptionState(false);
+            setPendingStatus('Key exchange');
+          }
           handshakeStartedRef.current = false;
-          setPendingStatus('Key exchange');
           startHandshakeTimeout('Secure pairing timed out. Go back and reconnect.');
           cryptoRef.current.resetPeerState();
           if (connInfoRef.current) {
@@ -505,16 +519,20 @@ export function useWebSocket(
 
       case 'peer_left':
         handshakeStartedRef.current = false;
-        setPeerConnected(false);
-        setEncryptionState(false);
         clearHandshakeTimer();
         if (msg.role === 'pc' && msg.error !== 'temporary') {
           intentionalCloseRef.current = true;
           connInfoRef.current = null;
           setPendingStatus(null);
+          setPeerConnected(false);
+          setEncryptionState(false);
           setConnectionState('disconnected');
           connectionStateRef.current = 'disconnected';
         } else if (msg.role === 'pc') {
+          if (!bleTransportReadyRef.current) {
+            setPeerConnected(false);
+            setEncryptionState(false);
+          }
           startConnectTimeout();
           setConnectionState('connecting');
           connectionStateRef.current = 'connecting';
@@ -804,7 +822,13 @@ export function useWebSocket(
         return;
       }
 
-      if (encryptionReadyRef.current || bufferedInputActiveRef.current) {
+      if (bleTransportReadyRef.current) {
+        // BLE transport is still active — keep encryption state intact,
+        // just mark WS as reconnecting so the UI shows BLE-only mode.
+        setConnectionState('connecting');
+        connectionStateRef.current = 'connecting';
+        setPendingStatus('Reconnecting...');
+      } else if (encryptionReadyRef.current || bufferedInputActiveRef.current) {
         startOfflineGrace();
       }
 
@@ -829,6 +853,13 @@ export function useWebSocket(
     };
 
     ws.onerror = () => {
+      if (bleTransportReadyRef.current) {
+        setConnectionState('connecting');
+        connectionStateRef.current = 'connecting';
+        setPendingStatus('Reconnecting...');
+        return;
+      }
+
       if (encryptionReadyRef.current || bufferedInputActiveRef.current) {
         startOfflineGrace();
       }
@@ -854,6 +885,14 @@ export function useWebSocket(
     const ws = wsRef.current;
     const sent = sendEncryptedPayload(JSON.stringify(cmd));
     if (sent) {
+      return;
+    }
+
+    if (bleTransportReadyRef.current) {
+      // BLE is active but send failed — just ensure WS is reconnecting.
+      if ((!ws || ws.readyState !== TRANSPORT_READY_STATE.OPEN) && connInfoRef.current) {
+        connectWs(connInfoRef.current);
+      }
       return;
     }
 

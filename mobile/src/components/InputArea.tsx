@@ -330,19 +330,6 @@ export const InputArea: React.FC<InputAreaProps> = ({
             Scan
           </button>
           <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-            {blePairing?.isSupported && (
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                padding: '0 8px',
-                fontSize: 12,
-                color: blePairing.isTransportReady ? 'var(--accent)' : 'var(--text-secondary)',
-              }}>
-                <BluetoothIcon size={14} color={blePairing.isTransportReady ? 'var(--accent)' : 'var(--text-secondary)'} />
-                {blePairing.isTransportReady ? 'BLE ready' : 'Nearby BLE'}
-              </div>
-            )}
             {fileTransferEnabled && (
               <FileTransfer
                 ref={fileTransferRef}
