@@ -106,6 +106,9 @@ public static class LocalizationService
         ["SavedSessionLostTitle"] = "Saved session unavailable",
         ["SavedSessionLostBody"] = "The saved trusted session could not be restored. Please scan again to create a new trusted pairing.",
         ["StatusSavedSessionLost"] = "Saved session unavailable. Scan again to restore trust.",
+        ["StatusInputTargetRecovering"] = "Restoring the previous PC window",
+        ["StatusInputTargetManual"] = "Activate the target PC window manually to continue typing",
+        ["StatusInputTargetManualInvalid"] = "The previous PC window is no longer available. Activate a new target window to continue typing",
         ["StatusSendingFileFormat"] = "Sending {0}",
         ["StatusFileSentFormat"] = "Sent {0}",
         ["StatusFileTooLargeFormat"] = "File exceeds the {0} MB server limit",
@@ -144,6 +147,9 @@ public static class LocalizationService
         ["TrayQuit"] = "Quit Fluentia",
         ["TrayTooltipDisconnected"] = "Fluentia - Disconnected",
         ["TrayTooltipConnected"] = "Fluentia",
+        ["TrayNotificationInputTargetTitle"] = "Choose a PC window",
+        ["TrayNotificationInputTargetBody"] = "Fluentia could not restore the previous target window. Bring the app you want to type into back to the foreground.",
+        ["TrayNotificationInputTargetBodyInvalid"] = "The previous target window is no longer valid. Open or focus the app you want to control, then continue typing from your phone.",
         ["MessageEnterServerUrl"] = "Please enter a server URL.",
     };
 
@@ -247,6 +253,9 @@ public static class LocalizationService
         ["SavedSessionLostTitle"] = "已保存的会话不可用",
         ["SavedSessionLostBody"] = "之前保存的受信任会话无法恢复，请重新扫码建立新的受信任配对。",
         ["StatusSavedSessionLost"] = "已保存的会话不可用，请重新扫码恢复信任关系。",
+        ["StatusInputTargetRecovering"] = "正在恢复上一个 PC 目标窗口",
+        ["StatusInputTargetManual"] = "请手动激活要输入的 PC 窗口后继续输入",
+        ["StatusInputTargetManualInvalid"] = "上一个 PC 目标窗口已失效，请先激活新的目标窗口后继续输入",
         ["StatusSendingFileFormat"] = "正在发送 {0}",
         ["StatusFileSentFormat"] = "已发送 {0}",
         ["StatusFileTooLargeFormat"] = "文件超过服务器 {0} MB 的限制",
@@ -285,6 +294,9 @@ public static class LocalizationService
         ["TrayQuit"] = "退出 Fluentia",
         ["TrayTooltipDisconnected"] = "Fluentia - 已断开",
         ["TrayTooltipConnected"] = "Fluentia",
+        ["TrayNotificationInputTargetTitle"] = "请选择 PC 目标窗口",
+        ["TrayNotificationInputTargetBody"] = "Fluentia 无法恢复之前的目标窗口。请将你想输入的应用重新切回前台。",
+        ["TrayNotificationInputTargetBodyInvalid"] = "之前的目标窗口已失效。请先打开或切换到你要控制的应用，再继续在手机上输入。",
         ["MessageEnterServerUrl"] = "请输入服务器地址。",
     };
 

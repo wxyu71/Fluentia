@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"log"
 	"strings"
@@ -25,6 +26,7 @@ type Hub struct {
 	sessions    map[string]*Session
 	clients     map[*Client]bool
 	deviceCodes map[string]*DeviceCodeEntry // code → entry
+	persistedSessions map[string]persistedSession
 	mu          sync.RWMutex
 	MaxFileMB   int
 	MinVersion  string
@@ -46,10 +48,16 @@ func NewHub(sessionMaxAgeDays int) *Hub {
 		sessions:     make(map[string]*Session),
 		clients:      make(map[*Client]bool),
 		deviceCodes:  make(map[string]*DeviceCodeEntry),
+		persistedSessions: make(map[string]persistedSession),
 		codeAttempts: make(map[string][]time.Time),
 		MinVersion:   ProtocolVersion,
 		SessionMaxAge: time.Duration(sessionMaxAgeDays) * 24 * time.Hour,
 	}
+}
+
+func tokenFingerprint(token string) string {
+	hash := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(hash[:])
 }
 
 // GenerateDeviceCode creates an 8-char alphanumeric code for a session.
@@ -201,8 +209,29 @@ func (h *Hub) expireSession(token string) {
 		mobile.SendAndClose(Message{Type: MsgPeerLeft, Role: "pc"})
 	}
 	delete(h.sessions, token)
+	delete(h.persistedSessions, tokenFingerprint(token))
 	h.saveSessionsLocked()
 	log.Printf("Session %s destroyed (session expired while PC offline)", token)
+}
+
+func (h *Hub) hydratePersistedSessionLocked(token string) (*Session, bool) {
+	fingerprint := tokenFingerprint(token)
+	entry, ok := h.persistedSessions[fingerprint]
+	if !ok || !entry.ExpiresAt.After(time.Now()) {
+		if ok {
+			delete(h.persistedSessions, fingerprint)
+			h.saveSessionsLocked()
+		}
+		return nil, false
+	}
+
+	session := &Session{
+		Token:     token,
+		CreatedAt: entry.CreatedAt,
+		ExpiresAt: entry.ExpiresAt,
+	}
+	h.sessions[token] = session
+	return session, true
 }
 
 // HandleMessage is called from a client's ReadPump goroutine.
@@ -262,6 +291,7 @@ func (h *Hub) handleCreateSession(c *Client) {
 			mobile.SendAndClose(Message{Type: MsgPeerLeft, Role: "pc"})
 		}
 		delete(h.sessions, oldSession.Token)
+		delete(h.persistedSessions, tokenFingerprint(oldSession.Token))
 		h.saveSessionsLocked()
 	}
 
@@ -269,6 +299,11 @@ func (h *Hub) handleCreateSession(c *Client) {
 	c.session = session
 	c.role = "pc"
 	h.sessions[session.Token] = session
+	h.persistedSessions[tokenFingerprint(session.Token)] = persistedSession{
+		TokenHash: tokenFingerprint(session.Token),
+		CreatedAt: session.CreatedAt,
+		ExpiresAt: session.ExpiresAt,
+	}
 	h.saveSessionsLocked()
 
 	log.Printf("Session created: %s (expires %s)", session.Token, session.ExpiresAt.Format(time.RFC3339))
@@ -293,9 +328,12 @@ func (h *Hub) handleRejoinSession(c *Client, msg Message) {
 
 	session, ok := h.sessions[msg.Token]
 	if !ok {
-		// Session expired or was destroyed — tell PC to create a new one.
-		c.SendMessage(Message{Type: MsgError, Error: "session not found"})
-		return
+		var hydrated bool
+		session, hydrated = h.hydratePersistedSessionLocked(msg.Token)
+		if !hydrated {
+			c.SendMessage(Message{Type: MsgError, Error: "session not found"})
+			return
+		}
 	}
 	if h.sessionExpiredLocked(session) {
 		delete(h.sessions, session.Token)
@@ -348,8 +386,12 @@ func (h *Hub) handleJoinSession(c *Client, msg Message) {
 
 	session, ok := h.sessions[msg.Token]
 	if !ok {
-		c.SendMessage(Message{Type: MsgError, Error: "session not found"})
-		return
+		var hydrated bool
+		session, hydrated = h.hydratePersistedSessionLocked(msg.Token)
+		if !hydrated {
+			c.SendMessage(Message{Type: MsgError, Error: "session not found"})
+			return
+		}
 	}
 	if h.sessionExpiredLocked(session) {
 		delete(h.sessions, session.Token)

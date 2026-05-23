@@ -6,6 +6,7 @@ using System.Linq;
 using System.Net.NetworkInformation;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Channels;
 using System.Windows;
 using System.Windows.Controls;
@@ -57,6 +58,8 @@ public partial class MainWindow : Window
     }
 
     private readonly RoomManager _roomManager;
+    private readonly DesktopSettingsStore _settingsStore;
+    private readonly WindowActivationCoordinator _windowActivationCoordinator;
     private readonly Channel<InputCommand> _cmdChannel =
         Channel.CreateUnbounded<InputCommand>(new UnboundedChannelOptions { SingleReader = true });
     private readonly Dictionary<string, IncomingFileTransferBuffer> _fileTransfers = new();
@@ -94,6 +97,7 @@ public partial class MainWindow : Window
     private string? _activeOutgoingUiFileId;
     private int _trayCreationRetriesRemaining;
     private string _fileSavePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
+    private CancellationTokenSource? _inputTargetRecoveryCts;
     private IntPtr _inputTargetWindow;
     private IntPtr _windowHandle;
     private TransferProgressBatch? _transferProgressBatch;
@@ -136,6 +140,7 @@ public partial class MainWindow : Window
     private IntPtr _lastForegroundWindow;
     private IntPtr _lastExternalForegroundWindow;
     private string _appliedInputBuffer = string.Empty;
+    private bool _manualInputTargetRecoveryNotified;
 
     private static readonly string SettingsFile = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
@@ -154,6 +159,19 @@ public partial class MainWindow : Window
         InitializeComponent();
 
         _roomManager = new RoomManager();
+        _settingsStore = new DesktopSettingsStore(SettingsFile, SessionBackupFile);
+        _windowActivationCoordinator = new WindowActivationCoordinator(
+            GetForegroundWindow,
+            SetForegroundWindow,
+            IsWindow,
+            IsWindowVisible,
+            message =>
+            {
+                if (_devMode)
+                {
+                    _ = Dispatcher.BeginInvoke(() => AppendLog(message));
+                }
+            });
         LoadSettings();
         ApplyLocalizedText();
         _windowHandle = new WindowInteropHelper(this).EnsureHandle();
@@ -315,7 +333,7 @@ public partial class MainWindow : Window
             SetStatus(L("StatusEncrypted"), true);
             RefreshVisualState();
             Hide();
-            _ = Dispatcher.BeginInvoke(RestorePreviousExternalWindow, DispatcherPriority.ApplicationIdle);
+            BeginInputTargetRecovery();
         });
 
         _roomManager.OnSessionRecovered += () => Dispatcher.Invoke(async () =>
@@ -837,23 +855,34 @@ public partial class MainWindow : Window
     private bool EnsureInputTarget()
     {
         var currentForeground = GetForegroundWindow();
-        if (currentForeground == _windowHandle && TryRestorePreviousExternalWindow())
+        if (currentForeground == _windowHandle && _windowActivationCoordinator.TryRestoreImmediately(_windowHandle))
         {
             currentForeground = GetForegroundWindow();
         }
 
-        if (currentForeground == IntPtr.Zero) return false;
+        if (currentForeground == IntPtr.Zero)
+        {
+            BeginInputTargetRecovery();
+            return false;
+        }
 
-        if (currentForeground == _windowHandle) return false;
+        if (currentForeground == _windowHandle)
+        {
+            BeginInputTargetRecovery();
+            return false;
+        }
 
         if (_inputTargetWindow == IntPtr.Zero)
         {
+            CancelInputTargetRecovery();
+            _manualInputTargetRecoveryNotified = false;
             _inputTargetWindow = currentForeground;
             return true;
         }
 
         if (currentForeground != _inputTargetWindow)
         {
+            BeginInputTargetRecovery();
             _ = ResetMobileInputAfterFocusChangeAsync();
             return false;
         }
@@ -1629,200 +1658,6 @@ public partial class MainWindow : Window
         return Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.IsLoopback;
     }
 
-    private void LoadSettings()
-    {
-        var migrateLegacySession = false;
-        var hadProtectedSession = false;
-        var recoveredFromBackup = false;
-        var restoredFromPrimary = false;
-
-        try
-        {
-            if (File.Exists(SettingsFile))
-            {
-                using var doc = JsonDocument.Parse(File.ReadAllText(SettingsFile));
-                if (doc.RootElement.TryGetProperty("savePath", out var savePathElement))
-                {
-                    var value = savePathElement.GetString();
-                    if (!string.IsNullOrWhiteSpace(value) && Directory.Exists(value))
-                    {
-                        _fileSavePath = value;
-                    }
-                }
-
-                if (doc.RootElement.TryGetProperty("serverUrl", out var serverUrlElement))
-                {
-                    var value = serverUrlElement.GetString();
-                    if (!string.IsNullOrWhiteSpace(value))
-                    {
-                        ServerUrlBox.Text = value;
-                    }
-                }
-
-                if (doc.RootElement.TryGetProperty("closeToTray", out var closeToTrayElement))
-                {
-                    _closeToTray = closeToTrayElement.GetBoolean();
-                }
-
-                if (doc.RootElement.TryGetProperty("launchAtStartup", out var startupElement))
-                {
-                    _launchAtStartup = startupElement.GetBoolean();
-                }
-
-                if (doc.RootElement.TryGetProperty("language", out var languageElement))
-                {
-                    LocalizationService.SetLanguagePreference(languageElement.GetString());
-                }
-
-                if (doc.RootElement.TryGetProperty("regexFilterMarkdown", out var regexMarkdownElement))
-                {
-                    _regexFilterMarkdown = regexMarkdownElement.GetString() ?? string.Empty;
-                }
-
-                if (doc.RootElement.TryGetProperty("sessionCreatedAtUtc", out var sessionCreatedElement) &&
-                    DateTime.TryParse(sessionCreatedElement.GetString(), null, System.Globalization.DateTimeStyles.RoundtripKind, out var restoredCreatedAt))
-                {
-                    _sessionCreatedAt = restoredCreatedAt.ToLocalTime();
-                }
-
-                if (doc.RootElement.TryGetProperty("sessionExpiresAtUtc", out var sessionExpiresElement) &&
-                    DateTimeOffset.TryParse(sessionExpiresElement.GetString(), out var restoredExpiresAt))
-                {
-                    _sessionExpiresAt = restoredExpiresAt.LocalDateTime;
-                }
-                else if (_sessionCreatedAt != default)
-                {
-                    _sessionExpiresAt = ResolveSessionExpiry(_sessionCreatedAt);
-                }
-
-                PersistedDesktopSession? restoredSession = null;
-                if (doc.RootElement.TryGetProperty("protectedSession", out var protectedSessionElement))
-                {
-                    hadProtectedSession = !string.IsNullOrWhiteSpace(protectedSessionElement.GetString());
-                    restoredSession = DesktopSessionProtector.Unprotect(protectedSessionElement.GetString() ?? string.Empty);
-                }
-
-                if (restoredSession == null &&
-                    doc.RootElement.TryGetProperty("sessionToken", out var tokenElement) &&
-                    doc.RootElement.TryGetProperty("sessionPublicKey", out var publicKeyElement) &&
-                    doc.RootElement.TryGetProperty("sessionPrivateKey", out var privateKeyElement))
-                {
-                    var token = tokenElement.GetString();
-                    var publicKey = publicKeyElement.GetString();
-                    var privateKey = privateKeyElement.GetString();
-                    var trusted = doc.RootElement.TryGetProperty("sessionTrusted", out var trustedElement) && trustedElement.GetBoolean();
-
-                    if (!string.IsNullOrWhiteSpace(token) &&
-                        !string.IsNullOrWhiteSpace(publicKey) &&
-                        !string.IsNullOrWhiteSpace(privateKey))
-                    {
-                        restoredSession = new PersistedDesktopSession(token, publicKey, privateKey, trusted);
-                        migrateLegacySession = true;
-                    }
-                }
-
-                if (restoredSession != null)
-                {
-                    _persistedSessionLost = false;
-                    restoredFromPrimary = true;
-                    _roomManager.RestorePersistedSession(restoredSession);
-                }
-            }
-
-            if (!restoredFromPrimary && File.Exists(SessionBackupFile))
-            {
-                var backupProtectedSession = File.ReadAllText(SessionBackupFile);
-                if (!string.IsNullOrWhiteSpace(backupProtectedSession))
-                {
-                    var restoredFromBackup = DesktopSessionProtector.Unprotect(backupProtectedSession);
-                    if (restoredFromBackup != null)
-                    {
-                        recoveredFromBackup = true;
-                        _persistedSessionLost = false;
-                        _roomManager.RestorePersistedSession(restoredFromBackup);
-                    }
-                    else if (hadProtectedSession)
-                    {
-                        _persistedSessionLost = true;
-                    }
-                }
-            }
-            else if (hadProtectedSession)
-            {
-                _persistedSessionLost = true;
-            }
-        }
-        catch
-        {
-        }
-
-        _launchAtStartup = IsLaunchAtStartupEnabled() || _launchAtStartup;
-        SavePathBox.Text = _fileSavePath;
-        CloseToTrayToggle.IsChecked = _closeToTray;
-        LaunchAtStartupToggle.IsChecked = _launchAtStartup;
-        UpdateLanguageSelectorSelection();
-
-        if (migrateLegacySession || recoveredFromBackup)
-        {
-            PersistSettings();
-        }
-    }
-
-    private void PersistSettings()
-    {
-        try
-        {
-            Directory.CreateDirectory(Path.GetDirectoryName(SettingsFile)!);
-            var persistedSession = _roomManager.ExportPersistedSession();
-            var payload = JsonSerializer.Serialize(new
-            {
-                savePath = _fileSavePath,
-                serverUrl = ServerUrlBox.Text.Trim(),
-                closeToTray = _closeToTray,
-                launchAtStartup = _launchAtStartup,
-                language = LocalizationService.CurrentLanguageSetting,
-                regexFilterMarkdown = _regexFilterMarkdown,
-                protectedSession = persistedSession == null ? null : DesktopSessionProtector.Protect(persistedSession),
-                sessionCreatedAtUtc = _sessionCreatedAt == default ? null : _sessionCreatedAt.ToUniversalTime().ToString("O"),
-                sessionExpiresAtUtc = _sessionExpiresAt == default ? null : _sessionExpiresAt.ToUniversalTime().ToString("O"),
-            });
-            File.WriteAllText(SettingsFile, payload);
-
-            if (persistedSession == null)
-            {
-                if (File.Exists(SessionBackupFile))
-                {
-                    File.Delete(SessionBackupFile);
-                }
-            }
-            else
-            {
-                File.WriteAllText(SessionBackupFile, DesktopSessionProtector.Protect(persistedSession));
-            }
-        }
-        catch
-        {
-        }
-    }
-
-    private void ShowPersistedSessionLostPrompt()
-    {
-        SetStatus(L("StatusSavedSessionLost"), false);
-        MessageBox.Show(L("SavedSessionLostBody"), L("SavedSessionLostTitle"), MessageBoxButton.OK, MessageBoxImage.Information);
-        _persistedSessionLost = false;
-    }
-
-    private DateTime ResolveSessionExpiry(DateTime fallbackCreatedAt)
-    {
-        return _roomManager.SessionExpiresAtUtc?.LocalDateTime ?? fallbackCreatedAt.AddDays(_roomManager.SessionMaxAgeDays);
-    }
-
-    private bool IsLaunchAtStartupEnabled()
-    {
-        using var key = Registry.CurrentUser.OpenSubKey(StartupRegistryPath);
-        return key?.GetValue(StartupRegistryValue) is string existing && !string.IsNullOrWhiteSpace(existing);
-    }
-
     private void ApplyStartupRegistration(bool enabled)
     {
         using var key = Registry.CurrentUser.CreateSubKey(StartupRegistryPath);
@@ -2029,30 +1864,14 @@ public partial class MainWindow : Window
 
     private void RememberExternalForegroundWindow(IntPtr hwnd)
     {
-        if (hwnd == IntPtr.Zero || hwnd == _windowHandle) return;
-        if (!IsWindow(hwnd) || !IsWindowVisible(hwnd)) return;
-        _lastExternalForegroundWindow = hwnd;
-    }
+        _windowActivationCoordinator.RememberExternalWindow(hwnd, _windowHandle);
+        _lastExternalForegroundWindow = _windowActivationCoordinator.LastExternalWindow;
 
-    private bool TryRestorePreviousExternalWindow()
-    {
-        if (_lastExternalForegroundWindow == IntPtr.Zero || _lastExternalForegroundWindow == _windowHandle)
+        if (hwnd != IntPtr.Zero && hwnd != _windowHandle)
         {
-            return false;
+            CancelInputTargetRecovery();
+            _manualInputTargetRecoveryNotified = false;
         }
-
-        if (!IsWindow(_lastExternalForegroundWindow) || !IsWindowVisible(_lastExternalForegroundWindow))
-        {
-            _lastExternalForegroundWindow = IntPtr.Zero;
-            return false;
-        }
-
-        return SetForegroundWindow(_lastExternalForegroundWindow);
-    }
-
-    private void RestorePreviousExternalWindow()
-    {
-        _ = TryRestorePreviousExternalWindow();
     }
 
     private static T? FindAncestor<T>(DependencyObject? source) where T : DependencyObject

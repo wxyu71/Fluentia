@@ -2,7 +2,7 @@ services:
   fluentia:
     build: .
     ports:
-      - "127.0.0.1:8778:8080"
+      - "${FLUENTIA_BIND_HOST:-0.0.0.0}:8778:8080"
     environment:
       - PORT=8080
       # ── Security ──

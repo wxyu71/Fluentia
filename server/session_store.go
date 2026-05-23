@@ -11,7 +11,7 @@ import (
 )
 
 type persistedSession struct {
-	Token     string    `json:"token"`
+	TokenHash string    `json:"tokenHash"`
 	CreatedAt time.Time `json:"createdAt"`
 	ExpiresAt time.Time `json:"expiresAt"`
 }
@@ -38,20 +38,18 @@ func (h *Hub) LoadPersistedSessions() error {
 	defer h.mu.Unlock()
 
 	now := time.Now()
+	loadedCount := 0
 	for _, entry := range persisted {
-		if entry.Token == "" || !entry.ExpiresAt.After(now) {
+		if entry.TokenHash == "" || !entry.ExpiresAt.After(now) {
 			continue
 		}
 
-		h.sessions[entry.Token] = &Session{
-			Token:     entry.Token,
-			CreatedAt: entry.CreatedAt,
-			ExpiresAt: entry.ExpiresAt,
-		}
+		h.persistedSessions[entry.TokenHash] = entry
+		loadedCount += 1
 	}
 
-	if len(persisted) > 0 {
-		log.Printf("Loaded %d persisted session(s)", len(h.sessions))
+	if loadedCount > 0 {
+		log.Printf("Loaded %d persisted session fingerprint(s)", loadedCount)
 	}
 
 	return nil
@@ -62,17 +60,31 @@ func (h *Hub) saveSessionsLocked() {
 		return
 	}
 
-	snapshot := make([]persistedSession, 0, len(h.sessions))
+	now := time.Now()
+	snapshotMap := make(map[string]persistedSession, len(h.persistedSessions)+len(h.sessions))
+
+	for fingerprint, entry := range h.persistedSessions {
+		if entry.ExpiresAt.After(now) {
+			snapshotMap[fingerprint] = entry
+		}
+	}
+
 	for _, session := range h.sessions {
 		if session == nil || h.sessionExpiredLocked(session) {
 			continue
 		}
 
-		snapshot = append(snapshot, persistedSession{
-			Token:     session.Token,
+		fingerprint := tokenFingerprint(session.Token)
+		snapshotMap[fingerprint] = persistedSession{
+			TokenHash: fingerprint,
 			CreatedAt: session.CreatedAt,
 			ExpiresAt: session.ExpiresAt,
-		})
+		}
+	}
+
+	snapshot := make([]persistedSession, 0, len(snapshotMap))
+	for _, entry := range snapshotMap {
+		snapshot = append(snapshot, entry)
 	}
 
 	if err := os.MkdirAll(filepath.Dir(h.SessionStorePath), 0o755); err != nil {

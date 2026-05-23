@@ -1,4 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { TRANSPORT_READY_STATE, type TransportConnection } from '../services/transport';
+import { createWebSocketTransport } from '../services/websocketTransport';
 import { CryptoService, type PersistedCryptoSession } from '../utils/crypto';
 import type {
   WsMessage,
@@ -67,7 +69,7 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
   const [inputResetVersion, setInputResetVersion] = useState(0);
   const [incomingTransferBatch, setIncomingTransferBatch] = useState<TransferBatchProgress | null>(null);
 
-  const wsRef = useRef<WebSocket | null>(null);
+  const wsRef = useRef<TransportConnection | null>(null);
   const cryptoRef = useRef<CryptoService>(new CryptoService());
   const connInfoRef = useRef<ConnectionInfo | null>(null);
   const reconnectAttemptRef = useRef(0);
@@ -263,9 +265,9 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
     }
   }, []);
 
-  const startHeartbeat = useCallback((ws: WebSocket) => {
+  const startHeartbeat = useCallback((ws: TransportConnection) => {
     const sendPing = () => {
-      if (wsRef.current !== ws || ws.readyState !== WebSocket.OPEN) {
+      if (wsRef.current !== ws || ws.readyState !== TRANSPORT_READY_STATE.OPEN) {
         return;
       }
 
@@ -375,7 +377,7 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
 
   const sendEncryptedPayload = useCallback((plaintext: string) => {
     const ws = wsRef.current;
-    if (!ws || ws.readyState !== WebSocket.OPEN) return false;
+    if (!ws || ws.readyState !== TRANSPORT_READY_STATE.OPEN) return false;
     if (!cryptoRef.current.isReady()) return false;
 
     try {
@@ -414,7 +416,7 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
 
   const beginSecureHandshake = useCallback(() => {
     const ws = wsRef.current;
-    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    if (!ws || ws.readyState !== TRANSPORT_READY_STATE.OPEN) return;
     if (!cryptoRef.current.isReady()) return;
     if (handshakeStartedRef.current) return;
 
@@ -471,7 +473,7 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
       case 'peer_joined':
         clearConnectTimeout();
         setPeerConnected(true);
-        if (msg.role === 'pc' && wsRef.current?.readyState === WebSocket.OPEN) {
+        if (msg.role === 'pc' && wsRef.current?.readyState === TRANSPORT_READY_STATE.OPEN) {
           setEncryptionState(false);
           handshakeStartedRef.current = false;
           setPendingStatus('Key exchange');
@@ -710,7 +712,7 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
     const activeInfo = connInfoRef.current;
     if (
       activeSocket &&
-      (activeSocket.readyState === WebSocket.CONNECTING || activeSocket.readyState === WebSocket.OPEN) &&
+      (activeSocket.readyState === TRANSPORT_READY_STATE.CONNECTING || activeSocket.readyState === TRANSPORT_READY_STATE.OPEN) &&
       activeInfo?.s === info.s &&
       activeInfo?.t === info.t &&
       activeInfo?.k === info.k
@@ -742,7 +744,7 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
     setPendingStatus('Joining session');
     startConnectTimeout();
 
-    const ws = new WebSocket(info.s);
+    const ws = createWebSocketTransport(info.s);
     wsRef.current = ws;
 
     ws.onopen = () => {
@@ -844,13 +846,13 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
       queuedCommandsRef.current.push(cmd);
       updateQueuedCommandCount();
       startOfflineGrace();
-      if ((!ws || ws.readyState !== WebSocket.OPEN) && connInfoRef.current) {
+      if ((!ws || ws.readyState !== TRANSPORT_READY_STATE.OPEN) && connInfoRef.current) {
         connectWs(connInfoRef.current);
       }
       return;
     }
 
-    if (!sent && (!ws || ws.readyState !== WebSocket.OPEN)) {
+    if (!sent && (!ws || ws.readyState !== TRANSPORT_READY_STATE.OPEN)) {
       setPeerConnected(false);
       setEncryptionState(false);
       setPendingStatus('Waiting for your PC');
@@ -866,7 +868,7 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
       if (connectionStateRef.current === 'preempted') return;
 
       const ws = wsRef.current;
-      if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
+      if (!ws || ws.readyState === TRANSPORT_READY_STATE.CLOSED || ws.readyState === TRANSPORT_READY_STATE.CLOSING) {
         reconnectAttemptRef.current = 0;
         connectWs(connInfoRef.current);
       }
@@ -913,7 +915,7 @@ export function useWebSocket(deviceId: string): UseWebSocketReturn {
       setPendingStatus(null);
       setConnectionState('disconnected');
       connectionStateRef.current = 'disconnected';
-      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+      if (!wsRef.current || wsRef.current.readyState !== TRANSPORT_READY_STATE.OPEN) return;
       closeSocket('pagehide');
     };
 

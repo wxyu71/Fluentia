@@ -9,7 +9,7 @@ Cross-device wireless input — use your phone as a wireless keyboard for your P
 - **Voice & text input** — real-time injection at cursor position via SendInput API
 - **Clipboard sync** — send text from phone directly to PC clipboard
 - **File transfer** — encrypted file sharing between devices (configurable size limit)
-- **Auto-reconnect** — persistent connections with exponential backoff, plus desktop session recovery after restart or longer outages
+- **Auto-reconnect** — persistent connections with fixed retry timing, offline input buffering, and desktop session recovery after restart or longer outages
 - **Apple-inspired UI** — liquid glass design, light/dark theme, SVG icons
 - **Privacy first** — no logs by default, optional local history on mobile, zero server-side storage
 
@@ -21,6 +21,17 @@ Cross-device wireless input — use your phone as a wireless keyboard for your P
 docker compose up --build -d
 # → http://localhost:8080
 ```
+
+Fluentia's relay server is intended to run on a separate server, not on the Windows desktop client machine.
+
+After pulling the latest code on the server, rebuild and restart it there:
+
+```bash
+git pull
+docker compose up --build -d
+```
+
+If you are not using Docker on the server, manually rebuild the mobile frontend and restart the Go relay there after syncing the repository.
 
 ### Windows Client
 
@@ -34,6 +45,8 @@ dotnet run --project Fluentia
 1. Launch Windows client → QR code appears
 2. Open `https://your-server/` on phone → scan QR
 3. Type or speak on phone → text appears at PC cursor
+
+The Windows client does not auto-start or auto-discover a local relay. Enter the deployed server's WebSocket address explicitly before connecting.
 
 ## Server Configuration
 
@@ -49,7 +62,7 @@ All settings via environment variables in `docker-compose.yml`:
 | `MIN_VERSION` | `1.3.0` | Minimum compatible client version enforced after handshake |
 | `MAX_FILE_MB` | `100` | Max file size (-1=disabled, 0=unlimited) |
 | `SESSION_MAX_AGE_DAYS` | `7` | How long a session token and its trusted desktop key remain reusable before a new session is required |
-| `SESSION_STORE_PATH` | `./data/sessions.json` | JSON file used by the relay to persist reusable session tokens across restarts |
+| `SESSION_STORE_PATH` | `./data/sessions.json` | JSON file used by the relay to persist reusable session metadata only (token fingerprint + timestamps) across restarts |
 | `MOBILE_EXPIRY_SECS` | `60` | How long the desktop waits before surfacing itself after the phone disconnects |
 
 Desktop session state is stored locally and protected with the current Windows user account so the client can restore the same trusted keypair after restart.
