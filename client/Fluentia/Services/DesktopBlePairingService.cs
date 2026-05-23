@@ -21,6 +21,9 @@ public sealed class DesktopBlePairingService : IDisposable
     private readonly SemaphoreSlim _pairingGate = new(1, 1);
     private readonly HashSet<string> _authorizedRemotePublicKeys = new(StringComparer.Ordinal);
     private readonly object _authorizationGate = new();
+    private readonly HashSet<string> _notificationReadyPublicKeys = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, BleEnvelope> _pendingVerifiedEnvelopes = new(StringComparer.Ordinal);
+    private readonly object _notificationGate = new();
     private static readonly TimeSpan NotificationSubscriberWait = TimeSpan.FromMilliseconds(150);
     private const int NotificationSubscriberRetryCount = 10;
 
@@ -156,6 +159,12 @@ public sealed class DesktopBlePairingService : IDisposable
                 return;
             }
 
+            if (string.Equals(envelope.Type, "notify_ready", StringComparison.Ordinal))
+            {
+                await HandleNotifyReadyAsync(envelope);
+                return;
+            }
+
             if (!string.Equals(envelope.Type, "client_hello", StringComparison.Ordinal))
             {
                 _statusSink?.Invoke($"BLE ignored message: {envelope.Type}");
@@ -213,7 +222,7 @@ public sealed class DesktopBlePairingService : IDisposable
 
             _statusSink?.Invoke($"BLE pairing request: {deviceLabel}");
 
-            await SendAsync(new BleEnvelope
+            var verifiedEnvelope = new BleEnvelope
             {
                 Type = "verified",
                 Approved = true,
@@ -221,9 +230,18 @@ public sealed class DesktopBlePairingService : IDisposable
                 ServerUrl = session.ServerUrl,
                 PublicKey = session.PublicKey,
                 Version = MsgTypes.ProtocolVersion,
-            });
+            };
 
-            _statusSink?.Invoke("BLE pairing approved");
+            if (IsNotificationReady(envelope.PublicKey))
+            {
+                await SendAsync(verifiedEnvelope);
+                _statusSink?.Invoke("BLE pairing approved");
+            }
+            else
+            {
+                CachePendingVerifiedEnvelope(envelope.PublicKey, verifiedEnvelope);
+                _statusSink?.Invoke("BLE verified response pending notify_ready");
+            }
         }
         finally
         {
@@ -236,6 +254,64 @@ public sealed class DesktopBlePairingService : IDisposable
         lock (_authorizationGate)
         {
             return _authorizedRemotePublicKeys.Remove(remotePublicKey);
+        }
+    }
+
+    private async Task HandleNotifyReadyAsync(BleEnvelope envelope)
+    {
+        if (string.IsNullOrWhiteSpace(envelope.PublicKey))
+        {
+            await SendAsync(new BleEnvelope { Type = "error", Payload = "Missing mobile public key for notify_ready." });
+            return;
+        }
+
+        MarkNotificationReady(envelope.PublicKey);
+        _statusSink?.Invoke("BLE notify_ready received");
+
+        var pendingEnvelope = ConsumePendingVerifiedEnvelope(envelope.PublicKey);
+        if (pendingEnvelope is null)
+        {
+            return;
+        }
+
+        await SendAsync(pendingEnvelope);
+        _statusSink?.Invoke("BLE pairing approved");
+    }
+
+    private void CachePendingVerifiedEnvelope(string remotePublicKey, BleEnvelope envelope)
+    {
+        lock (_notificationGate)
+        {
+            _pendingVerifiedEnvelopes[remotePublicKey] = envelope;
+        }
+    }
+
+    private BleEnvelope? ConsumePendingVerifiedEnvelope(string remotePublicKey)
+    {
+        lock (_notificationGate)
+        {
+            if (!_pendingVerifiedEnvelopes.Remove(remotePublicKey, out var envelope))
+            {
+                return null;
+            }
+
+            return envelope;
+        }
+    }
+
+    private void MarkNotificationReady(string remotePublicKey)
+    {
+        lock (_notificationGate)
+        {
+            _notificationReadyPublicKeys.Add(remotePublicKey);
+        }
+    }
+
+    private bool IsNotificationReady(string remotePublicKey)
+    {
+        lock (_notificationGate)
+        {
+            return _notificationReadyPublicKeys.Contains(remotePublicKey);
         }
     }
 

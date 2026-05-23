@@ -41,6 +41,13 @@ function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
 }
 
+async function writeBleEnvelope(
+  characteristic: BluetoothRemoteGATTCharacteristic,
+  message: BleEnvelope,
+): Promise<void> {
+  await characteristic.writeValueWithResponse(toArrayBuffer(encodeBleEnvelope(message)));
+}
+
 export function useBlePairing(
   onConnectionInfo: (info: ConnectionInfo) => void,
   deviceId: string,
@@ -144,12 +151,12 @@ export function useBlePairing(
     clearAuthTimeout();
 
     try {
-      await writeCharacteristic.writeValueWithResponse(toArrayBuffer(encodeBleEnvelope({
+      await writeBleEnvelope(writeCharacteristic, {
         type: 'client_hello',
         publicKey: handshakeRef.current.publicKey,
         payload: deviceId,
         version: PROTOCOL_VERSION,
-      })));
+      });
 
       setStatus('Waiting for PC response');
       setError(null);
@@ -246,6 +253,11 @@ export function useBlePairing(
 
       await notifyCharacteristic.startNotifications();
       notifyCharacteristic.addEventListener('characteristicvaluechanged', handleNotify);
+      await writeBleEnvelope(writeCharacteristic, {
+        type: 'notify_ready',
+        publicKey: handshakeRef.current.publicKey,
+        version: PROTOCOL_VERSION,
+      });
 
       setIsBleChannelReady(true);
       setStatus('Authorizing with PC');
@@ -274,13 +286,13 @@ export function useBlePairing(
       return false;
     }
 
-    void writeCharacteristic.writeValueWithResponse(toArrayBuffer(encodeBleEnvelope({
+    void writeBleEnvelope(writeCharacteristic, {
       type: 'encrypted',
       payload: message.payload,
       nonce: message.nonce,
       seq: message.seq,
       version: PROTOCOL_VERSION,
-    }))).catch(() => {
+    }).catch(() => {
       setError('BLE transport send failed');
       setStatus('BLE transport error');
       setIsTransportReady(false);
