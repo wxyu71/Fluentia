@@ -375,6 +375,11 @@ public partial class MainWindow : Window
             if (cmd.Type == "ble_auth" && !string.IsNullOrWhiteSpace(cmd.PublicKey))
             {
                 _desktopBlePairingService.AuthorizeRemotePublicKey(cmd.PublicKey);
+                _ = _roomManager.SendToMobileAsync(new InputCommand
+                {
+                    Type = "ble_auth_ok",
+                    PublicKey = cmd.PublicKey,
+                }.Serialize());
                 if (_devMode)
                 {
                     _ = Dispatcher.BeginInvoke(() => AppendLog("BLE upgrade authorized from encrypted session"));

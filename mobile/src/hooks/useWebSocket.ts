@@ -58,7 +58,11 @@ interface UseWebSocketReturn {
   incomingTransferBatch: TransferBatchProgress | null;
 }
 
-export function useWebSocket(deviceId: string, sendViaBle?: (message: Pick<WsMessage, 'payload' | 'nonce' | 'seq'>) => boolean): UseWebSocketReturn {
+export function useWebSocket(
+  deviceId: string,
+  sendViaBle?: (message: Pick<WsMessage, 'payload' | 'nonce' | 'seq'>) => boolean,
+  onEncryptedCommand?: (cmd: InputCommand) => void,
+): UseWebSocketReturn {
   const [connectionState, setConnectionState] = useState<ConnectionState>('disconnected');
   const [peerConnected, setPeerConnected] = useState(false);
   const [encryptionReady, setEncryptionReady] = useState(false);
@@ -542,6 +546,8 @@ export function useWebSocket(deviceId: string, sendViaBle?: (message: Pick<WsMes
             clearHandshakeTimer();
             sendEncryptedPayload(JSON.stringify({ type: 'handshake_ack' } satisfies InputCommand));
             flushQueuedCommands();
+          } else if (parsed.type === 'ble_auth_ok') {
+            onEncryptedCommand?.(parsed);
           } else if (parsed.type === 'clear') {
             setInputResetVersion((version) => version + 1);
           } else if (parsed.type === 'file_start' && parsed.transferId) {
@@ -713,6 +719,7 @@ export function useWebSocket(deviceId: string, sendViaBle?: (message: Pick<WsMes
     triggerFileDownload,
     updateIncomingTransferBatch,
     beginSecureHandshake,
+    onEncryptedCommand,
   ]);
 
   const connectWs = useCallback((info: ConnectionInfo) => {

@@ -45,6 +45,7 @@ export function useBlePairing(
   onConnectionInfo: (info: ConnectionInfo) => void,
   deviceId: string,
   onAuthorizePublicKey: (publicKey: string) => void,
+  authorizedPublicKey: string | null,
 ): UseBlePairingResult {
   const [isAvailable, setIsAvailable] = useState(false);
   const [status, setStatus] = useState('BLE not requested');
@@ -59,8 +60,18 @@ export function useBlePairing(
   const notifyCharacteristicRef = useRef<BluetoothRemoteGATTCharacteristic | null>(null);
   const writeCharacteristicRef = useRef<BluetoothRemoteGATTCharacteristic | null>(null);
   const handshakeRef = useRef(createBlePairingHandshake());
+  const helloSentRef = useRef(false);
+  const authTimeoutRef = useRef<number | null>(null);
+  const [isBleChannelReady, setIsBleChannelReady] = useState(false);
 
   const isSupported = useMemo(() => typeof navigator !== 'undefined' && 'bluetooth' in navigator, []);
+
+  const clearAuthTimeout = useCallback(() => {
+    if (authTimeoutRef.current !== null) {
+      window.clearTimeout(authTimeoutRef.current);
+      authTimeoutRef.current = null;
+    }
+  }, []);
 
   useEffect(() => {
     if (!isSupported || typeof navigator.bluetooth.getAvailability !== 'function') {
@@ -87,6 +98,7 @@ export function useBlePairing(
   }, [isSupported]);
 
   const disconnect = useCallback(async () => {
+    clearAuthTimeout();
     try {
       notifyCharacteristicRef.current?.removeEventListener('characteristicvaluechanged', () => undefined);
     } catch {
@@ -100,12 +112,50 @@ export function useBlePairing(
     serverRef.current = null;
     notifyCharacteristicRef.current = null;
     writeCharacteristicRef.current = null;
+    helloSentRef.current = false;
+    setIsBleChannelReady(false);
     setDeviceName(null);
     setVerificationCode(null);
     setIsTransportReady(false);
     setIsConnecting(false);
     setStatus('BLE disconnected');
-  }, []);
+  }, [clearAuthTimeout]);
+
+  const sendClientHelloIfAuthorized = useCallback(async (candidatePublicKey: string | null) => {
+    const writeCharacteristic = writeCharacteristicRef.current;
+    if (!writeCharacteristic || !isBleChannelReady || helloSentRef.current) {
+      return;
+    }
+
+    if (!candidatePublicKey || candidatePublicKey !== handshakeRef.current.publicKey) {
+      return;
+    }
+
+    helloSentRef.current = true;
+    clearAuthTimeout();
+
+    try {
+      await writeCharacteristic.writeValueWithResponse(toArrayBuffer(encodeBleEnvelope({
+        type: 'client_hello',
+        publicKey: handshakeRef.current.publicKey,
+        payload: deviceId,
+        version: PROTOCOL_VERSION,
+      })));
+
+      setStatus('Waiting for PC response');
+      setError(null);
+    } catch (caughtError) {
+      helloSentRef.current = false;
+      const message = caughtError instanceof Error ? caughtError.message : 'BLE pairing failed';
+      setError(message);
+      setStatus('BLE unavailable');
+      await disconnect();
+    }
+  }, [clearAuthTimeout, deviceId, disconnect, isBleChannelReady]);
+
+  useEffect(() => {
+    void sendClientHelloIfAuthorized(authorizedPublicKey);
+  }, [authorizedPublicKey, sendClientHelloIfAuthorized]);
 
   const handleNotify = useCallback((event: Event) => {
     const target = event.target as BluetoothRemoteGATTCharacteristic | null;
@@ -146,8 +196,10 @@ export function useBlePairing(
     setError(null);
     setStatus('Searching nearby PC');
     setVerificationCode(null);
+    clearAuthTimeout();
     handshakeRef.current = createBlePairingHandshake();
-    onAuthorizePublicKey(handshakeRef.current.publicKey);
+    helloSentRef.current = false;
+    setIsBleChannelReady(false);
 
     try {
       const device = await navigator.bluetooth.requestDevice({
@@ -179,14 +231,17 @@ export function useBlePairing(
       await notifyCharacteristic.startNotifications();
       notifyCharacteristic.addEventListener('characteristicvaluechanged', handleNotify);
 
-      await writeCharacteristic.writeValueWithResponse(toArrayBuffer(encodeBleEnvelope({
-        type: 'client_hello',
-        publicKey: handshakeRef.current.publicKey,
-        payload: deviceId,
-        version: PROTOCOL_VERSION,
-      })));
+      setIsBleChannelReady(true);
+      setStatus('Authorizing with PC');
+      onAuthorizePublicKey(handshakeRef.current.publicKey);
+      authTimeoutRef.current = window.setTimeout(() => {
+        if (!helloSentRef.current) {
+          setError('PC did not confirm BLE authorization. Retry from the QR-paired session.');
+          setStatus('BLE authorization timeout');
+        }
+      }, 8000);
 
-      setStatus('Waiting for PC approval');
+      await sendClientHelloIfAuthorized(authorizedPublicKey);
     } catch (caughtError) {
       const message = caughtError instanceof Error ? caughtError.message : 'BLE pairing failed';
       setError(message);
@@ -195,7 +250,7 @@ export function useBlePairing(
     } finally {
       setIsConnecting(false);
     }
-  }, [deviceId, disconnect, handleNotify, isSupported, onAuthorizePublicKey]);
+  }, [authorizedPublicKey, clearAuthTimeout, deviceId, disconnect, handleNotify, isSupported, onAuthorizePublicKey, sendClientHelloIfAuthorized]);
 
   const sendEncryptedMessage = useCallback((message: Pick<WsMessage, 'payload' | 'nonce' | 'seq'>) => {
     const writeCharacteristic = writeCharacteristicRef.current;

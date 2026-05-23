@@ -29,7 +29,7 @@ export const BlePairingCard: React.FC<BlePairingCardProps> = ({
   onHide,
 }) => {
   const statusLine = [status, deviceName].filter(Boolean).join(' · ');
-  const showCodePlaceholder = !verificationCode && (isConnecting || status === 'Waiting for PC approval');
+  const showCodePlaceholder = !verificationCode && (isConnecting || status === 'Authorizing with PC' || status === 'Waiting for PC response');
 
   return (
     <div className="glass glass-xs" style={{ padding: '12px 14px', marginBottom: 12, width: '100%' }}>

@@ -86,6 +86,7 @@ export const App: React.FC = () => {
   const [scannerOverlay, setScannerOverlay] = useState(false);
   const [fileTransferEnabled, setFileTransferEnabled] = useState(false);
   const [maxFileMB, setMaxFileMB] = useState(0);
+  const [bleAuthorizedPublicKey, setBleAuthorizedPublicKey] = useState<string | null>(null);
   const [transportSummary, setTransportSummary] = useState(() =>
     typeof navigator !== 'undefined' && 'bluetooth' in navigator
       ? 'WS + BLE available'
@@ -121,7 +122,7 @@ export const App: React.FC = () => {
     setScannerOverlay(false);
   }, []);
 
-  const blePairing = useBlePairing(handleBleConnectionInfo, deviceId, (publicKey) => authorizeBleRef.current(publicKey));
+  const blePairing = useBlePairing(handleBleConnectionInfo, deviceId, (publicKey) => authorizeBleRef.current(publicKey), bleAuthorizedPublicKey);
   const {
     connectionState,
     peerConnected,
@@ -135,12 +136,17 @@ export const App: React.FC = () => {
     queuedCommandCount,
     inputResetVersion,
     incomingTransferBatch,
-  } = useWebSocket(deviceId, blePairing.sendEncryptedMessage);
+  } = useWebSocket(deviceId, blePairing.sendEncryptedMessage, (cmd) => {
+    if (cmd.type === 'ble_auth_ok' && cmd.publicKey) {
+      setBleAuthorizedPublicKey(cmd.publicKey);
+    }
+  });
 
   useEffect(() => {
     connectRef.current = connect;
     fetchConfigRef.current = fetchServerConfig;
     authorizeBleRef.current = (publicKey: string) => {
+      setBleAuthorizedPublicKey(null);
       sendEncrypted({ type: 'ble_auth', publicKey });
     };
   }, [connect, fetchServerConfig, sendEncrypted]);
