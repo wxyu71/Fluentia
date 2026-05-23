@@ -1,19 +1,16 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
 import { ScanIcon, CloseIcon, KeyboardIcon } from './Icons';
-import { BlePairingCard } from './BlePairingCard';
 import type { ConnectionInfo } from '../types';
-import type { UseBlePairingResult } from '../hooks/useBlePairing';
 
 interface QRScannerProps {
   onScan: (info: ConnectionInfo) => void;
   deviceId?: string;
-  blePairing: UseBlePairingResult;
   overlay?: boolean;    // true = modal overlay, false = full page
   onClose?: () => void; // required when overlay=true
 }
 
-export const QRScanner: React.FC<QRScannerProps> = ({ onScan, deviceId = 'unknown', blePairing, overlay = false, onClose }) => {
+export const QRScanner: React.FC<QRScannerProps> = ({ onScan, deviceId = 'unknown', overlay = false, onClose }) => {
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
@@ -99,18 +96,6 @@ export const QRScanner: React.FC<QRScannerProps> = ({ onScan, deviceId = 'unknow
         textAlign: 'center',
         width: '100%',
       }}>
-        <BlePairingCard
-          isSupported={blePairing.isSupported}
-          isAvailable={blePairing.isAvailable}
-          isConnecting={blePairing.isConnecting}
-          status={blePairing.status}
-          error={blePairing.error}
-          deviceName={blePairing.deviceName}
-          verificationCode={blePairing.verificationCode}
-          onRequestPairing={() => { void blePairing.requestPairing(); }}
-          onDisconnect={() => { void blePairing.disconnect(); }}
-        />
-
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 8 }}>
           <ScanIcon size={20} color="var(--accent)" />
           <h3 style={{ fontSize: 16, fontWeight: 600 }}>Scan QR Code</h3>

@@ -42,6 +42,15 @@ function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
 }
 
+async function requestGrantedDevice(): Promise<BluetoothDevice | null> {
+  if (typeof navigator.bluetooth.getDevices !== 'function') {
+    return null;
+  }
+
+  const devices = await navigator.bluetooth.getDevices();
+  return devices[0] ?? null;
+}
+
 export function useBlePairing(onConnectionInfo: (info: ConnectionInfo) => void, deviceId: string): UseBlePairingResult {
   const [isAvailable, setIsAvailable] = useState(false);
   const [status, setStatus] = useState('BLE not requested');
@@ -156,8 +165,8 @@ export function useBlePairing(onConnectionInfo: (info: ConnectionInfo) => void, 
     handshakeRef.current = createBlePairingHandshake();
 
     try {
-      const device = await navigator.bluetooth.requestDevice({
-        filters: [{ services: [BLE_SERVICE_UUID] }],
+      const device = await requestGrantedDevice() ?? await navigator.bluetooth.requestDevice({
+        acceptAllDevices: true,
         optionalServices: [BLE_SERVICE_UUID],
       });
 
@@ -171,7 +180,11 @@ export function useBlePairing(onConnectionInfo: (info: ConnectionInfo) => void, 
       }
 
       serverRef.current = server;
-      const service = await server.getPrimaryService(BLE_SERVICE_UUID);
+      const service = await server.getPrimaryService(BLE_SERVICE_UUID).catch(() => null);
+      if (!service) {
+        throw new Error('Selected device does not expose the Fluentia BLE service');
+      }
+
       const notifyCharacteristic = await service.getCharacteristic(BLE_NOTIFY_CHARACTERISTIC_UUID);
       const writeCharacteristic = await service.getCharacteristic(BLE_WRITE_CHARACTERISTIC_UUID);
 

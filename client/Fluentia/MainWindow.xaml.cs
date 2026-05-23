@@ -199,7 +199,6 @@ public partial class MainWindow : Window
         Loaded += async (_, _) =>
         {
             await AutoConnectAsync();
-            await InitializeBlePairingAsync();
             if (_persistedSessionLost)
             {
                 ShowPersistedSessionLostPrompt();
@@ -347,6 +346,7 @@ public partial class MainWindow : Window
             SetStatus(L("StatusEncrypted"), true);
             RefreshVisualState();
             Hide();
+            _ = InitializeBlePairingAsync();
             BeginInputTargetRecovery();
         });
 

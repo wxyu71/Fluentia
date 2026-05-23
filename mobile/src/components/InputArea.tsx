@@ -1,10 +1,12 @@
 import React, { useEffect, useRef, useCallback, useState } from 'react';
 import { computeDiff } from '../utils/diff';
-import { ScanIcon, ClipboardIcon } from './Icons';
+import { ScanIcon, ClipboardIcon, BluetoothIcon } from './Icons';
 import { FileTransfer } from './FileTransfer';
 import { TransferStatusCard } from './TransferStatusCard';
+import { BlePairingCard } from './BlePairingCard';
 import type { FileTransferHandle } from './FileTransfer';
 import type { InputCommand, HistoryEntry, TransferBatchProgress } from '../types';
+import type { UseBlePairingResult } from '../hooks/useBlePairing';
 import { applyRegexFilters } from '../utils/regex';
 
 interface InputAreaProps {
@@ -25,6 +27,7 @@ interface InputAreaProps {
   onCancelPendingConnection: () => void;
   inputResetVersion: number;
   incomingTransferBatch?: TransferBatchProgress | null;
+  blePairing?: UseBlePairingResult;
 }
 
 export const InputArea: React.FC<InputAreaProps> = ({
@@ -45,6 +48,7 @@ export const InputArea: React.FC<InputAreaProps> = ({
   onCancelPendingConnection,
   inputResetVersion,
   incomingTransferBatch = null,
+  blePairing,
 }) => {
   const inputEnabled = encryptionReady || bufferedInputActive;
   const lastSentRef = useRef('');
@@ -231,6 +235,20 @@ export const InputArea: React.FC<InputAreaProps> = ({
         </div>
       )}
 
+      {encryptionReady && blePairing && (
+        <BlePairingCard
+          isSupported={blePairing.isSupported}
+          isAvailable={blePairing.isAvailable}
+          isConnecting={blePairing.isConnecting}
+          status={blePairing.status}
+          error={blePairing.error}
+          deviceName={blePairing.deviceName}
+          verificationCode={blePairing.verificationCode}
+          onRequestPairing={() => { void blePairing.requestPairing(); }}
+          onDisconnect={() => { void blePairing.disconnect(); }}
+        />
+      )}
+
       {encryptionReady && (
         <div style={{
           display: 'flex',
@@ -258,6 +276,19 @@ export const InputArea: React.FC<InputAreaProps> = ({
             Scan
           </button>
           <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+            {blePairing?.isSupported && (
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '0 8px',
+                fontSize: 12,
+                color: blePairing.isTransportReady ? 'var(--accent)' : 'var(--text-secondary)',
+              }}>
+                <BluetoothIcon size={14} color={blePairing.isTransportReady ? 'var(--accent)' : 'var(--text-secondary)'} />
+                {blePairing.isTransportReady ? 'BLE ready' : 'BLE optional'}
+              </div>
+            )}
             {fileTransferEnabled && (
               <FileTransfer
                 ref={fileTransferRef}

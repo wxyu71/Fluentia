@@ -32,7 +32,7 @@ export const BlePairingCard: React.FC<BlePairingCardProps> = ({
       </div>
       <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 12 }}>
         {isSupported
-          ? 'Try nearby BLE pairing before falling back to QR or device code.'
+          ? 'QR secure pairing is already active. Use nearby BLE as an extra local transport channel.'
           : 'This browser does not support Web Bluetooth, so BLE pairing is unavailable here.'}
       </div>
 
@@ -61,7 +61,7 @@ export const BlePairingCard: React.FC<BlePairingCardProps> = ({
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <button className="glass-btn accent" disabled={!isSupported || isConnecting} onClick={onRequestPairing}>
-          <BluetoothIcon size={16} color="white" /> {isConnecting ? 'Connecting...' : 'Pair via BLE'}
+          <BluetoothIcon size={16} color="white" /> {isConnecting ? 'Connecting...' : 'Connect BLE'}
         </button>
         <button className="glass-btn" disabled={!deviceName} onClick={onDisconnect}>
           Disconnect BLE

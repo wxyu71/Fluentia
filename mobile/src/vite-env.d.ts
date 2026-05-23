@@ -16,6 +16,7 @@ interface Navigator {
 interface Bluetooth {
   requestDevice(options?: BluetoothRequestDeviceOptions): Promise<BluetoothDevice>;
   getAvailability?: () => Promise<boolean>;
+  getDevices?: () => Promise<BluetoothDevice[]>;
 }
 
 interface BluetoothRequestDeviceOptions {

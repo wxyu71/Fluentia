@@ -147,6 +147,11 @@ export const App: React.FC = () => {
       return;
     }
 
+    if (!encryptionReady) {
+      setTransportSummary('Transport: WebSocket active · BLE upgrade available after QR pairing');
+      return;
+    }
+
     if (blePairing.error) {
       setTransportSummary('Transport: WebSocket active · BLE pairing error');
       return;
@@ -180,6 +185,7 @@ export const App: React.FC = () => {
     blePairing.isSupported,
     blePairing.isTransportReady,
     blePairing.verificationCode,
+    encryptionReady,
   ]);
 
   // Swipe state
@@ -461,6 +467,7 @@ export const App: React.FC = () => {
         encryptionReady={encryptionReady}
         pendingStatus={pendingStatus}
         transportSummary={transportSummary}
+        showBluetoothIndicator={blePairing.isSupported}
       />
 
       {/* Error banner */}
@@ -507,7 +514,7 @@ export const App: React.FC = () => {
       {/* Main Content — swipeable pages */}
       <div style={{ flex: 1, overflow: 'hidden' }}>
         {showFullScanner ? (
-          <QRScanner onScan={handleScan} deviceId={deviceId} blePairing={blePairing} />
+          <QRScanner onScan={handleScan} deviceId={deviceId} />
         ) : (
           <div
             ref={swipeContainerRef}
@@ -533,6 +540,7 @@ export const App: React.FC = () => {
                 onCancelPendingConnection={handleCancelPendingConnection}
                 inputResetVersion={inputResetVersion}
                 incomingTransferBatch={incomingTransferBatch}
+                blePairing={blePairing}
               />
             </div>
             <div className="swipe-page">
@@ -557,7 +565,6 @@ export const App: React.FC = () => {
         <QRScanner
           onScan={handleScan}
           deviceId={deviceId}
-          blePairing={blePairing}
           overlay
           onClose={() => setScannerOverlay(false)}
         />

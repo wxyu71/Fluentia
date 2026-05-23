@@ -1,5 +1,5 @@
 import React from 'react';
-import { LockIcon } from './Icons';
+import { BluetoothIcon, LockIcon } from './Icons';
 import type { ConnectionState } from '../types';
 
 const APP_VERSION = __APP_VERSION__;
@@ -10,9 +10,10 @@ interface HeaderProps {
   encryptionReady: boolean;
   pendingStatus?: string | null;
   transportSummary?: string;
+  showBluetoothIndicator?: boolean;
 }
 
-export const Header: React.FC<HeaderProps> = ({ connectionState, peerConnected, encryptionReady, pendingStatus, transportSummary }) => {
+export const Header: React.FC<HeaderProps> = ({ connectionState, peerConnected, encryptionReady, pendingStatus, transportSummary, showBluetoothIndicator }) => {
   const statusText = (): string => {
     if (pendingStatus && connectionState !== 'preempted' && !encryptionReady) {
       return pendingStatus;
@@ -67,7 +68,11 @@ export const Header: React.FC<HeaderProps> = ({ connectionState, peerConnected, 
           fontSize: 11,
           color: 'var(--text-secondary)',
           letterSpacing: '0.03em',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
         }}>
+          {showBluetoothIndicator && <BluetoothIcon size={12} color="var(--accent)" />}
           {transportSummary ?? 'Transport: WebSocket data channel · BLE pairing available'}
         </span>
       </div>
