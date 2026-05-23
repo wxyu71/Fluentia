@@ -835,6 +835,7 @@ export function useWebSocket(
         console.log('[onclose] BLE ready — keeping encryption, setting connecting');
         // BLE transport is still active — keep encryption state intact,
         // just mark WS as reconnecting so the UI shows BLE-only mode.
+        setLastError(null);
         setConnectionState('connecting');
         connectionStateRef.current = 'connecting';
         setPendingStatus('Reconnecting...');

@@ -279,9 +279,9 @@ export function useBlePairing(
       seq: message.seq,
       version: PROTOCOL_VERSION,
     }).catch(() => {
-      setError('BLE transport send failed');
-      setStatus('BLE transport error');
-      setIsTransportReady(false);
+      // Don't permanently disable transport on a single transient GATT failure.
+      // Mobile BLE writes can fail momentarily (radio interference, brief disconnect).
+      // Only surface the error; the connection state machine will handle recovery.
     });
 
     return true;
