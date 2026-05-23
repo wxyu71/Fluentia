@@ -42,15 +42,6 @@ function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
 }
 
-async function requestGrantedDevice(): Promise<BluetoothDevice | null> {
-  if (typeof navigator.bluetooth.getDevices !== 'function') {
-    return null;
-  }
-
-  const devices = await navigator.bluetooth.getDevices();
-  return devices[0] ?? null;
-}
-
 export function useBlePairing(onConnectionInfo: (info: ConnectionInfo) => void, deviceId: string): UseBlePairingResult {
   const [isAvailable, setIsAvailable] = useState(false);
   const [status, setStatus] = useState('BLE not requested');
@@ -160,19 +151,19 @@ export function useBlePairing(onConnectionInfo: (info: ConnectionInfo) => void, 
 
     setIsConnecting(true);
     setError(null);
-    setStatus('Requesting Bluetooth device');
+    setStatus('Searching nearby PC');
     setVerificationCode(null);
     handshakeRef.current = createBlePairingHandshake();
 
     try {
-      const device = await requestGrantedDevice() ?? await navigator.bluetooth.requestDevice({
-        acceptAllDevices: true,
+      const device = await navigator.bluetooth.requestDevice({
+        filters: [{ services: [BLE_SERVICE_UUID] }],
         optionalServices: [BLE_SERVICE_UUID],
       });
 
       deviceRef.current = device;
-      setDeviceName(device.name ?? 'Fluentia BLE device');
-      setStatus('Connecting to BLE device');
+      setDeviceName(device.name ?? 'Fluentia nearby PC');
+      setStatus('Connecting over BLE');
 
       const server = await device.gatt?.connect();
       if (!server) {
@@ -201,7 +192,7 @@ export function useBlePairing(onConnectionInfo: (info: ConnectionInfo) => void, 
         version: PROTOCOL_VERSION,
       })));
 
-      setStatus('BLE connected. Waiting for PC verification');
+      setStatus('Check the 6-digit code');
     } catch (caughtError) {
       const message = caughtError instanceof Error ? caughtError.message : 'BLE pairing failed';
       setError(message);

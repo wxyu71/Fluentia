@@ -65,15 +65,16 @@ export const Header: React.FC<HeaderProps> = ({ connectionState, peerConnected, 
           </span>
         </div>
         <span style={{
-          fontSize: 11,
+          fontSize: 10,
           color: 'var(--text-secondary)',
           letterSpacing: '0.03em',
           display: 'flex',
           alignItems: 'center',
           gap: 6,
+          lineHeight: 1.2,
         }}>
           {showBluetoothIndicator && <BluetoothIcon size={12} color="var(--accent)" />}
-          {transportSummary ?? 'Transport: WebSocket data channel · BLE pairing available'}
+          {transportSummary ?? 'WS + BLE available'}
         </span>
       </div>
 

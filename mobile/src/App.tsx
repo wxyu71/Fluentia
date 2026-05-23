@@ -88,8 +88,8 @@ export const App: React.FC = () => {
   const [maxFileMB, setMaxFileMB] = useState(0);
   const [transportSummary, setTransportSummary] = useState(() =>
     typeof navigator !== 'undefined' && 'bluetooth' in navigator
-      ? 'Transport: WebSocket data channel · BLE pairing available'
-      : 'Transport: WebSocket only · BLE unsupported in this browser'
+      ? 'WS + BLE available'
+      : 'WS only'
   );
   const connectRef = useRef<(info: ConnectionInfo) => void>(() => undefined);
   const fetchConfigRef = useRef<(info: ConnectionInfo) => void>(() => undefined);
@@ -143,41 +143,41 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     if (!blePairing.isSupported) {
-      setTransportSummary('Transport: WebSocket only · BLE unsupported in this browser');
+      setTransportSummary('WS only');
       return;
     }
 
     if (!encryptionReady) {
-      setTransportSummary('Transport: WebSocket active · BLE upgrade available after QR pairing');
+      setTransportSummary('WS active');
       return;
     }
 
     if (blePairing.error) {
-      setTransportSummary('Transport: WebSocket active · BLE pairing error');
+      setTransportSummary('BLE error');
       return;
     }
 
     if (blePairing.isTransportReady) {
-      setTransportSummary('Transport: WebSocket active · BLE fallback ready');
+      setTransportSummary('WS + BLE ready');
       return;
     }
 
     if (blePairing.verificationCode) {
-      setTransportSummary('Transport: WebSocket active · BLE verification pending');
+      setTransportSummary('BLE verify');
       return;
     }
 
     if (blePairing.isConnecting) {
-      setTransportSummary('Transport: WebSocket active · Connecting over BLE');
+      setTransportSummary('BLE connecting');
       return;
     }
 
     if (!blePairing.isAvailable) {
-      setTransportSummary('Transport: WebSocket active · BLE adapter unavailable');
+      setTransportSummary('BLE off');
       return;
     }
 
-    setTransportSummary('Transport: WebSocket active · BLE pairing available');
+    setTransportSummary('WS + BLE available');
   }, [
     blePairing.error,
     blePairing.isAvailable,

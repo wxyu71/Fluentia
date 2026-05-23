@@ -24,47 +24,55 @@ export const BlePairingCard: React.FC<BlePairingCardProps> = ({
   onRequestPairing,
   onDisconnect,
 }) => {
+  const statusLine = [status, deviceName].filter(Boolean).join(' · ');
+
   return (
-    <div className="glass" style={{ padding: 18, marginBottom: 16, width: '100%' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-        <BluetoothIcon size={18} color="var(--accent)" />
-        <h3 style={{ fontSize: 15, fontWeight: 600 }}>Bluetooth Pairing</h3>
-      </div>
-      <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 12 }}>
-        {isSupported
-          ? 'QR secure pairing is already active. Use nearby BLE as an extra local transport channel.'
-          : 'This browser does not support Web Bluetooth, so BLE pairing is unavailable here.'}
+    <div className="glass glass-xs" style={{ padding: '12px 14px', marginBottom: 12, width: '100%' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+          <BluetoothIcon size={16} color="var(--accent)" />
+          <h3 style={{ fontSize: 13, fontWeight: 600, margin: 0 }}>BLE</h3>
+        </div>
+        <span style={{ fontSize: 11, color: 'var(--text-secondary)', flexShrink: 0 }}>
+          {isAvailable ? 'Nearby' : 'Off'}
+        </span>
       </div>
 
-      <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 10 }}>
-        Status: {status}{deviceName ? ` · ${deviceName}` : ''}{isSupported ? ` · Adapter ${isAvailable ? 'available' : 'unavailable'}` : ''}
+      <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 10, lineHeight: 1.35 }}>
+        {isSupported
+          ? 'Optional nearby fallback after QR pairing.'
+          : 'Web Bluetooth is unavailable in this browser.'}
+      </div>
+
+      <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 10, lineHeight: 1.35 }}>
+        {statusLine}
       </div>
 
       {verificationCode && (
         <div style={{
           marginBottom: 10,
-          padding: '10px 14px',
-          borderRadius: 12,
+          padding: '8px 10px',
+          borderRadius: 10,
           background: 'rgba(255,255,255,0.06)',
-          fontSize: 13,
+          fontSize: 12,
           color: 'var(--text-primary)',
         }}>
-          Compare code with PC: <strong>{verificationCode}</strong>
+          Code <strong>{verificationCode}</strong>
         </div>
       )}
 
       {error && (
-        <div style={{ marginBottom: 10, fontSize: 12, color: 'var(--danger)' }}>
+        <div style={{ marginBottom: 10, fontSize: 11, color: 'var(--danger)', lineHeight: 1.35 }}>
           {error}
         </div>
       )}
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <button className="glass-btn accent" disabled={!isSupported || isConnecting} onClick={onRequestPairing}>
-          <BluetoothIcon size={16} color="white" /> {isConnecting ? 'Connecting...' : 'Connect BLE'}
+        <button className="glass-btn accent" disabled={!isSupported || isConnecting} onClick={onRequestPairing} style={{ fontSize: 12, padding: '8px 12px' }}>
+          <BluetoothIcon size={14} color="white" /> {isConnecting ? 'Connecting...' : 'Pair BLE'}
         </button>
-        <button className="glass-btn" disabled={!deviceName} onClick={onDisconnect}>
-          Disconnect BLE
+        <button className="glass-btn" disabled={!deviceName} onClick={onDisconnect} style={{ fontSize: 12, padding: '8px 12px' }}>
+          Disconnect
         </button>
       </div>
     </div>

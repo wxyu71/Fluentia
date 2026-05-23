@@ -235,7 +235,7 @@ export const InputArea: React.FC<InputAreaProps> = ({
         </div>
       )}
 
-      {encryptionReady && blePairing && (
+      {encryptionReady && blePairing && blePairing.isSupported && !blePairing.isTransportReady && (
         <BlePairingCard
           isSupported={blePairing.isSupported}
           isAvailable={blePairing.isAvailable}
