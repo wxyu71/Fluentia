@@ -380,9 +380,11 @@ export function useWebSocket(
       intentionalCloseRef.current = true;
       closeSocket('cleanup');
     }
-    setPeerConnected(false);
-    setEncryptionState(false);
-    hadEncryptedSessionRef.current = false;
+    if (!bleTransportReadyRef.current) {
+      setPeerConnected(false);
+      setEncryptionState(false);
+      hadEncryptedSessionRef.current = false;
+    }
     setBufferedInputMode(false);
     dropQueuedCommands();
     setPendingStatus(null);
@@ -771,10 +773,12 @@ export function useWebSocket(
 
     setConnectionState('connecting');
     connectionStateRef.current = 'connecting';
-    setPeerConnected(false);
-    setEncryptionState(false);
+    if (!bleTransportReadyRef.current) {
+      setPeerConnected(false);
+      setEncryptionState(false);
+    }
     setLastError(null);
-    setPendingStatus('Joining session');
+    setPendingStatus(bleTransportReadyRef.current ? 'Reconnecting...' : 'Joining session');
     startConnectTimeout();
 
     const ws = createWebSocketTransport(info.s);
