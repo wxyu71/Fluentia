@@ -36,3 +36,6 @@ client/Fluentia/obj/
 *.jar
 *.war
 CLAUDE.md
+
+# specific to this project
+bump-version.ps1
