@@ -38,15 +38,14 @@ function encodeBleEnvelope(message: BleEnvelope): Uint8Array {
   return new TextEncoder().encode(JSON.stringify(message));
 }
 
-function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
-  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
-}
-
 async function writeBleEnvelope(
   characteristic: BluetoothRemoteGATTCharacteristic,
   message: BleEnvelope,
 ): Promise<void> {
-  await characteristic.writeValueWithResponse(toArrayBuffer(encodeBleEnvelope(message)));
+  const bytes = encodeBleEnvelope(message);
+  const ab = new ArrayBuffer(bytes.length);
+  new Uint8Array(ab).set(bytes);
+  await characteristic.writeValueWithResponse(ab);
 }
 
 export function useBlePairing(
