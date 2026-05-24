@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Fluentia.Models;
 using Windows.Devices.Bluetooth;
 using Windows.Devices.Bluetooth.GenericAttributeProfile;
@@ -409,15 +410,25 @@ public sealed class DesktopBlePairingService : IDisposable
 
     private sealed class BleEnvelope
     {
+        [JsonPropertyName("type")]
         public string Type { get; set; } = string.Empty;
+        [JsonPropertyName("publicKey")]
         public string? PublicKey { get; set; }
+        [JsonPropertyName("token")]
         public string? Token { get; set; }
+        [JsonPropertyName("serverUrl")]
         public string? ServerUrl { get; set; }
+        [JsonPropertyName("payload")]
         public string? Payload { get; set; }
+        [JsonPropertyName("nonce")]
         public string? Nonce { get; set; }
+        [JsonPropertyName("seq")]
         public int? Seq { get; set; }
+        [JsonPropertyName("code")]
         public string? Code { get; set; }
+        [JsonPropertyName("approved")]
         public bool Approved { get; set; }
+        [JsonPropertyName("version")]
         public string? Version { get; set; }
     }
 }
