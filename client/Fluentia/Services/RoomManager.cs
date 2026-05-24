@@ -79,6 +79,7 @@ public class RoomManager : IDisposable
             return;
         }
 
+        System.Diagnostics.Debug.WriteLine($"[BLE→PC] payload={msg.Payload?.Length ?? 0}B nonce={msg.Nonce?.Length ?? 0}B seq={msg.Seq?.ToString() ?? "null"} cryptoReady={_crypto.IsReady} ratchetReady={_crypto.RatchetReady}");
         HandleEncrypted(msg);
     }
 
@@ -408,6 +409,8 @@ public class RoomManager : IDisposable
             var cmd = InputCommand.Deserialize(plaintext);
             if (cmd != null)
             {
+                System.Diagnostics.Debug.WriteLine($"[BLE→PC] decrypted OK type={cmd.Type} textLen={cmd.Text?.Length ?? 0}");
+
                 if (cmd.Type == "ratchet_init" && cmd.Seed != null)
                 {
                     _crypto.InitRatchet(cmd.Seed);
@@ -441,9 +444,14 @@ public class RoomManager : IDisposable
 
                 OnInputCommand?.Invoke(cmd);
             }
+            else
+            {
+                System.Diagnostics.Debug.WriteLine("[BLE→PC] decrypted but cmd is null");
+            }
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            System.Diagnostics.Debug.WriteLine($"[BLE→PC] decrypt FAILED: {ex.Message}");
             OnError?.Invoke("Decryption failed");
         }
     }

@@ -151,6 +151,7 @@ export function useBlePairing(
 
       setError(null);
       setStatus('BLE ready');
+      bleConsecutiveFailuresRef.current = 0;
       setIsTransportReady(true);
     } catch (caughtError) {
       helloSentRef.current = false;
@@ -266,6 +267,8 @@ export function useBlePairing(
     }
   }, [authorizedPublicKey, clearAuthTimeout, deviceId, disconnect, handleNotify, isSupported, onAuthorizePublicKey, sendClientHelloIfAuthorized]);
 
+  const bleConsecutiveFailuresRef = useRef(0);
+
   const sendEncryptedMessage = useCallback((message: Pick<WsMessage, 'payload' | 'nonce' | 'seq'>) => {
     const writeCharacteristic = writeCharacteristicRef.current;
     if (!writeCharacteristic || !isTransportReady || !message.payload || !message.nonce) {
@@ -278,10 +281,15 @@ export function useBlePairing(
       nonce: message.nonce,
       seq: message.seq,
       version: PROTOCOL_VERSION,
+    }).then(() => {
+      bleConsecutiveFailuresRef.current = 0;
     }).catch(() => {
-      // Don't permanently disable transport on a single transient GATT failure.
-      // Mobile BLE writes can fail momentarily (radio interference, brief disconnect).
-      // Only surface the error; the connection state machine will handle recovery.
+      bleConsecutiveFailuresRef.current += 1;
+      if (bleConsecutiveFailuresRef.current >= 3) {
+        setError('BLE transport disconnected');
+        setStatus('BLE disconnected');
+        setIsTransportReady(false);
+      }
     });
 
     return true;
