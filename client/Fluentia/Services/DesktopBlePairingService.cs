@@ -140,6 +140,7 @@ public sealed class DesktopBlePairingService : IDisposable
             var request = await args.GetRequestAsync();
             if (request?.Value is null)
             {
+                BleLog.Write("[BLE] WriteRequested: null value");
                 return;
             }
 
@@ -149,9 +150,12 @@ public sealed class DesktopBlePairingService : IDisposable
             var envelope = JsonSerializer.Deserialize<BleEnvelope>(json);
             if (envelope is null)
             {
+                BleLog.Write("[BLE] WriteRequested: null envelope");
                 await SendAsync(new BleEnvelope { Type = "error", Payload = "Invalid BLE payload." });
                 return;
             }
+
+            BleLog.Write($"[BLE] WriteRequested type={envelope.Type} payload={envelope.Payload?.Length ?? 0}B");
 
             if (string.Equals(envelope.Type, MsgTypes.Encrypted, StringComparison.Ordinal))
             {
