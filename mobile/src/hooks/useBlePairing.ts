@@ -76,6 +76,8 @@ export function useBlePairing(
   const helloSentRef = useRef(false);
   const authTimeoutRef = useRef<number | null>(null);
   const [isBleChannelReady, setIsBleChannelReady] = useState(false);
+  const onAuthorizePublicKeyRef = useRef(onAuthorizePublicKey);
+  useEffect(() => { onAuthorizePublicKeyRef.current = onAuthorizePublicKey; }, [onAuthorizePublicKey]);
 
   const isSupported = useMemo(() => typeof navigator !== 'undefined' && 'bluetooth' in navigator, []);
 
@@ -225,10 +227,43 @@ export function useBlePairing(
 
       deviceRef.current = device;
       device.addEventListener('gattserverdisconnected', () => {
-        dlog('BLE', 'gattserverdisconnected fired');
+        dlog('BLE', 'gattserverdisconnected fired — attempting reconnect');
         setIsTransportReady(false);
         setIsBleChannelReady(false);
-        setStatus('BLE disconnected');
+        setStatus('BLE reconnecting...');
+        // Attempt auto-reconnect to the same device
+        void (async () => {
+          for (let attempt = 0; attempt < 5; attempt++) {
+            try {
+              await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+              const server = await device.gatt?.connect();
+              if (!server) continue;
+              serverRef.current = server;
+              const service = await server.getPrimaryService(BLE_SERVICE_UUID).catch(() => null);
+              if (!service) { server.disconnect(); continue; }
+              const notifyChar = await service.getCharacteristic(BLE_NOTIFY_CHARACTERISTIC_UUID);
+              const writeChar = await service.getCharacteristic(BLE_WRITE_CHARACTERISTIC_UUID);
+              notifyCharacteristicRef.current = notifyChar;
+              writeCharacteristicRef.current = writeChar;
+              await notifyChar.startNotifications();
+              notifyChar.addEventListener('characteristicvaluechanged', handleNotify);
+              await writeBleEnvelope(writeChar, {
+                type: 'notify_ready',
+                publicKey: handshakeRef.current.publicKey,
+                version: PROTOCOL_VERSION,
+              });
+              setIsBleChannelReady(true);
+              setStatus('BLE reconnected — authorizing...');
+              onAuthorizePublicKeyRef.current(handshakeRef.current.publicKey);
+              dlog('BLE', `reconnect OK on attempt ${attempt + 1}`);
+              return;
+            } catch (e) {
+              dlog('BLE', `reconnect attempt ${attempt + 1} failed: ${e}`);
+            }
+          }
+          setStatus('BLE reconnect failed');
+          dlog('BLE', 'all reconnect attempts failed');
+        })();
       });
       setDeviceName(device.name ?? 'Fluentia nearby PC');
       setStatus('Connecting over BLE');

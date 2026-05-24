@@ -1,5 +1,5 @@
 // Protocol version — must match server and Windows client
-export const PROTOCOL_VERSION = '1.5.9';
+export const PROTOCOL_VERSION = '1.5.10';
 
 // Protocol message types matching the Go server
 export interface WsMessage {

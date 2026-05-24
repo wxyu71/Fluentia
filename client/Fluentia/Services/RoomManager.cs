@@ -332,7 +332,7 @@ public class RoomManager : IDisposable
             case MsgTypes.PeerLeft:
                 // Don't reset crypto — keep our keypair so mobile can reconnect
                 // with the same QR-authenticated key and re-establish encryption.
-                _crypto.ResetPeerState();
+                // Skip ResetPeerState to preserve ratchet for BLE fallback.
                 _encryptionConfirmed = false;
                 OnMobileDisconnected?.Invoke();
                 OnStatusChanged?.Invoke("Mobile disconnected");
