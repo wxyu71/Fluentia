@@ -42,10 +42,16 @@ async function writeBleEnvelope(
   characteristic: BluetoothRemoteGATTCharacteristic,
   message: BleEnvelope,
 ): Promise<void> {
-  const bytes = encodeBleEnvelope(message);
-  const ab = new ArrayBuffer(bytes.length);
-  new Uint8Array(ab).set(bytes);
-  await characteristic.writeValueWithResponse(ab);
+  const json = JSON.stringify(message);
+  const encoder = new TextEncoder();
+  const bytes = encoder.encode(json);
+  // Web Bluetooth requires an ArrayBuffer, not a TypedArray view.
+  const buffer = new ArrayBuffer(bytes.byteLength);
+  const view = new Uint8Array(buffer);
+  for (let i = 0; i < bytes.byteLength; i++) {
+    view[i] = bytes[i];
+  }
+  await characteristic.writeValueWithResponse(buffer);
 }
 
 export function useBlePairing(

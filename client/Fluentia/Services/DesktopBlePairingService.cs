@@ -144,8 +144,11 @@ public sealed class DesktopBlePairingService : IDisposable
                 return;
             }
 
+            var rawLen = request.Value.Length;
             var json = ReadString(request.Value);
             request.Respond();
+
+            BleLog.Write($"[BLE] WriteRequested rawLen={rawLen} jsonLen={json.Length} json={json[..Math.Min(json.Length, 80)]}");
 
             var envelope = JsonSerializer.Deserialize<BleEnvelope>(json);
             if (envelope is null)
@@ -154,8 +157,6 @@ public sealed class DesktopBlePairingService : IDisposable
                 await SendAsync(new BleEnvelope { Type = "error", Payload = "Invalid BLE payload." });
                 return;
             }
-
-            BleLog.Write($"[BLE] WriteRequested type={envelope.Type} payload={envelope.Payload?.Length ?? 0}B");
 
             if (string.Equals(envelope.Type, MsgTypes.Encrypted, StringComparison.Ordinal))
             {
