@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { dlog } from '../utils/debugLog';
 import { PROTOCOL_VERSION, type ConnectionInfo, type WsMessage } from '../types';
 import {
   BLE_NOTIFY_CHARACTERISTIC_UUID,
@@ -219,6 +220,7 @@ export function useBlePairing(
 
       deviceRef.current = device;
       device.addEventListener('gattserverdisconnected', () => {
+        dlog('BLE', 'gattserverdisconnected fired');
         setIsTransportReady(false);
         setIsBleChannelReady(false);
         setStatus('BLE disconnected');
@@ -277,9 +279,11 @@ export function useBlePairing(
   const sendEncryptedMessage = useCallback((message: Pick<WsMessage, 'payload' | 'nonce' | 'seq'>) => {
     const writeCharacteristic = writeCharacteristicRef.current;
     if (!writeCharacteristic || !isTransportReady || !message.payload || !message.nonce) {
+      dlog('BLE', `send BLOCKED char=${!!writeCharacteristic} ready=${isTransportReady} payload=${!!message.payload} nonce=${!!message.nonce}`);
       return false;
     }
 
+    dlog('BLE', `send payload=${message.payload?.length}B seq=${message.seq}`);
     void writeBleEnvelope(writeCharacteristic, {
       type: 'encrypted',
       payload: message.payload,
@@ -288,8 +292,10 @@ export function useBlePairing(
       version: PROTOCOL_VERSION,
     }).then(() => {
       bleConsecutiveFailuresRef.current = 0;
-    }).catch(() => {
+      dlog('BLE', 'send OK');
+    }).catch((e) => {
       bleConsecutiveFailuresRef.current += 1;
+      dlog('BLE', `send FAIL #${bleConsecutiveFailuresRef.current}: ${e}`);
       if (bleConsecutiveFailuresRef.current >= 3) {
         setError('BLE transport disconnected');
         setStatus('BLE disconnected');

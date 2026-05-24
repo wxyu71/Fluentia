@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { dlog } from '../utils/debugLog';
 import { TRANSPORT_READY_STATE, type TransportConnection } from '../services/transport';
 import { createWebSocketTransport } from '../services/websocketTransport';
 import { CryptoService, type PersistedCryptoSession } from '../utils/crypto';
@@ -810,6 +811,7 @@ export function useWebSocket(
     ws.onclose = () => {
       if (wsRef.current !== ws) return;
 
+      dlog('WS', `onclose ble=${bleTransportReadyRef.current} enc=${encryptionReadyRef.current} vis=${document.visibilityState}`);
       wsRef.current = null;
       clearConnectTimeout();
       clearHandshakeTimer();
@@ -892,6 +894,7 @@ export function useWebSocket(
   const sendEncrypted = useCallback((cmd: InputCommand) => {
     const ws = wsRef.current;
     const sent = sendEncryptedPayload(JSON.stringify(cmd));
+    dlog('SEND', `type=${cmd.type} sent=${sent} ble=${bleTransportReadyRef.current} enc=${encryptionReadyRef.current} ws=${ws?.readyState} conn=${connectionStateRef.current} crypto=${cryptoRef.current.isReady()}`);
     if (sent) {
       return;
     }
