@@ -356,11 +356,11 @@ public class RoomManager : IDisposable
 
             case MsgTypes.Error:
                 // If rejoin failed (session expired/not found), fall back to creating a new session.
+                // Don't reset crypto — keep keypair and ratchet so BLE can continue working.
                 if (_rejoinPending)
                 {
                     _rejoinPending = false;
                     _currentToken = null;
-                    _crypto.Reset();
                     _encryptionConfirmed = false;
                     _trustedSessionEstablished = false;
                     _sessionExpiresAtUtc = null;
@@ -392,7 +392,11 @@ public class RoomManager : IDisposable
     private void HandleEncrypted(WsMessage msg)
     {
         if (msg.Payload == null || msg.Nonce == null) return;
-        if (!_crypto.IsReady) return;
+        if (!_crypto.IsReady)
+        {
+            BleLog.Write($"[BLE→PC] DROPPED: crypto not ready (peerKey={_crypto.PublicKeyBase64?.Length ?? 0}B)");
+            return;
+        }
 
         try
         {
