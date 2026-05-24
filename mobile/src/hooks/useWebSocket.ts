@@ -764,16 +764,18 @@ export function useWebSocket(
     handshakeStartedRef.current = false;
     connInfoRef.current = info;
 
-    const persistedCrypto = loadPersistedCrypto(info);
-    if (persistedCrypto) {
-      cryptoRef.current.importSession(persistedCrypto);
-    } else {
-      cryptoRef.current.reset();
+    if (!bleTransportReadyRef.current) {
+      const persistedCrypto = loadPersistedCrypto(info);
+      if (persistedCrypto) {
+        cryptoRef.current.importSession(persistedCrypto);
+      } else {
+        cryptoRef.current.reset();
+      }
+      if (info.k) {
+        cryptoRef.current.setPeerPublicKey(info.k);
+      }
+      persistCryptoState();
     }
-    if (info.k) {
-      cryptoRef.current.setPeerPublicKey(info.k);
-    }
-    persistCryptoState();
 
     setConnectionState('connecting');
     connectionStateRef.current = 'connecting';
