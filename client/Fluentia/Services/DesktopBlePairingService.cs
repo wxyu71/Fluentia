@@ -324,11 +324,11 @@ public sealed class DesktopBlePairingService : IDisposable
     {
         if (_encryptedMessageSink is null || string.IsNullOrWhiteSpace(envelope.Payload) || string.IsNullOrWhiteSpace(envelope.Nonce))
         {
-            System.Diagnostics.Debug.WriteLine($"[BLE] HandleEncryptedEnvelope: sink={_encryptedMessageSink != null} payload={envelope.Payload?.Length ?? 0} nonce={envelope.Nonce?.Length ?? 0}");
+            BleLog.Write($"[BLE] HandleEncryptedEnvelope: sink={_encryptedMessageSink != null} payload={envelope.Payload?.Length ?? 0} nonce={envelope.Nonce?.Length ?? 0}");
             return;
         }
 
-        System.Diagnostics.Debug.WriteLine($"[BLE] HandleEncryptedEnvelope: forwarding payload={envelope.Payload.Length}B seq={envelope.Seq?.ToString() ?? "null"}");
+        BleLog.Write($"[BLE] HandleEncryptedEnvelope: forwarding payload={envelope.Payload.Length}B seq={envelope.Seq?.ToString() ?? "null"}");
         _encryptedMessageSink(new WsMessage
         {
             Type = MsgTypes.Encrypted,

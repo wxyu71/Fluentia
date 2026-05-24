@@ -218,6 +218,11 @@ export function useBlePairing(
       });
 
       deviceRef.current = device;
+      device.addEventListener('gattserverdisconnected', () => {
+        setIsTransportReady(false);
+        setIsBleChannelReady(false);
+        setStatus('BLE disconnected');
+      });
       setDeviceName(device.name ?? 'Fluentia nearby PC');
       setStatus('Connecting over BLE');
 
