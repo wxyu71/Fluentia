@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
@@ -955,9 +955,9 @@ public partial class MainWindow : Window
 
     private static bool IsInteractiveTitleBarSource(DependencyObject? source)
     {
-         return FindAncestor<System.Windows.Controls.Button>(source) != null ||
-             FindAncestor<System.Windows.Controls.TextBox>(source) != null ||
-             FindAncestor<System.Windows.Controls.ComboBox>(source) != null;
+        return FindAncestor<System.Windows.Controls.Button>(source) != null ||
+            FindAncestor<System.Windows.Controls.TextBox>(source) != null ||
+            FindAncestor<System.Windows.Controls.ComboBox>(source) != null;
     }
 
     private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)

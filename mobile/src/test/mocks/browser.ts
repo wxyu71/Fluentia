@@ -1,3 +1,5 @@
+import { vi } from 'vitest';
+
 /**
  * Reusable browser API mocks for testing.
  * Each factory returns a cleanup function to restore the original.

@@ -31,21 +31,18 @@ type DeviceCodeEntry struct {
 
 // Hub manages all sessions and connected clients.
 type Hub struct {
-	sessions    map[string]*Session
-	clients     map[*Client]bool
-	deviceCodes map[string]*DeviceCodeEntry // code → entry
+	sessions          map[string]*Session
+	clients           map[*Client]bool
+	deviceCodes       map[string]*DeviceCodeEntry // code → entry
 	persistedSessions map[string]persistedSession
-	mu          sync.RWMutex
-	MaxFileMB   int
-	MinVersion  string
-	SessionStorePath string
-	SessionMaxAge time.Duration
-
-	// Rate limiting for device code attempts
-	codeAttempts map[string][]time.Time // IP → timestamps
-	rateMu       sync.Mutex
+	codeAttempts      map[string][]time.Time // IP → timestamps (rate limiting)
+	mu                sync.RWMutex
+	rateMu            sync.Mutex
+	MinVersion        string
+	SessionStorePath  string
+	SessionMaxAge     time.Duration
+	MaxFileMB         int
 }
-
 
 func NewHub(sessionMaxAgeDays int) *Hub {
 	if sessionMaxAgeDays <= 0 {
@@ -53,13 +50,13 @@ func NewHub(sessionMaxAgeDays int) *Hub {
 	}
 
 	return &Hub{
-		sessions:     make(map[string]*Session),
-		clients:      make(map[*Client]bool),
-		deviceCodes:  make(map[string]*DeviceCodeEntry),
+		sessions:          make(map[string]*Session),
+		clients:           make(map[*Client]bool),
+		deviceCodes:       make(map[string]*DeviceCodeEntry),
 		persistedSessions: make(map[string]persistedSession),
-		codeAttempts: make(map[string][]time.Time),
-		MinVersion:   ProtocolVersion,
-		SessionMaxAge: time.Duration(sessionMaxAgeDays) * 24 * time.Hour,
+		codeAttempts:      make(map[string][]time.Time),
+		MinVersion:        ProtocolVersion,
+		SessionMaxAge:     time.Duration(sessionMaxAgeDays) * 24 * time.Hour,
 	}
 }
 
@@ -129,7 +126,9 @@ func (h *Hub) CheckDeviceCodeRateLimit(ip string) bool {
 func generateAlphanumericCode(length int) string {
 	const charset = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789" // no 0/O/1/I to avoid confusion
 	b := make([]byte, length)
-	rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		panic(err)
+	}
 	for i := range b {
 		b[i] = charset[int(b[i])%len(charset)]
 	}
@@ -138,7 +137,9 @@ func generateAlphanumericCode(length int) string {
 
 func generateVerifyID() string {
 	b := make([]byte, 4)
-	rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		panic(err)
+	}
 	return strings.ToUpper(hex.EncodeToString(b))
 }
 
@@ -168,7 +169,7 @@ func (h *Hub) Unregister(c *Client) {
 		// Keep the session reusable until its configured expiry so the desktop can
 		// recover after a restart, power loss, or a longer network outage.
 		if session.Mobile != nil {
-			session.Mobile.SendMessage(Message{Type: MsgPeerLeft, Role: "pc", Error: "temporary"})
+			session.Mobile.SendMessage(&Message{Type: MsgPeerLeft, Role: "pc", Error: "temporary"})
 		}
 		if session.GraceTimer != nil {
 			session.GraceTimer.Stop()
@@ -188,7 +189,7 @@ func (h *Hub) Unregister(c *Client) {
 	} else if c.role == "mobile" {
 		session.Mobile = nil
 		if session.PC != nil {
-			session.PC.SendMessage(Message{Type: MsgPeerLeft, Role: "mobile", DeviceID: c.deviceID})
+			session.PC.SendMessage(&Message{Type: MsgPeerLeft, Role: "mobile", DeviceID: c.deviceID})
 		}
 		log.Printf("Mobile %s left session %s", c.deviceID, shortToken(session.Token))
 	}
@@ -214,7 +215,7 @@ func (h *Hub) expireSession(token string) {
 		session.Mobile = nil
 		mobile.session = nil
 		delete(h.clients, mobile)
-		mobile.SendAndClose(Message{Type: MsgPeerLeft, Role: "pc"})
+		mobile.SendAndClose(&Message{Type: MsgPeerLeft, Role: "pc"})
 	}
 	delete(h.sessions, token)
 	delete(h.persistedSessions, tokenFingerprint(token))
@@ -243,11 +244,11 @@ func (h *Hub) hydratePersistedSessionLocked(token string) (*Session, bool) {
 }
 
 // HandleMessage is called from a client's ReadPump goroutine.
-func (h *Hub) HandleMessage(c *Client, msg Message) {
+func (h *Hub) HandleMessage(c *Client, msg *Message) {
 	// Version check for handshake messages
 	if msg.Type == MsgCreateSession || msg.Type == MsgJoinSession || msg.Type == MsgRejoinSession {
 		if msg.Version != "" && msg.Version != ProtocolVersion {
-			c.SendMessage(Message{
+			c.SendMessage(&Message{
 				Type:    MsgError,
 				Error:   "version mismatch: client=" + msg.Version + " server=" + ProtocolVersion,
 				Version: ProtocolVersion,
@@ -266,7 +267,7 @@ func (h *Hub) HandleMessage(c *Client, msg Message) {
 	case MsgKeyExchange, MsgEncrypted:
 		h.handleRelay(c, msg)
 	case MsgPing:
-		c.SendMessage(Message{Type: MsgPong})
+		c.SendMessage(&Message{Type: MsgPong})
 	case MsgDeviceCodeRequest:
 		h.handleDeviceCodeRequest(c)
 	case MsgDeviceCodeJoin:
@@ -276,7 +277,7 @@ func (h *Hub) HandleMessage(c *Client, msg Message) {
 	case MsgDeviceCodeReject:
 		h.handleDeviceCodeReject(c, msg)
 	default:
-		c.SendMessage(Message{Type: MsgError, Error: "unknown message type: " + msg.Type})
+		c.SendMessage(&Message{Type: MsgError, Error: "unknown message type: " + msg.Type})
 	}
 }
 
@@ -296,7 +297,7 @@ func (h *Hub) handleCreateSession(c *Client) {
 			oldSession.Mobile = nil
 			mobile.session = nil
 			delete(h.clients, mobile)
-			mobile.SendAndClose(Message{Type: MsgPeerLeft, Role: "pc"})
+			mobile.SendAndClose(&Message{Type: MsgPeerLeft, Role: "pc"})
 		}
 		delete(h.sessions, oldSession.Token)
 		delete(h.persistedSessions, tokenFingerprint(oldSession.Token))
@@ -315,22 +316,22 @@ func (h *Hub) handleCreateSession(c *Client) {
 	h.saveSessionsLocked()
 
 	log.Printf("Session created: %s (expires %s)", shortToken(session.Token), session.ExpiresAt.Format(time.RFC3339))
-	c.SendMessage(Message{
-		Type:      MsgSessionCreated,
-		Token:     session.Token,
+	c.SendMessage(&Message{
+		Type:       MsgSessionCreated,
+		Token:      session.Token,
 		MinVersion: h.MinVersion,
-		Version:   ProtocolVersion,
-		ExpiresAt: session.ExpiresAt.Format(time.RFC3339),
+		Version:    ProtocolVersion,
+		ExpiresAt:  session.ExpiresAt.Format(time.RFC3339),
 	})
 }
 
 // handleRejoinSession lets PC reclaim an existing reusable session before expiry.
-func (h *Hub) handleRejoinSession(c *Client, msg Message) {
+func (h *Hub) handleRejoinSession(c *Client, msg *Message) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
 	if msg.Token == "" {
-		c.SendMessage(Message{Type: MsgError, Error: "token required for rejoin"})
+		c.SendMessage(&Message{Type: MsgError, Error: "token required for rejoin"})
 		return
 	}
 
@@ -339,20 +340,20 @@ func (h *Hub) handleRejoinSession(c *Client, msg Message) {
 		var hydrated bool
 		session, hydrated = h.hydratePersistedSessionLocked(msg.Token)
 		if !hydrated {
-			c.SendMessage(Message{Type: MsgError, Error: "session not found"})
+			c.SendMessage(&Message{Type: MsgError, Error: "session not found"})
 			return
 		}
 	}
 	if h.sessionExpiredLocked(session) {
 		delete(h.sessions, session.Token)
 		h.saveSessionsLocked()
-		c.SendMessage(Message{Type: MsgError, Error: "session expired, create a new session"})
+		c.SendMessage(&Message{Type: MsgError, Error: "session expired, create a new session"})
 		return
 	}
 
 	if session.PC != nil {
 		// Session already has a PC — can't rejoin.
-		c.SendMessage(Message{Type: MsgError, Error: "session already has a PC"})
+		c.SendMessage(&Message{Type: MsgError, Error: "session already has a PC"})
 		return
 	}
 
@@ -368,27 +369,27 @@ func (h *Hub) handleRejoinSession(c *Client, msg Message) {
 	session.PC = c
 
 	log.Printf("Session %s: PC rejoined", shortToken(session.Token))
-	c.SendMessage(Message{
-		Type:      MsgRejoined,
-		Token:     session.Token,
+	c.SendMessage(&Message{
+		Type:       MsgRejoined,
+		Token:      session.Token,
 		MinVersion: h.MinVersion,
-		Version:   ProtocolVersion,
-		ExpiresAt: session.ExpiresAt.Format(time.RFC3339),
+		Version:    ProtocolVersion,
+		ExpiresAt:  session.ExpiresAt.Format(time.RFC3339),
 	})
 
 	// Notify both sides about each other.
 	if session.Mobile != nil {
-		session.Mobile.SendMessage(Message{Type: MsgPeerJoined, Role: "pc"})
-		c.SendMessage(Message{Type: MsgPeerJoined, Role: "mobile", DeviceID: session.Mobile.deviceID})
+		session.Mobile.SendMessage(&Message{Type: MsgPeerJoined, Role: "pc"})
+		c.SendMessage(&Message{Type: MsgPeerJoined, Role: "mobile", DeviceID: session.Mobile.deviceID})
 	}
 }
 
-func (h *Hub) handleJoinSession(c *Client, msg Message) {
+func (h *Hub) handleJoinSession(c *Client, msg *Message) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
 	if msg.Token == "" || msg.DeviceID == "" {
-		c.SendMessage(Message{Type: MsgError, Error: "token and deviceId required"})
+		c.SendMessage(&Message{Type: MsgError, Error: "token and deviceId required"})
 		return
 	}
 
@@ -397,14 +398,14 @@ func (h *Hub) handleJoinSession(c *Client, msg Message) {
 		var hydrated bool
 		session, hydrated = h.hydratePersistedSessionLocked(msg.Token)
 		if !hydrated {
-			c.SendMessage(Message{Type: MsgError, Error: "session not found"})
+			c.SendMessage(&Message{Type: MsgError, Error: "session not found"})
 			return
 		}
 	}
 	if h.sessionExpiredLocked(session) {
 		delete(h.sessions, session.Token)
 		h.saveSessionsLocked()
-		c.SendMessage(Message{Type: MsgError, Error: "session expired, scan a new code"})
+		c.SendMessage(&Message{Type: MsgError, Error: "session expired, scan a new code"})
 		return
 	}
 
@@ -419,32 +420,32 @@ func (h *Hub) handleJoinSession(c *Client, msg Message) {
 		session.Mobile = nil
 		old.session = nil
 		delete(h.clients, old)
-		old.SendAndClose(Message{
+		old.SendAndClose(&Message{
 			Type:  MsgPreempted,
 			Error: "another device connected",
 		})
 		if session.PC != nil && !sameDevice {
-			session.PC.SendMessage(Message{Type: MsgPeerLeft, Role: "mobile", DeviceID: old.deviceID})
+			session.PC.SendMessage(&Message{Type: MsgPeerLeft, Role: "mobile", DeviceID: old.deviceID})
 		}
 	}
 
 	session.Mobile = c
 	log.Printf("Device %s joined session %s", c.deviceID, shortToken(session.Token))
 
-	c.SendMessage(Message{Type: MsgJoined, Role: "mobile", Token: session.Token, Version: ProtocolVersion, MinVersion: h.MinVersion})
+	c.SendMessage(&Message{Type: MsgJoined, Role: "mobile", Token: session.Token, Version: ProtocolVersion, MinVersion: h.MinVersion})
 	if session.PC != nil {
-		c.SendMessage(Message{Type: MsgPeerJoined, Role: "pc"})
-		session.PC.SendMessage(Message{Type: MsgPeerJoined, Role: "mobile", DeviceID: c.deviceID})
+		c.SendMessage(&Message{Type: MsgPeerJoined, Role: "pc"})
+		session.PC.SendMessage(&Message{Type: MsgPeerJoined, Role: "mobile", DeviceID: c.deviceID})
 	}
 }
 
 // handleRelay forwards key_exchange and encrypted messages to the peer.
-func (h *Hub) handleRelay(c *Client, msg Message) {
+func (h *Hub) handleRelay(c *Client, msg *Message) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
 	if c.session == nil {
-		c.SendMessage(Message{Type: MsgError, Error: "not in a session"})
+		c.SendMessage(&Message{Type: MsgError, Error: "not in a session"})
 		return
 	}
 
@@ -456,7 +457,7 @@ func (h *Hub) handleRelay(c *Client, msg Message) {
 	}
 
 	if peer == nil {
-		c.SendMessage(Message{Type: MsgError, Error: "no peer connected"})
+		c.SendMessage(&Message{Type: MsgError, Error: "no peer connected"})
 		return
 	}
 
@@ -466,7 +467,7 @@ func (h *Hub) handleRelay(c *Client, msg Message) {
 // handleDeviceCodeRequest: PC requests a device code for its session.
 func (h *Hub) handleDeviceCodeRequest(c *Client) {
 	if c.session == nil {
-		c.SendMessage(Message{Type: MsgError, Error: "create a session first"})
+		c.SendMessage(&Message{Type: MsgError, Error: "create a session first"})
 		return
 	}
 
@@ -474,30 +475,30 @@ func (h *Hub) handleDeviceCodeRequest(c *Client) {
 	expired := h.sessionExpiredLocked(c.session)
 	h.mu.RUnlock()
 	if expired {
-		c.SendMessage(Message{Type: MsgError, Error: "session expired, create a new session"})
+		c.SendMessage(&Message{Type: MsgError, Error: "session expired, create a new session"})
 		return
 	}
 
 	code := h.GenerateDeviceCode(c.session, c)
-	c.SendMessage(Message{Type: MsgDeviceCodeCreated, DeviceCode: code})
+	c.SendMessage(&Message{Type: MsgDeviceCodeCreated, DeviceCode: code})
 	log.Printf("Device code %s created for session %s", code, shortToken(c.session.Token))
 }
 
 // handleDeviceCodeJoin: mobile submits a device code to join.
-func (h *Hub) handleDeviceCodeJoin(c *Client, msg Message) {
+func (h *Hub) handleDeviceCodeJoin(c *Client, msg *Message) {
 	// Rate limiting
 	ip := ""
 	if c.conn != nil {
 		ip = c.conn.RemoteAddr().String()
 	}
 	if h.CheckDeviceCodeRateLimit(ip) {
-		c.SendMessage(Message{Type: MsgError, Error: "too many attempts, try again later"})
+		c.SendMessage(&Message{Type: MsgError, Error: "too many attempts, try again later"})
 		return
 	}
 
 	code := strings.ToUpper(strings.TrimSpace(msg.DeviceCode))
 	if code == "" {
-		c.SendMessage(Message{Type: MsgError, Error: "device code required"})
+		c.SendMessage(&Message{Type: MsgError, Error: "device code required"})
 		return
 	}
 
@@ -509,7 +510,7 @@ func (h *Hub) handleDeviceCodeJoin(c *Client, msg Message) {
 		if ok {
 			delete(h.deviceCodes, code)
 		}
-		c.SendMessage(Message{Type: MsgError, Error: "invalid or expired device code"})
+		c.SendMessage(&Message{Type: MsgError, Error: "invalid or expired device code"})
 		return
 	}
 
@@ -521,7 +522,7 @@ func (h *Hub) handleDeviceCodeJoin(c *Client, msg Message) {
 
 	// Notify PC to confirm — include mobile's user agent and verify ID
 	if entry.PC != nil {
-		entry.PC.SendMessage(Message{
+		entry.PC.SendMessage(&Message{
 			Type:       MsgDeviceCodePending,
 			DeviceCode: code,
 			VerifyID:   verifyID,
@@ -531,21 +532,21 @@ func (h *Hub) handleDeviceCodeJoin(c *Client, msg Message) {
 	}
 
 	// Tell mobile to wait for confirmation
-	c.SendMessage(Message{
+	c.SendMessage(&Message{
 		Type:     MsgDeviceCodePending,
 		VerifyID: verifyID,
 	})
 }
 
 // handleDeviceCodeConfirm: PC approves the device code join.
-func (h *Hub) handleDeviceCodeConfirm(c *Client, msg Message) {
+func (h *Hub) handleDeviceCodeConfirm(c *Client, msg *Message) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
 	code := msg.DeviceCode
 	entry, ok := h.deviceCodes[code]
 	if !ok || entry.Pending == nil || entry.PC != c {
-		c.SendMessage(Message{Type: MsgError, Error: "no pending request"})
+		c.SendMessage(&Message{Type: MsgError, Error: "no pending request"})
 		return
 	}
 
@@ -562,9 +563,9 @@ func (h *Hub) handleDeviceCodeConfirm(c *Client, msg Message) {
 		session.Mobile = nil
 		old.session = nil
 		delete(h.clients, old)
-		old.SendAndClose(Message{Type: MsgPreempted, Error: "another device connected"})
+		old.SendAndClose(&Message{Type: MsgPreempted, Error: "another device connected"})
 		if session.PC != nil && !sameDevice {
-			session.PC.SendMessage(Message{Type: MsgPeerLeft, Role: "mobile", DeviceID: old.deviceID})
+			session.PC.SendMessage(&Message{Type: MsgPeerLeft, Role: "mobile", DeviceID: old.deviceID})
 		}
 	}
 
@@ -572,7 +573,7 @@ func (h *Hub) handleDeviceCodeConfirm(c *Client, msg Message) {
 	delete(h.deviceCodes, code)
 
 	// Send session token and PC's public key to mobile
-	mobile.SendMessage(Message{
+	mobile.SendMessage(&Message{
 		Type:      MsgJoined,
 		Role:      "mobile",
 		Token:     session.Token,
@@ -581,15 +582,15 @@ func (h *Hub) handleDeviceCodeConfirm(c *Client, msg Message) {
 		Approved:  true,
 	})
 	if session.PC != nil {
-		mobile.SendMessage(Message{Type: MsgPeerJoined, Role: "pc"})
-		session.PC.SendMessage(Message{Type: MsgPeerJoined, Role: "mobile", DeviceID: mobile.deviceID})
+		mobile.SendMessage(&Message{Type: MsgPeerJoined, Role: "pc"})
+		session.PC.SendMessage(&Message{Type: MsgPeerJoined, Role: "mobile", DeviceID: mobile.deviceID})
 	}
 
 	log.Printf("Device code %s confirmed, device joined session %s", code, shortToken(session.Token))
 }
 
 // handleDeviceCodeReject: PC rejects the device code join.
-func (h *Hub) handleDeviceCodeReject(c *Client, msg Message) {
+func (h *Hub) handleDeviceCodeReject(c *Client, msg *Message) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -600,7 +601,7 @@ func (h *Hub) handleDeviceCodeReject(c *Client, msg Message) {
 	}
 
 	if entry.Pending != nil {
-		entry.Pending.SendMessage(Message{Type: MsgError, Error: "connection rejected by PC"})
+		entry.Pending.SendMessage(&Message{Type: MsgError, Error: "connection rejected by PC"})
 	}
 	entry.Pending = nil
 	entry.VerifyID = ""

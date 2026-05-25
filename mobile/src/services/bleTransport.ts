@@ -23,7 +23,7 @@ import {
 const POLL_INTERVAL_MS = 500; // poll PC for pending messages every 500ms
 
 export class BleTransport implements TransportConnection {
-  private _readyState = TRANSPORT_READY_STATE.CLOSED;
+  private _readyState: (typeof TRANSPORT_READY_STATE)[keyof typeof TRANSPORT_READY_STATE] = TRANSPORT_READY_STATE.CLOSED;
   private _notifyCharacteristic: BluetoothRemoteGATTCharacteristic | null = null;
   private _writeCharacteristic: BluetoothRemoteGATTCharacteristic | null = null;
   private _pollTimer: ReturnType<typeof setInterval> | null = null;

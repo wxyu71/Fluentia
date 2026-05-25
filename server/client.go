@@ -43,9 +43,9 @@ func (c *Client) ReadPump() {
 	}()
 
 	c.conn.SetReadLimit(maxMessageSize)
-	c.conn.SetReadDeadline(time.Now().Add(pongWait))
+	_ = c.conn.SetReadDeadline(time.Now().Add(pongWait))
 	c.conn.SetPongHandler(func(string) error {
-		c.conn.SetReadDeadline(time.Now().Add(pongWait))
+		_ = c.conn.SetReadDeadline(time.Now().Add(pongWait))
 		return nil
 	})
 
@@ -60,11 +60,11 @@ func (c *Client) ReadPump() {
 
 		var msg Message
 		if err := json.Unmarshal(data, &msg); err != nil {
-			c.SendMessage(Message{Type: MsgError, Error: "invalid message format"})
+			c.SendMessage(&Message{Type: MsgError, Error: "invalid message format"})
 			continue
 		}
 
-		c.hub.HandleMessage(c, msg)
+		c.hub.HandleMessage(c, &msg)
 	}
 }
 
@@ -79,16 +79,16 @@ func (c *Client) WritePump() {
 	for {
 		select {
 		case message, ok := <-c.send:
-			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+			_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if !ok {
-				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
+				_ = c.conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
 			if err := c.conn.WriteMessage(websocket.TextMessage, message); err != nil {
 				return
 			}
 		case <-ticker.C:
-			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+			_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				return
 			}
@@ -97,7 +97,7 @@ func (c *Client) WritePump() {
 }
 
 // SendMessage marshals and enqueues a message for sending (non-blocking).
-func (c *Client) SendMessage(msg Message) {
+func (c *Client) SendMessage(msg *Message) {
 	data, err := json.Marshal(msg)
 	if err != nil {
 		log.Printf("marshal error: %v", err)
@@ -111,7 +111,7 @@ func (c *Client) SendMessage(msg Message) {
 }
 
 // SendAndClose sends a final message then closes the send channel.
-func (c *Client) SendAndClose(msg Message) {
+func (c *Client) SendAndClose(msg *Message) {
 	c.closeOnce.Do(func() {
 		data, _ := json.Marshal(msg)
 		select {

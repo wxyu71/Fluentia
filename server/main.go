@@ -13,28 +13,28 @@ import (
 
 // ServerConfig holds all environment-driven settings.
 type ServerConfig struct {
-	Port          string
-	StaticDir     string
-	MinVersion    string
+	AllowedIPs       []string // if non-empty, only these IPs may connect
+	Port             string
+	StaticDir        string
+	MinVersion       string
 	SessionStorePath string
-	SecretPath    string   // if set, WS is served at /ws/<secret> instead of /ws
-	AllowedIPs    []string // if non-empty, only these IPs may connect
-	MaxFileMB     int      // -1=disabled, 0=unlimited, N=N MB
-	MobileExpiry  int      // seconds after mobile disconnects before PC shows window (default 60)
-	SessionMaxAge int      // how long a session token remains reusable, in days
-	PrivateMode   bool     // require SecretPath
-	IPWhitelist   bool     // enforce AllowedIPs
+	SecretPath       string // if set, WS is served at /ws/<secret> instead of /ws
+	MaxFileMB        int    // -1=disabled, 0=unlimited, N=N MB
+	MobileExpiry     int    // seconds after mobile disconnects before PC shows window (default 60)
+	SessionMaxAge    int    // how long a session token remains reusable, in days
+	PrivateMode      bool   // require SecretPath
+	IPWhitelist      bool   // enforce AllowedIPs
 }
 
 func loadConfig() ServerConfig {
 	cfg := ServerConfig{
-		Port:         envOr("PORT", "8080"),
-		StaticDir:    envOr("STATIC_DIR", "./static"),
-		MinVersion:   envOr("MIN_VERSION", ProtocolVersion),
+		Port:             envOr("PORT", "8080"),
+		StaticDir:        envOr("STATIC_DIR", "./static"),
+		MinVersion:       envOr("MIN_VERSION", ProtocolVersion),
 		SessionStorePath: envOr("SESSION_STORE_PATH", "./data/sessions.json"),
-		MaxFileMB:    envInt("MAX_FILE_MB", -1),
-		MobileExpiry: envInt("MOBILE_EXPIRY_SECS", 60),
-		SessionMaxAge: envInt("SESSION_MAX_AGE_DAYS", 7),
+		MaxFileMB:        envInt("MAX_FILE_MB", -1),
+		MobileExpiry:     envInt("MOBILE_EXPIRY_SECS", 60),
+		SessionMaxAge:    envInt("SESSION_MAX_AGE_DAYS", 7),
 	}
 
 	cfg.SecretPath = os.Getenv("SECRET_PATH")
@@ -81,7 +81,7 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin:     func(r *http.Request) bool { return true },
 }
 
-func serveWs(hub *Hub, cfg ServerConfig, w http.ResponseWriter, r *http.Request) {
+func serveWs(hub *Hub, cfg *ServerConfig, w http.ResponseWriter, r *http.Request) {
 	// IP whitelist enforcement
 	if cfg.IPWhitelist && len(cfg.AllowedIPs) > 0 {
 		clientIP := extractIP(r)
@@ -146,7 +146,7 @@ func main() {
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"ok","version":"` + ProtocolVersion + `"}`))
+		_, _ = w.Write([]byte(`{"status":"ok","version":"` + ProtocolVersion + `"}`))
 	})
 
 	// WebSocket endpoint — optionally behind a secret path
@@ -156,7 +156,7 @@ func main() {
 		log.Printf("Private mode: WebSocket path = %s", wsPath)
 	}
 	mux.HandleFunc(wsPath, func(w http.ResponseWriter, r *http.Request) {
-		serveWs(hub, cfg, w, r)
+		serveWs(hub, &cfg, w, r)
 	})
 
 	// Config endpoint (non-sensitive info for clients)
@@ -165,7 +165,7 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 		fileEnabled := cfg.MaxFileMB != -1
 		maxMB := cfg.MaxFileMB
-		w.Write([]byte(`{"version":"` + ProtocolVersion + `","minVersion":"` + cfg.MinVersion + `","fileTransfer":` +
+		_, _ = w.Write([]byte(`{"version":"` + ProtocolVersion + `","minVersion":"` + cfg.MinVersion + `","fileTransfer":` +
 			strconv.FormatBool(fileEnabled) + `,"maxFileMB":` + strconv.Itoa(maxMB) +
 			`,"mobileExpirySecs":` + strconv.Itoa(cfg.MobileExpiry) +
 			`,"sessionMaxAgeDays":` + strconv.Itoa(cfg.SessionMaxAge) + `}`))
@@ -180,7 +180,7 @@ func main() {
 		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "text/plain")
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("Fluentia Relay Server"))
+			_, _ = w.Write([]byte("Fluentia Relay Server"))
 		})
 	}
 

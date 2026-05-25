@@ -11,6 +11,14 @@ declare const __APP_VERSION__: string;
 
 interface Navigator {
   bluetooth: Bluetooth;
+  getBattery?: () => Promise<BatteryManager>;
+}
+
+interface BatteryManager extends EventTarget {
+  charging: boolean;
+  chargingTime: number;
+  dischargingTime: number;
+  level: number;
 }
 
 interface Bluetooth {

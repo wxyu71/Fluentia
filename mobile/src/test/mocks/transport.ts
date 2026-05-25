@@ -7,7 +7,7 @@ import type { TransportConnection, TransportMessageEvent } from '../../services/
 import { TRANSPORT_READY_STATE } from '../../services/transport';
 
 export class MockTransport implements TransportConnection {
-  readyState = TRANSPORT_READY_STATE.OPEN;
+  readyState: (typeof TRANSPORT_READY_STATE)[keyof typeof TRANSPORT_READY_STATE] = TRANSPORT_READY_STATE.OPEN;
   sent: string[] = [];
   onopen: (() => void) | null = null;
   onmessage: ((event: TransportMessageEvent) => void) | null = null;

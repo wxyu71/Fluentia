@@ -251,11 +251,6 @@ describe('CryptoService', () => {
       const { seed: mobileSeed } = mobile.initRatchet();
       pc.initRecvRatchet(mobileSeed);
 
-      // PC initiates send ratchet (for PC->mobile direction)
-      const pcSeedBase64 = pc.initSendRatchet
-        ? undefined // TypeScript CryptoService doesn't have initSendRatchet
-        : undefined;
-
       // Mobile sends 3 messages
       const m1 = mobile.encryptRatcheted('mobile msg 1');
       const m2 = mobile.encryptRatcheted('mobile msg 2');

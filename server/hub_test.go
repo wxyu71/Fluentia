@@ -9,7 +9,7 @@ import (
 
 // newTestHub creates a Hub for testing with a short session max age.
 func newTestHub() *Hub {
-	h := NewHub(1) // 1 day
+	h := NewHub(1)          // 1 day
 	h.SessionStorePath = "" // disable persistence for unit tests
 	return h
 }
@@ -160,7 +160,7 @@ func TestHandleMessage_VersionMismatch(t *testing.T) {
 	h := newTestHub()
 	c := newTestClient(h, "")
 
-	h.HandleMessage(c, Message{
+	h.HandleMessage(c, &Message{
 		Type:    MsgCreateSession,
 		Version: "0.0.0", // wrong version
 	})
@@ -178,7 +178,7 @@ func TestHandleCreateSession(t *testing.T) {
 	h := newTestHub()
 	pc := newTestClient(h, "")
 
-	h.HandleMessage(pc, Message{Type: MsgCreateSession})
+	h.HandleMessage(pc, &Message{Type: MsgCreateSession})
 
 	msg := lastMessage(pc)
 	if msg.Type != MsgSessionCreated {
@@ -212,11 +212,11 @@ func TestHandleJoinSession_Success(t *testing.T) {
 	mobile := newTestClient(h, "")
 
 	// PC creates session
-	h.HandleMessage(pc, Message{Type: MsgCreateSession})
+	h.HandleMessage(pc, &Message{Type: MsgCreateSession})
 	created := lastMessage(pc)
 
 	// Mobile joins
-	h.HandleMessage(mobile, Message{
+	h.HandleMessage(mobile, &Message{
 		Type:     MsgJoinSession,
 		Token:    created.Token,
 		DeviceID: "device-123",
@@ -258,7 +258,7 @@ func TestHandleJoinSession_SessionNotFound(t *testing.T) {
 	h := newTestHub()
 	mobile := newTestClient(h, "")
 
-	h.HandleMessage(mobile, Message{
+	h.HandleMessage(mobile, &Message{
 		Type:     MsgJoinSession,
 		Token:    "nonexistent",
 		DeviceID: "device-123",
@@ -277,15 +277,15 @@ func TestHandleJoinSession_Preempt(t *testing.T) {
 	mobile2 := newTestClient(h, "")
 
 	// PC creates session
-	h.HandleMessage(pc, Message{Type: MsgCreateSession})
+	h.HandleMessage(pc, &Message{Type: MsgCreateSession})
 	token := lastMessage(pc).Token
 
 	// Mobile 1 joins
-	h.HandleMessage(mobile1, Message{Type: MsgJoinSession, Token: token, DeviceID: "device-1"})
+	h.HandleMessage(mobile1, &Message{Type: MsgJoinSession, Token: token, DeviceID: "device-1"})
 	readMessages(mobile1) // drain
 
 	// Mobile 2 joins (should preempt mobile 1)
-	h.HandleMessage(mobile2, Message{Type: MsgJoinSession, Token: token, DeviceID: "device-2"})
+	h.HandleMessage(mobile2, &Message{Type: MsgJoinSession, Token: token, DeviceID: "device-2"})
 
 	// Mobile 1 should receive 'preempted'
 	m1Msgs := readMessages(mobile1)
@@ -318,14 +318,14 @@ func TestHandleRelay_ForwardsToPeer(t *testing.T) {
 	mobile := newTestClient(h, "")
 
 	// Setup session with both peers
-	h.HandleMessage(pc, Message{Type: MsgCreateSession})
+	h.HandleMessage(pc, &Message{Type: MsgCreateSession})
 	token := lastMessage(pc).Token
-	h.HandleMessage(mobile, Message{Type: MsgJoinSession, Token: token, DeviceID: "d1"})
+	h.HandleMessage(mobile, &Message{Type: MsgJoinSession, Token: token, DeviceID: "d1"})
 	readMessages(pc)
 	readMessages(mobile)
 
 	// PC sends key_exchange, should be relayed to mobile
-	h.HandleMessage(pc, Message{
+	h.HandleMessage(pc, &Message{
 		Type:      MsgKeyExchange,
 		PublicKey: "test-key",
 	})
@@ -341,7 +341,7 @@ func TestHandleRelay_ForwardsToPeer(t *testing.T) {
 	}
 
 	// Mobile sends encrypted, should be relayed to PC
-	h.HandleMessage(mobile, Message{
+	h.HandleMessage(mobile, &Message{
 		Type:    MsgEncrypted,
 		Payload: "encrypted-data",
 	})
@@ -361,11 +361,11 @@ func TestHandleRelay_NoPeer(t *testing.T) {
 	h := newTestHub()
 	pc := newTestClient(h, "")
 
-	h.HandleMessage(pc, Message{Type: MsgCreateSession})
+	h.HandleMessage(pc, &Message{Type: MsgCreateSession})
 	readMessages(pc)
 
 	// PC sends key_exchange with no mobile connected
-	h.HandleMessage(pc, Message{Type: MsgKeyExchange, PublicKey: "key"})
+	h.HandleMessage(pc, &Message{Type: MsgKeyExchange, PublicKey: "key"})
 	msg := lastMessage(pc)
 	if msg.Type != MsgError {
 		t.Errorf("expected error, got %s", msg.Type)
@@ -376,7 +376,7 @@ func TestHandleRelay_NotInSession(t *testing.T) {
 	h := newTestHub()
 	c := newTestClient(h, "")
 
-	h.HandleMessage(c, Message{Type: MsgKeyExchange, PublicKey: "key"})
+	h.HandleMessage(c, &Message{Type: MsgKeyExchange, PublicKey: "key"})
 	msg := lastMessage(c)
 	if msg.Type != MsgError {
 		t.Errorf("expected error, got %s", msg.Type)
@@ -387,7 +387,7 @@ func TestHandlePing(t *testing.T) {
 	h := newTestHub()
 	c := newTestClient(h, "")
 
-	h.HandleMessage(c, Message{Type: MsgPing})
+	h.HandleMessage(c, &Message{Type: MsgPing})
 	msg := lastMessage(c)
 	if msg.Type != MsgPong {
 		t.Errorf("expected pong, got %s", msg.Type)
@@ -398,7 +398,7 @@ func TestHandleUnknownMessage(t *testing.T) {
 	h := newTestHub()
 	c := newTestClient(h, "")
 
-	h.HandleMessage(c, Message{Type: "unknown_type_xyz"})
+	h.HandleMessage(c, &Message{Type: "unknown_type_xyz"})
 	msg := lastMessage(c)
 	if msg.Type != MsgError {
 		t.Errorf("expected error, got %s", msg.Type)
@@ -454,11 +454,11 @@ func TestHandleDeviceCodeRequest_Success(t *testing.T) {
 	pc := newTestClient(h, "pc")
 
 	// PC creates session first
-	h.HandleMessage(pc, Message{Type: MsgCreateSession})
+	h.HandleMessage(pc, &Message{Type: MsgCreateSession})
 	readMessages(pc)
 
 	// Request device code
-	h.HandleMessage(pc, Message{Type: MsgDeviceCodeRequest})
+	h.HandleMessage(pc, &Message{Type: MsgDeviceCodeRequest})
 	msg := lastMessage(pc)
 	if msg.Type != MsgDeviceCodeCreated {
 		t.Fatalf("expected device_code_created, got %s", msg.Type)
@@ -475,7 +475,7 @@ func TestHandleDeviceCodeRequest_NoSession(t *testing.T) {
 	h := newTestHub()
 	pc := newTestClient(h, "")
 
-	h.HandleMessage(pc, Message{Type: MsgDeviceCodeRequest})
+	h.HandleMessage(pc, &Message{Type: MsgDeviceCodeRequest})
 	msg := lastMessage(pc)
 	if msg.Type != MsgError {
 		t.Errorf("expected error, got %s", msg.Type)
@@ -488,14 +488,14 @@ func TestHandleDeviceCodeJoin_Success(t *testing.T) {
 	mobile := newTestClient(h, "mobile")
 
 	// Setup: PC creates session and gets device code
-	h.HandleMessage(pc, Message{Type: MsgCreateSession})
+	h.HandleMessage(pc, &Message{Type: MsgCreateSession})
 	readMessages(pc)
-	h.HandleMessage(pc, Message{Type: MsgDeviceCodeRequest})
+	h.HandleMessage(pc, &Message{Type: MsgDeviceCodeRequest})
 	codeMsg := lastMessage(pc)
 	readMessages(pc)
 
 	// Mobile submits device code
-	h.HandleMessage(mobile, Message{
+	h.HandleMessage(mobile, &Message{
 		Type:       MsgDeviceCodeJoin,
 		DeviceCode: codeMsg.DeviceCode,
 		DeviceID:   "mobile-device",
@@ -531,14 +531,14 @@ func TestHandleDeviceCodeJoin_Lowercase(t *testing.T) {
 	pc := newTestClient(h, "pc")
 	mobile := newTestClient(h, "mobile")
 
-	h.HandleMessage(pc, Message{Type: MsgCreateSession})
+	h.HandleMessage(pc, &Message{Type: MsgCreateSession})
 	readMessages(pc)
-	h.HandleMessage(pc, Message{Type: MsgDeviceCodeRequest})
+	h.HandleMessage(pc, &Message{Type: MsgDeviceCodeRequest})
 	codeMsg := lastMessage(pc)
 	readMessages(pc)
 
 	// Submit lowercase version of the code
-	h.HandleMessage(mobile, Message{
+	h.HandleMessage(mobile, &Message{
 		Type:       MsgDeviceCodeJoin,
 		DeviceCode: strings.ToLower(codeMsg.DeviceCode),
 		DeviceID:   "mobile-device",
@@ -563,12 +563,12 @@ func TestHandleDeviceCodeConfirm_Success(t *testing.T) {
 	mobile := newTestClient(h, "mobile")
 
 	// Setup: create session, get code, mobile joins
-	h.HandleMessage(pc, Message{Type: MsgCreateSession})
+	h.HandleMessage(pc, &Message{Type: MsgCreateSession})
 	readMessages(pc)
-	h.HandleMessage(pc, Message{Type: MsgDeviceCodeRequest})
+	h.HandleMessage(pc, &Message{Type: MsgDeviceCodeRequest})
 	codeMsg := lastMessage(pc)
 	readMessages(pc)
-	h.HandleMessage(mobile, Message{
+	h.HandleMessage(mobile, &Message{
 		Type:       MsgDeviceCodeJoin,
 		DeviceCode: codeMsg.DeviceCode,
 		DeviceID:   "mobile-device",
@@ -576,7 +576,7 @@ func TestHandleDeviceCodeConfirm_Success(t *testing.T) {
 	readMessages(mobile)
 
 	// PC confirms
-	h.HandleMessage(pc, Message{
+	h.HandleMessage(pc, &Message{
 		Type:       MsgDeviceCodeConfirm,
 		DeviceCode: codeMsg.DeviceCode,
 		PublicKey:  "pc-public-key",
@@ -606,11 +606,11 @@ func TestHandleDeviceCodeConfirm_NoPending(t *testing.T) {
 	h := newTestHub()
 	pc := newTestClient(h, "pc")
 
-	h.HandleMessage(pc, Message{Type: MsgCreateSession})
+	h.HandleMessage(pc, &Message{Type: MsgCreateSession})
 	readMessages(pc)
 
 	// Try to confirm without any pending request
-	h.HandleMessage(pc, Message{
+	h.HandleMessage(pc, &Message{
 		Type:       MsgDeviceCodeConfirm,
 		DeviceCode: "NONEXIST",
 	})
@@ -627,12 +627,12 @@ func TestHandleDeviceCodeReject_Success(t *testing.T) {
 	mobile := newTestClient(h, "mobile")
 
 	// Setup: create session, get code, mobile joins
-	h.HandleMessage(pc, Message{Type: MsgCreateSession})
+	h.HandleMessage(pc, &Message{Type: MsgCreateSession})
 	readMessages(pc)
-	h.HandleMessage(pc, Message{Type: MsgDeviceCodeRequest})
+	h.HandleMessage(pc, &Message{Type: MsgDeviceCodeRequest})
 	codeMsg := lastMessage(pc)
 	readMessages(pc)
-	h.HandleMessage(mobile, Message{
+	h.HandleMessage(mobile, &Message{
 		Type:       MsgDeviceCodeJoin,
 		DeviceCode: codeMsg.DeviceCode,
 		DeviceID:   "mobile-device",
@@ -640,7 +640,7 @@ func TestHandleDeviceCodeReject_Success(t *testing.T) {
 	readMessages(mobile)
 
 	// PC rejects
-	h.HandleMessage(pc, Message{
+	h.HandleMessage(pc, &Message{
 		Type:       MsgDeviceCodeReject,
 		DeviceCode: codeMsg.DeviceCode,
 	})
@@ -665,7 +665,7 @@ func TestHandleRejoinSession_Success(t *testing.T) {
 	pc := newTestClient(h, "pc")
 
 	// PC creates session
-	h.HandleMessage(pc, Message{Type: MsgCreateSession})
+	h.HandleMessage(pc, &Message{Type: MsgCreateSession})
 	created := lastMessage(pc)
 	readMessages(pc)
 
@@ -678,7 +678,7 @@ func TestHandleRejoinSession_Success(t *testing.T) {
 
 	// PC rejoins with same token
 	newPC := newTestClient(h, "pc")
-	h.HandleMessage(newPC, Message{
+	h.HandleMessage(newPC, &Message{
 		Type:  MsgRejoinSession,
 		Token: created.Token,
 	})
@@ -697,7 +697,7 @@ func TestHandleRejoinSession_Expired(t *testing.T) {
 	pc := newTestClient(h, "pc")
 
 	// Create session with very short expiry
-	h.HandleMessage(pc, Message{Type: MsgCreateSession})
+	h.HandleMessage(pc, &Message{Type: MsgCreateSession})
 	created := lastMessage(pc)
 
 	// Expire the session
@@ -708,7 +708,7 @@ func TestHandleRejoinSession_Expired(t *testing.T) {
 
 	// Try to rejoin
 	newPC := newTestClient(h, "pc")
-	h.HandleMessage(newPC, Message{
+	h.HandleMessage(newPC, &Message{
 		Type:  MsgRejoinSession,
 		Token: created.Token,
 	})
@@ -723,7 +723,7 @@ func TestHandleRejoinSession_EmptyToken(t *testing.T) {
 	h := newTestHub()
 	pc := newTestClient(h, "pc")
 
-	h.HandleMessage(pc, Message{Type: MsgRejoinSession, Token: ""})
+	h.HandleMessage(pc, &Message{Type: MsgRejoinSession, Token: ""})
 	msg := lastMessage(pc)
 	if msg.Type != MsgError {
 		t.Errorf("expected error, got %s", msg.Type)
@@ -734,13 +734,13 @@ func TestHandleRejoinSession_AlreadyHasPC(t *testing.T) {
 	h := newTestHub()
 	pc := newTestClient(h, "pc")
 
-	h.HandleMessage(pc, Message{Type: MsgCreateSession})
+	h.HandleMessage(pc, &Message{Type: MsgCreateSession})
 	created := lastMessage(pc)
 	readMessages(pc)
 
 	// Try to rejoin while PC is still connected
 	newPC := newTestClient(h, "pc")
-	h.HandleMessage(newPC, Message{
+	h.HandleMessage(newPC, &Message{
 		Type:  MsgRejoinSession,
 		Token: created.Token,
 	})
@@ -759,9 +759,9 @@ func TestUnregister_PCDisconnect_NotifyMobile(t *testing.T) {
 	mobile := newTestClient(h, "mobile")
 
 	// Setup session with both peers
-	h.HandleMessage(pc, Message{Type: MsgCreateSession})
+	h.HandleMessage(pc, &Message{Type: MsgCreateSession})
 	token := lastMessage(pc).Token
-	h.HandleMessage(mobile, Message{Type: MsgJoinSession, Token: token, DeviceID: "d1"})
+	h.HandleMessage(mobile, &Message{Type: MsgJoinSession, Token: token, DeviceID: "d1"})
 	readMessages(pc)
 	readMessages(mobile)
 
@@ -787,9 +787,9 @@ func TestUnregister_MobileDisconnect_NotifyPC(t *testing.T) {
 	mobile := newTestClient(h, "mobile")
 
 	// Setup session
-	h.HandleMessage(pc, Message{Type: MsgCreateSession})
+	h.HandleMessage(pc, &Message{Type: MsgCreateSession})
 	token := lastMessage(pc).Token
-	h.HandleMessage(mobile, Message{Type: MsgJoinSession, Token: token, DeviceID: "d1"})
+	h.HandleMessage(mobile, &Message{Type: MsgJoinSession, Token: token, DeviceID: "d1"})
 	readMessages(pc)
 	readMessages(mobile)
 
@@ -843,12 +843,12 @@ func TestHandleCreateSession_DestroyOld(t *testing.T) {
 	pc := newTestClient(h, "pc")
 
 	// Create first session
-	h.HandleMessage(pc, Message{Type: MsgCreateSession})
+	h.HandleMessage(pc, &Message{Type: MsgCreateSession})
 	first := lastMessage(pc)
 	readMessages(pc)
 
 	// Create second session (should destroy the first)
-	h.HandleMessage(pc, Message{Type: MsgCreateSession})
+	h.HandleMessage(pc, &Message{Type: MsgCreateSession})
 	second := lastMessage(pc)
 
 	if first.Token == second.Token {
@@ -872,7 +872,7 @@ func TestHandleJoinSession_ExpiredSession(t *testing.T) {
 	mobile := newTestClient(h, "mobile")
 
 	// Create session
-	h.HandleMessage(pc, Message{Type: MsgCreateSession})
+	h.HandleMessage(pc, &Message{Type: MsgCreateSession})
 	token := lastMessage(pc).Token
 
 	// Expire it
@@ -881,7 +881,7 @@ func TestHandleJoinSession_ExpiredSession(t *testing.T) {
 	h.mu.Unlock()
 
 	// Mobile tries to join expired session
-	h.HandleMessage(mobile, Message{Type: MsgJoinSession, Token: token, DeviceID: "d1"})
+	h.HandleMessage(mobile, &Message{Type: MsgJoinSession, Token: token, DeviceID: "d1"})
 	msg := lastMessage(mobile)
 	if msg.Type != MsgError {
 		t.Errorf("expected error for expired session join, got %s", msg.Type)

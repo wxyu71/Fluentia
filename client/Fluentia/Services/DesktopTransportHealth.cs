@@ -1,4 +1,4 @@
-namespace Fluentia.Services;
+﻿namespace Fluentia.Services;
 
 /// <summary>
 /// Message types for transport routing decisions.

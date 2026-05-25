@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace Fluentia.Models;
@@ -133,21 +133,21 @@ public class InputCommand
 
 public static class MsgTypes
 {
-    public const string ProtocolVersion  = "1.5.11";
-    public const string CreateSession    = "create_session";
-    public const string SessionCreated   = "session_created";
-    public const string JoinSession      = "join_session";
-    public const string Joined           = "joined";
-    public const string RejoinSession    = "rejoin_session";
-    public const string Rejoined         = "rejoined";
-    public const string PeerJoined       = "peer_joined";
-    public const string PeerLeft         = "peer_left";
-    public const string Preempted        = "preempted";
-    public const string KeyExchange      = "key_exchange";
-    public const string Encrypted        = "encrypted";
-    public const string Ping             = "ping";
-    public const string Pong             = "pong";
-    public const string Error            = "error";
+    public const string ProtocolVersion = "1.5.11";
+    public const string CreateSession = "create_session";
+    public const string SessionCreated = "session_created";
+    public const string JoinSession = "join_session";
+    public const string Joined = "joined";
+    public const string RejoinSession = "rejoin_session";
+    public const string Rejoined = "rejoined";
+    public const string PeerJoined = "peer_joined";
+    public const string PeerLeft = "peer_left";
+    public const string Preempted = "preempted";
+    public const string KeyExchange = "key_exchange";
+    public const string Encrypted = "encrypted";
+    public const string Ping = "ping";
+    public const string Pong = "pong";
+    public const string Error = "error";
 
     // Device code auth
     public const string DeviceCodeRequest = "device_code_request";

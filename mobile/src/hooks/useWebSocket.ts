@@ -930,7 +930,7 @@ export function useWebSocket(
     let messageType: MessageType = 'input';
     if (cmd.type === 'file_start' || cmd.type === 'file_chunk' || cmd.type === 'file_abort') {
       messageType = 'file';
-    } else if (cmd.type === 'ratchet_init' || cmd.type === 'pc_ratchet_init' || cmd.type === 'handshake_ack' || cmd.type === 'key_exchange') {
+    } else if (cmd.type === 'ratchet_init' || cmd.type === 'pc_ratchet_init' || cmd.type === 'handshake_ack') {
       messageType = 'handshake';
     } else if (cmd.type === 'ble_auth' || cmd.type === 'ble_auth_ok' || cmd.type === 'clipboard') {
       messageType = 'control';

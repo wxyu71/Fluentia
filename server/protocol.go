@@ -9,8 +9,8 @@ const (
 	MsgSessionCreated = "session_created"
 	MsgJoinSession    = "join_session"
 	MsgJoined         = "joined"
-	MsgRejoinSession  = "rejoin_session"  // PC reclaims session after brief disconnect
-	MsgRejoined       = "rejoined"        // Server confirms rejoin
+	MsgRejoinSession  = "rejoin_session" // PC reclaims session after brief disconnect
+	MsgRejoined       = "rejoined"       // Server confirms rejoin
 	MsgPeerJoined     = "peer_joined"
 	MsgPeerLeft       = "peer_left"
 	MsgPreempted      = "preempted"
@@ -33,22 +33,22 @@ const (
 
 // Message is the universal message envelope for all WebSocket communication.
 type Message struct {
-	Type      string `json:"type"`
-	Token     string `json:"token,omitempty"`
-	DeviceID  string `json:"deviceId,omitempty"`
-	Role      string `json:"role,omitempty"`
-	PublicKey string `json:"publicKey,omitempty"`
-	Payload   string `json:"payload,omitempty"`
-	Nonce     string `json:"nonce,omitempty"`
-	Error     string `json:"error,omitempty"`
-	Version   string `json:"version,omitempty"`
+	Type       string `json:"type"`
+	Token      string `json:"token,omitempty"`
+	DeviceID   string `json:"deviceId,omitempty"`
+	Role       string `json:"role,omitempty"`
+	PublicKey  string `json:"publicKey,omitempty"`
+	Payload    string `json:"payload,omitempty"`
+	Nonce      string `json:"nonce,omitempty"`
+	Error      string `json:"error,omitempty"`
+	Version    string `json:"version,omitempty"`
 	MinVersion string `json:"min_version,omitempty"`
-	ExpiresAt string `json:"expiresAt,omitempty"`
-	Seq       *int   `json:"seq,omitempty"`
+	ExpiresAt  string `json:"expiresAt,omitempty"`
+	Seq        *int   `json:"seq,omitempty"`
 
 	// Device code auth fields
 	DeviceCode string `json:"deviceCode,omitempty"`
-	VerifyID   string `json:"verifyId,omitempty"`  // UUID shown on both sides for visual confirmation
+	VerifyID   string `json:"verifyId,omitempty"` // UUID shown on both sides for visual confirmation
 	UserAgent  string `json:"userAgent,omitempty"`
 	Approved   bool   `json:"approved,omitempty"`
 }
