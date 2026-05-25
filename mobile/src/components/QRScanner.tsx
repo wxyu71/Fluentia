@@ -10,7 +10,7 @@ interface QRScannerProps {
   onClose?: () => void; // required when overlay=true
 }
 
-export const QRScanner: React.FC<QRScannerProps> = ({ onScan, deviceId = 'unknown', overlay = false, onClose }) => {
+export const QRScanner: React.FC<QRScannerProps> = ({ onScan, deviceId: _deviceId = 'unknown', overlay = false, onClose }) => {
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
@@ -214,7 +214,7 @@ const ManualConnect: React.FC<{ onConnect: (info: ConnectionInfo) => void }> = (
   const handoffPendingRef = useRef(false);
   const inputRefs = useRef<(HTMLInputElement | null)[]>(Array(8).fill(null));
 
-  const getCode = () => chars.join('');
+  const getCode = useCallback(() => chars.join(''), [chars]);
 
   const focusBox = (idx: number) => {
     if (idx >= 0 && idx < 8) inputRefs.current[idx]?.focus();
@@ -337,7 +337,7 @@ const ManualConnect: React.FC<{ onConnect: (info: ConnectionInfo) => void }> = (
       const code = getCode();
       if (code.length === 8) handleSubmit(code);
     }
-  }, [chars, handleSubmit]);
+  }, [chars, getCode, handleSubmit]);
 
   const handleInput = useCallback((idx: number, e: React.ChangeEvent<HTMLInputElement>) => {
     const raw = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');

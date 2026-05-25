@@ -33,10 +33,6 @@ function decodeBleEnvelope(view: DataView): BleEnvelope | null {
   }
 }
 
-function encodeBleEnvelope(message: BleEnvelope): Uint8Array {
-  return new TextEncoder().encode(JSON.stringify(message));
-}
-
 async function writeBleEnvelope(
   characteristic: BluetoothRemoteGATTCharacteristic,
   message: BleEnvelope,
@@ -305,7 +301,7 @@ export function useBlePairing(
     } finally {
       setIsConnecting(false);
     }
-  }, [authorizedPublicKey, clearAuthTimeout, deviceId, disconnect, handleNotify, isSupported, onAuthorizePublicKey, sendClientHelloIfAuthorized]);
+  }, [authorizedPublicKey, clearAuthTimeout, disconnect, handleNotify, isSupported, onAuthorizePublicKey, sendClientHelloIfAuthorized]);
 
   const bleConsecutiveFailuresRef = useRef(0);
 

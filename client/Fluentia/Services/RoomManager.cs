@@ -533,7 +533,7 @@ public class RoomManager : IDisposable
             {
             }
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             OnError?.Invoke("Decryption failed");
         }

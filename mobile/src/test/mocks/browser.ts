@@ -107,6 +107,7 @@ export function mockNetworkConnection(effectiveType = '4g') {
     removeEventListener: vi.fn(),
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const original = (navigator as any).connection;
   Object.defineProperty(navigator, 'connection', {
     value: connection,

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 
 const DEVICE_ID_KEY = 'fluentia_device_id';
 

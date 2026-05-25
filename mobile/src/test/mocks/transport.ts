@@ -51,7 +51,7 @@ export class MockTransport implements TransportConnection {
   }
 
   /** Simulate a connection close */
-  simulateClose(code = 1000, reason = 'normal'): void {
+  simulateClose(_code = 1000, _reason = 'normal'): void {
     this.readyState = TRANSPORT_READY_STATE.CLOSED;
     this.onclose?.();
   }

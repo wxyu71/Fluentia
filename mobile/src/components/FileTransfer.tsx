@@ -59,8 +59,9 @@ export const FileTransfer = forwardRef<FileTransferHandle, FileTransferProps>(
 
     workersRef.current = workers;
 
+    const pending = pendingEncodesRef.current;
     return () => {
-      pendingEncodesRef.current.clear();
+      pending.clear();
       workers.forEach((worker) => worker.terminate());
       workersRef.current = [];
     };
@@ -324,7 +325,7 @@ export const FileTransfer = forwardRef<FileTransferHandle, FileTransferProps>(
       } : current);
       scheduleBatchClear();
     }
-  }, [clearHideTimer, maxFileMB, onSendCommand, scheduleBatchClear, updateBatch, waitWhilePaused]);
+  }, [clearHideTimer, encodeChunk, maxFileMB, onSendCommand, scheduleBatchClear, updateBatch, waitWhilePaused]);
 
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);

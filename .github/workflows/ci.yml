@@ -192,7 +192,7 @@ jobs:
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '8.0'
-      - run: dotnet publish client/Fluentia.sln -c Release -r win-x64 --self-contained -o publish/
+      - run: dotnet publish client/Fluentia/Fluentia.csproj -c Release -r win-x64 --self-contained -o publish/
       - uses: actions/upload-artifact@v7
         with:
           name: fluentia-win-x64

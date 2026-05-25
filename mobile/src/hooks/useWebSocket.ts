@@ -489,7 +489,7 @@ export function useWebSocket(
       const initCmd = JSON.stringify({ type: 'ratchet_init', seed });
       const { payload, nonce } = cryptoRef.current.encrypt(initCmd);
       ws.send(JSON.stringify({ type: 'encrypted', payload, nonce } satisfies WsMessage));
-    } catch (err) {
+    } catch {
       handshakeStartedRef.current = false;
     }
   }, [persistCryptoState, startHandshakeTimeout]);
@@ -762,14 +762,18 @@ export function useWebSocket(
         break;
     }
   }, [
+    clearConnectTimeout,
     clearHeartbeatTimeout,
     clearHandshakeTimer,
     clearIncomingTransferHideTimer,
     closeSocket,
     decodeBase64Chunk,
+    flushQueuedCommands,
+    persistCryptoState,
     scheduleIncomingTransferHide,
     sendEncryptedPayload,
     setEncryptionState,
+    startConnectTimeout,
     startHandshakeTimeout,
     triggerFileDownload,
     updateIncomingTransferBatch,
@@ -913,7 +917,7 @@ export function useWebSocket(
 
       setLastError('Connection failed. Check your network and try again.');
     };
-  }, [cleanup, clearConnectTimeout, clearHandshakeTimer, clearHeartbeatInterval, clearHeartbeatTimeout, deviceId, flushQueuedCommands, handleMessage, setBufferedInputMode, setEncryptionState, startConnectTimeout, startHeartbeat, startOfflineGrace]);
+  }, [cleanup, clearConnectTimeout, clearHandshakeTimer, clearHeartbeatInterval, clearHeartbeatTimeout, deviceId, handleMessage, persistCryptoState, setBufferedInputMode, setEncryptionState, startConnectTimeout, startHeartbeat, startOfflineGrace]);
 
   const disconnect = useCallback(() => {
     intentionalCloseRef.current = true;
@@ -1028,7 +1032,7 @@ export function useWebSocket(
 
     window.addEventListener('pagehide', handlePageHide);
     return () => window.removeEventListener('pagehide', handlePageHide);
-  }, [clearConnectTimeout, clearHandshakeTimer, clearHeartbeatInterval, clearHeartbeatTimeout, clearOfflineGraceTimer, clearReconnectTimer, closeSocket]);
+  }, [clearConnectTimeout, clearHandshakeTimer, clearHeartbeatInterval, clearHeartbeatTimeout, clearOfflineGraceTimer, clearReconnectTimer, closeSocket, setEncryptionState]);
 
   useEffect(() => {
     return () => cleanup();

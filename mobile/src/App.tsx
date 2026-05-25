@@ -206,8 +206,6 @@ export const App: React.FC = () => {
   const [swipeOffset, setSwipeOffset] = useState(0);
   const [isSwiping, setIsSwiping] = useState(false);
 
-  const isConnected = connectionState === 'connected' && peerConnected;
-
   useEffect(() => {
     if (inputResetVersion === 0) return;
     setInputText('');

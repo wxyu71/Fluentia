@@ -165,14 +165,12 @@ describe('CryptoService', () => {
       const svc1 = new CryptoService();
       const svc2 = new CryptoService();
 
-      const { seed: seed1 } = svc1.initRatchet();
-      const { seed: seed2 } = svc2.initRatchet();
+      svc1.initRatchet();
+      svc2.initRatchet();
 
       // Same seed should produce same first encrypted message
       const sender1 = new CryptoService();
-      const sender2 = new CryptoService();
       const recv1 = new CryptoService();
-      const recv2 = new CryptoService();
 
       // Use a fixed seed to verify KDF consistency
       const fixedSeed = encodeBase64(new Uint8Array(32).fill(42));
