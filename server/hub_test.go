@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 )
@@ -443,5 +444,446 @@ func TestGenerateAlphanumericCode_Uniqueness(t *testing.T) {
 			t.Fatalf("duplicate code generated: %s", code)
 		}
 		codes[code] = true
+	}
+}
+
+// === Device Code Flow Tests ===
+
+func TestHandleDeviceCodeRequest_Success(t *testing.T) {
+	h := newTestHub()
+	pc := newTestClient(h, "pc")
+
+	// PC creates session first
+	h.HandleMessage(pc, Message{Type: MsgCreateSession})
+	readMessages(pc)
+
+	// Request device code
+	h.HandleMessage(pc, Message{Type: MsgDeviceCodeRequest})
+	msg := lastMessage(pc)
+	if msg.Type != MsgDeviceCodeCreated {
+		t.Fatalf("expected device_code_created, got %s", msg.Type)
+	}
+	if msg.DeviceCode == "" {
+		t.Error("expected device code in response")
+	}
+	if len(msg.DeviceCode) != 8 {
+		t.Errorf("expected 8-char code, got %d chars", len(msg.DeviceCode))
+	}
+}
+
+func TestHandleDeviceCodeRequest_NoSession(t *testing.T) {
+	h := newTestHub()
+	pc := newTestClient(h, "")
+
+	h.HandleMessage(pc, Message{Type: MsgDeviceCodeRequest})
+	msg := lastMessage(pc)
+	if msg.Type != MsgError {
+		t.Errorf("expected error, got %s", msg.Type)
+	}
+}
+
+func TestHandleDeviceCodeJoin_Success(t *testing.T) {
+	h := newTestHub()
+	pc := newTestClient(h, "pc")
+	mobile := newTestClient(h, "mobile")
+
+	// Setup: PC creates session and gets device code
+	h.HandleMessage(pc, Message{Type: MsgCreateSession})
+	readMessages(pc)
+	h.HandleMessage(pc, Message{Type: MsgDeviceCodeRequest})
+	codeMsg := lastMessage(pc)
+	readMessages(pc)
+
+	// Mobile submits device code
+	h.HandleMessage(mobile, Message{
+		Type:       MsgDeviceCodeJoin,
+		DeviceCode: codeMsg.DeviceCode,
+		DeviceID:   "mobile-device",
+	})
+
+	// Mobile should get pending message with verify ID
+	mobileMsgs := readMessages(mobile)
+	foundPending := false
+	for _, m := range mobileMsgs {
+		if m.Type == MsgDeviceCodePending && m.VerifyID != "" {
+			foundPending = true
+		}
+	}
+	if !foundPending {
+		t.Error("mobile didn't receive pending message with verify ID")
+	}
+
+	// PC should get pending message with mobile info
+	pcMsgs := readMessages(pc)
+	foundPCPending := false
+	for _, m := range pcMsgs {
+		if m.Type == MsgDeviceCodePending && m.DeviceID == "mobile-device" {
+			foundPCPending = true
+		}
+	}
+	if !foundPCPending {
+		t.Error("PC didn't receive pending message with mobile device info")
+	}
+}
+
+func TestHandleDeviceCodeJoin_Lowercase(t *testing.T) {
+	h := newTestHub()
+	pc := newTestClient(h, "pc")
+	mobile := newTestClient(h, "mobile")
+
+	h.HandleMessage(pc, Message{Type: MsgCreateSession})
+	readMessages(pc)
+	h.HandleMessage(pc, Message{Type: MsgDeviceCodeRequest})
+	codeMsg := lastMessage(pc)
+	readMessages(pc)
+
+	// Submit lowercase version of the code
+	h.HandleMessage(mobile, Message{
+		Type:       MsgDeviceCodeJoin,
+		DeviceCode: strings.ToLower(codeMsg.DeviceCode),
+		DeviceID:   "mobile-device",
+	})
+
+	// Should still work (server uppercases it)
+	mobileMsgs := readMessages(mobile)
+	foundPending := false
+	for _, m := range mobileMsgs {
+		if m.Type == MsgDeviceCodePending {
+			foundPending = true
+		}
+	}
+	if !foundPending {
+		t.Error("lowercase device code should be accepted")
+	}
+}
+
+func TestHandleDeviceCodeConfirm_Success(t *testing.T) {
+	h := newTestHub()
+	pc := newTestClient(h, "pc")
+	mobile := newTestClient(h, "mobile")
+
+	// Setup: create session, get code, mobile joins
+	h.HandleMessage(pc, Message{Type: MsgCreateSession})
+	readMessages(pc)
+	h.HandleMessage(pc, Message{Type: MsgDeviceCodeRequest})
+	codeMsg := lastMessage(pc)
+	readMessages(pc)
+	h.HandleMessage(mobile, Message{
+		Type:       MsgDeviceCodeJoin,
+		DeviceCode: codeMsg.DeviceCode,
+		DeviceID:   "mobile-device",
+	})
+	readMessages(mobile)
+
+	// PC confirms
+	h.HandleMessage(pc, Message{
+		Type:       MsgDeviceCodeConfirm,
+		DeviceCode: codeMsg.DeviceCode,
+		PublicKey:  "pc-public-key",
+	})
+
+	// Mobile should get joined + peer_joined
+	mobileMsgs := readMessages(mobile)
+	foundJoined := false
+	foundPeerJoined := false
+	for _, m := range mobileMsgs {
+		if m.Type == MsgJoined && m.Approved {
+			foundJoined = true
+		}
+		if m.Type == MsgPeerJoined {
+			foundPeerJoined = true
+		}
+	}
+	if !foundJoined {
+		t.Error("mobile didn't receive joined message after confirm")
+	}
+	if !foundPeerJoined {
+		t.Error("mobile didn't receive peer_joined after confirm")
+	}
+}
+
+func TestHandleDeviceCodeConfirm_NoPending(t *testing.T) {
+	h := newTestHub()
+	pc := newTestClient(h, "pc")
+
+	h.HandleMessage(pc, Message{Type: MsgCreateSession})
+	readMessages(pc)
+
+	// Try to confirm without any pending request
+	h.HandleMessage(pc, Message{
+		Type:       MsgDeviceCodeConfirm,
+		DeviceCode: "NONEXIST",
+	})
+
+	msg := lastMessage(pc)
+	if msg.Type != MsgError {
+		t.Errorf("expected error, got %s", msg.Type)
+	}
+}
+
+func TestHandleDeviceCodeReject_Success(t *testing.T) {
+	h := newTestHub()
+	pc := newTestClient(h, "pc")
+	mobile := newTestClient(h, "mobile")
+
+	// Setup: create session, get code, mobile joins
+	h.HandleMessage(pc, Message{Type: MsgCreateSession})
+	readMessages(pc)
+	h.HandleMessage(pc, Message{Type: MsgDeviceCodeRequest})
+	codeMsg := lastMessage(pc)
+	readMessages(pc)
+	h.HandleMessage(mobile, Message{
+		Type:       MsgDeviceCodeJoin,
+		DeviceCode: codeMsg.DeviceCode,
+		DeviceID:   "mobile-device",
+	})
+	readMessages(mobile)
+
+	// PC rejects
+	h.HandleMessage(pc, Message{
+		Type:       MsgDeviceCodeReject,
+		DeviceCode: codeMsg.DeviceCode,
+	})
+
+	// Mobile should receive rejection error
+	mobileMsgs := readMessages(mobile)
+	foundReject := false
+	for _, m := range mobileMsgs {
+		if m.Type == MsgError && strings.Contains(m.Error, "rejected") {
+			foundReject = true
+		}
+	}
+	if !foundReject {
+		t.Error("mobile didn't receive rejection error")
+	}
+}
+
+// === Rejoin Session Tests ===
+
+func TestHandleRejoinSession_Success(t *testing.T) {
+	h := newTestHub()
+	pc := newTestClient(h, "pc")
+
+	// PC creates session
+	h.HandleMessage(pc, Message{Type: MsgCreateSession})
+	created := lastMessage(pc)
+	readMessages(pc)
+
+	// Simulate PC disconnect: remove from session but keep session alive
+	h.mu.Lock()
+	session := h.sessions[created.Token]
+	session.PC = nil
+	h.clients[pc] = false // mark as unregistered
+	h.mu.Unlock()
+
+	// PC rejoins with same token
+	newPC := newTestClient(h, "pc")
+	h.HandleMessage(newPC, Message{
+		Type:  MsgRejoinSession,
+		Token: created.Token,
+	})
+
+	msg := lastMessage(newPC)
+	if msg.Type != MsgRejoined {
+		t.Errorf("expected rejoined, got %s", msg.Type)
+	}
+	if msg.Token != created.Token {
+		t.Errorf("expected token %s, got %s", created.Token, msg.Token)
+	}
+}
+
+func TestHandleRejoinSession_Expired(t *testing.T) {
+	h := newTestHub()
+	pc := newTestClient(h, "pc")
+
+	// Create session with very short expiry
+	h.HandleMessage(pc, Message{Type: MsgCreateSession})
+	created := lastMessage(pc)
+
+	// Expire the session
+	h.mu.Lock()
+	session := h.sessions[created.Token]
+	session.ExpiresAt = time.Now().Add(-1 * time.Hour)
+	h.mu.Unlock()
+
+	// Try to rejoin
+	newPC := newTestClient(h, "pc")
+	h.HandleMessage(newPC, Message{
+		Type:  MsgRejoinSession,
+		Token: created.Token,
+	})
+
+	msg := lastMessage(newPC)
+	if msg.Type != MsgError {
+		t.Errorf("expected error for expired rejoin, got %s", msg.Type)
+	}
+}
+
+func TestHandleRejoinSession_EmptyToken(t *testing.T) {
+	h := newTestHub()
+	pc := newTestClient(h, "pc")
+
+	h.HandleMessage(pc, Message{Type: MsgRejoinSession, Token: ""})
+	msg := lastMessage(pc)
+	if msg.Type != MsgError {
+		t.Errorf("expected error, got %s", msg.Type)
+	}
+}
+
+func TestHandleRejoinSession_AlreadyHasPC(t *testing.T) {
+	h := newTestHub()
+	pc := newTestClient(h, "pc")
+
+	h.HandleMessage(pc, Message{Type: MsgCreateSession})
+	created := lastMessage(pc)
+	readMessages(pc)
+
+	// Try to rejoin while PC is still connected
+	newPC := newTestClient(h, "pc")
+	h.HandleMessage(newPC, Message{
+		Type:  MsgRejoinSession,
+		Token: created.Token,
+	})
+
+	msg := lastMessage(newPC)
+	if msg.Type != MsgError {
+		t.Errorf("expected error (session already has PC), got %s", msg.Type)
+	}
+}
+
+// === Unregister Tests ===
+
+func TestUnregister_PCDisconnect_NotifyMobile(t *testing.T) {
+	h := newTestHub()
+	pc := newTestClient(h, "pc")
+	mobile := newTestClient(h, "mobile")
+
+	// Setup session with both peers
+	h.HandleMessage(pc, Message{Type: MsgCreateSession})
+	token := lastMessage(pc).Token
+	h.HandleMessage(mobile, Message{Type: MsgJoinSession, Token: token, DeviceID: "d1"})
+	readMessages(pc)
+	readMessages(mobile)
+
+	// PC disconnects
+	h.Unregister(pc)
+
+	// Mobile should receive peer_left for PC
+	mobileMsgs := readMessages(mobile)
+	foundPeerLeft := false
+	for _, m := range mobileMsgs {
+		if m.Type == MsgPeerLeft && m.Role == "pc" {
+			foundPeerLeft = true
+		}
+	}
+	if !foundPeerLeft {
+		t.Error("mobile didn't receive peer_left when PC disconnected")
+	}
+}
+
+func TestUnregister_MobileDisconnect_NotifyPC(t *testing.T) {
+	h := newTestHub()
+	pc := newTestClient(h, "pc")
+	mobile := newTestClient(h, "mobile")
+
+	// Setup session
+	h.HandleMessage(pc, Message{Type: MsgCreateSession})
+	token := lastMessage(pc).Token
+	h.HandleMessage(mobile, Message{Type: MsgJoinSession, Token: token, DeviceID: "d1"})
+	readMessages(pc)
+	readMessages(mobile)
+
+	// Mobile disconnects
+	h.Unregister(mobile)
+
+	// PC should receive peer_left for mobile
+	pcMsgs := readMessages(pc)
+	foundPeerLeft := false
+	for _, m := range pcMsgs {
+		if m.Type == MsgPeerLeft && m.Role == "mobile" {
+			foundPeerLeft = true
+		}
+	}
+	if !foundPeerLeft {
+		t.Error("PC didn't receive peer_left when mobile disconnected")
+	}
+}
+
+func TestUnregister_NotInClients(t *testing.T) {
+	h := newTestHub()
+	c := &Client{
+		hub:  h,
+		send: make(chan []byte, 64),
+	}
+	// Don't register — just unregister
+	h.Unregister(c)
+	// Should not panic
+}
+
+func TestUnregister_NilSession(t *testing.T) {
+	h := newTestHub()
+	c := newTestClient(h, "")
+	// Client has no session
+	h.Unregister(c)
+	// Should not panic
+}
+
+// === Expire Session Tests ===
+
+func TestExpireSession_AlreadyDestroyed(t *testing.T) {
+	h := newTestHub()
+	// Expire a non-existent session — should not panic
+	h.expireSession("nonexistent-token")
+}
+
+// === Create Session with Existing ===
+
+func TestHandleCreateSession_DestroyOld(t *testing.T) {
+	h := newTestHub()
+	pc := newTestClient(h, "pc")
+
+	// Create first session
+	h.HandleMessage(pc, Message{Type: MsgCreateSession})
+	first := lastMessage(pc)
+	readMessages(pc)
+
+	// Create second session (should destroy the first)
+	h.HandleMessage(pc, Message{Type: MsgCreateSession})
+	second := lastMessage(pc)
+
+	if first.Token == second.Token {
+		t.Error("new session should have a different token")
+	}
+
+	// Old session should be gone
+	h.mu.RLock()
+	_, exists := h.sessions[first.Token]
+	h.mu.RUnlock()
+	if exists {
+		t.Error("old session should have been destroyed")
+	}
+}
+
+// === Join Session Edge Cases ===
+
+func TestHandleJoinSession_ExpiredSession(t *testing.T) {
+	h := newTestHub()
+	pc := newTestClient(h, "pc")
+	mobile := newTestClient(h, "mobile")
+
+	// Create session
+	h.HandleMessage(pc, Message{Type: MsgCreateSession})
+	token := lastMessage(pc).Token
+
+	// Expire it
+	h.mu.Lock()
+	h.sessions[token].ExpiresAt = time.Now().Add(-1 * time.Hour)
+	h.mu.Unlock()
+
+	// Mobile tries to join expired session
+	h.HandleMessage(mobile, Message{Type: MsgJoinSession, Token: token, DeviceID: "d1"})
+	msg := lastMessage(mobile)
+	if msg.Type != MsgError {
+		t.Errorf("expected error for expired session join, got %s", msg.Type)
 	}
 }
