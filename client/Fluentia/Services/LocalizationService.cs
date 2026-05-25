@@ -1,0 +1,356 @@
+using System.Globalization;
+
+namespace Fluentia.Services;
+
+public static class LocalizationService
+{
+    private static string? _languageOverride;
+
+    private static readonly IReadOnlyDictionary<string, string> English = new Dictionary<string, string>
+    {
+        ["AppName"] = "Fluentia",
+        ["AppAlreadyRunningMessage"] = "Fluentia is already running.",
+        ["MainWindowTitle"] = "Fluentia",
+        ["MainWindowSubtitle"] = "Windows relay",
+        ["TooltipHideToTray"] = "Hide to notification area",
+        ["TooltipQuit"] = "Quit Fluentia",
+        ["TooltipMinimize"] = "Minimize",
+        ["TooltipMaximizeRestore"] = "Maximize or restore",
+        ["TooltipOpenSettings"] = "Open settings",
+        ["TooltipCloseSettings"] = "Close settings",
+        ["TooltipCopyDeviceCode"] = "Copy connection code",
+        ["HeroTitle"] = "Secure desktop pairing",
+        ["StatusNotConnected"] = "Not connected",
+        ["ButtonNewSession"] = "New Session",
+        ["SectionConnection"] = "Connection",
+        ["LabelServerUrl"] = "Server URL",
+        ["ButtonConnect"] = "Connect",
+        ["ButtonConnecting"] = "Connecting...",
+        ["ButtonConnected"] = "Connected",
+        ["ButtonOffline"] = "Offline",
+        ["SectionPairing"] = "Pairing",
+        ["PairingSubtitle"] = "Use nearby BLE pairing, scan the QR code, or enter the short code on your phone.",
+        ["ButtonShowQr"] = "Show QR Code",
+        ["PairingNoticeReady"] = "Ready",
+        ["DeviceCodeTitle"] = "Connection Code",
+        ["DeviceCodeHint"] = "Visible only while no phone is connected",
+        ["DiagnosticsTitle"] = "Diagnostics",
+        ["SettingsTitle"] = "Settings",
+        ["SettingsSubtitle"] = "Desktop behavior and file handling",
+        ["CloseBehaviorTitle"] = "Close button behavior",
+        ["CloseBehaviorBody"] = "When enabled, closing the window hides Fluentia to the notification area.",
+        ["StartupTitle"] = "Launch at Windows startup",
+        ["StartupBody"] = "Start Fluentia automatically after you sign in to Windows.",
+        ["ReceivedFilesTitle"] = "Received files",
+        ["ReceivedFilesBody"] = "Choose where incoming files are written on this PC.",
+        ["ButtonBrowse"] = "Browse",
+        ["ButtonSaveSettings"] = "Save Settings",
+        ["ButtonSendFile"] = "Send Files to Phone",
+        ["ButtonCreateNewSession"] = "Create New Pairing Session",
+        ["BrowseDialogDescription"] = "Select the destination for received files",
+        ["DialogSelectFileTitle"] = "Choose files to send",
+        ["DialogFileFilter"] = "All files|*.*",
+        ["SettingsLanguageTitle"] = "App language",
+        ["SettingsLanguageBody"] = "Choose the display language for the desktop client.",
+        ["LanguageSystem"] = "Follow system",
+        ["LanguageEnglish"] = "English",
+        ["LanguageChinese"] = "Simplified Chinese",
+        ["SettingsSessionTitle"] = "Pairing session",
+        ["SettingsSessionBody"] = "Create a fresh pairing session only when you need to rotate the current trusted secret.",
+        ["ConnectionHintNoNetwork"] = "Reconnect this PC to the network before generating a pairing session.",
+        ["ConnectionHintTrustedWaiting"] = "Your phone is already trusted. Fluentia is waiting for it to reconnect with the saved secret.",
+        ["ConnectionHintEncrypted"] = "Your phone is paired and ready. Create a new session only when you want to invalidate the current secret.",
+        ["ConnectionHintSessionReady"] = "Session ready. The current pairing secret stays reusable for up to {0} days.",
+        ["ConnectionHintConnectedPreparing"] = "Connected to the relay. Preparing a reusable pairing session.",
+        ["ConnectionHintConnectToRelay"] = "Connect to your relay server to prepare a reusable session.",
+        ["PairingNoticeNetworkTitle"] = "Network disconnected",
+        ["PairingNoticeNetworkBody"] = "Reconnect this PC before showing a QR code or a connection code.",
+        ["PairingNoticeServerTitle"] = "Server not connected",
+        ["PairingNoticeServerBody"] = "Connect to your relay server to generate a secure pairing session.",
+        ["PairingNoticePreparingTitle"] = "Preparing session",
+        ["PairingNoticePreparingBody"] = "A secure session is being created. Pairing controls will appear when it is ready.",
+        ["PairingNoticeExpiredTitle"] = "Session expired",
+        ["PairingNoticeExpiredBody"] = "Create a new session to continue pairing your phone.",
+        ["PairingNoticeWaitingReconnectTitle"] = "Waiting for reconnection",
+        ["PairingNoticeWaitingReconnectBody"] = "This phone is already paired. Keep the saved session on your phone and Fluentia will reconnect automatically while the session is still valid.",
+        ["PairingNoticeReadyTitle"] = "Secure channel ready",
+        ["PairingNoticeReadyBody"] = "Your phone is connected. Pairing controls stay hidden until you invalidate the current secret.",
+        ["PairingNoticeSecuringTitle"] = "Securing connection",
+        ["PairingNoticeSecuringBody"] = "The phone is completing key exchange. Pairing controls are temporarily hidden to prevent duplicate actions.",
+        ["QrSessionExpired"] = "Session expired",
+        ["QrValidDays"] = "Valid for {0} days",
+        ["QrValidHours"] = "Valid for {0} hours",
+        ["QrValidMinutes"] = "Valid for {0} minutes",
+        ["QrNoActiveSession"] = "No active session",
+        ["QrSessionHint"] = "Session {0} - reusable for up to {1} days",
+        ["QrHintClickToCollapse"] = "Click anywhere to close",
+        ["StatusNetworkDisconnected"] = "Network disconnected",
+        ["StatusPreparingSession"] = "Preparing session",
+        ["StatusWaitingPhone"] = "Waiting for a phone",
+        ["StatusPhoneDetected"] = "Phone detected",
+        ["StatusPhoneDisconnected"] = "Phone disconnected",
+        ["StatusPhoneDisconnectedWaiting"] = "Phone disconnected - waiting to reconnect",
+        ["StatusPhoneDisconnectedOffline"] = "Phone disconnected - PC offline",
+        ["StatusEncrypted"] = "E2E encrypted",
+        ["StatusConnectingServer"] = "Connecting to server",
+        ["StatusAutoConnectFailed"] = "Automatic connection failed",
+        ["StatusConnectionFailed"] = "Connection failed",
+        ["StatusConnectionCodeCopied"] = "Connection code copied",
+        ["StatusInvalidSavePath"] = "Invalid save path",
+        ["StatusSettingsSaved"] = "Settings saved",
+        ["RegexConfigErrorTitle"] = "Regex rules invalid",
+        ["StatusRegexConfigInvalid"] = "Regex rules are invalid",
+        ["StatusRegexConfigInvalidFormat"] = "Regex rules invalid: {0}",
+        ["StatusRegexConfigSavedFormat"] = "Saved {0} regex rule(s)",
+        ["VersionIncompatibleTitle"] = "Version incompatible",
+        ["SavedSessionLostTitle"] = "Saved session unavailable",
+        ["SavedSessionLostBody"] = "The saved trusted session could not be restored. Please scan again to create a new trusted pairing.",
+        ["StatusSavedSessionLost"] = "Saved session unavailable. Scan again to restore trust.",
+        ["StatusInputTargetRecovering"] = "Restoring the previous PC window",
+        ["StatusInputTargetManual"] = "Activate the target PC window manually to continue typing",
+        ["StatusInputTargetManualInvalid"] = "The previous PC window is no longer available. Activate a new target window to continue typing",
+        ["StatusSendingFileFormat"] = "Sending {0}",
+        ["StatusFileSentFormat"] = "Sent {0}",
+        ["StatusFileTooLargeFormat"] = "File exceeds the {0} MB server limit",
+        ["StatusFileTransferUnavailable"] = "File transfer is unavailable right now",
+        ["StatusFileSendFailed"] = "File transfer failed",
+        ["StatusFilesSentFormat"] = "Sent {0} files",
+        ["StatusFileReceivedFormat"] = "Received {0}",
+        ["TransferUploadingFilesFormat"] = "Uploading {0} file(s)",
+        ["TransferReceivingFilesFormat"] = "Receiving {0} file(s)",
+        ["TransferUploadedFilesFormat"] = "Uploaded {0} file(s)",
+        ["TransferReceivedFilesFormat"] = "Received {0} file(s)",
+        ["TransferProgressPreparing"] = "0% · Preparing",
+        ["TransferProgressPausedFormat"] = "{0}% · Paused",
+        ["TransferProgressSecondsLeftFormat"] = "{0}% · {1} seconds left",
+        ["TransferProgressComplete"] = "Completed",
+        ["TransferProgressTransferring"] = "Transferring",
+        ["TransferProgressReady"] = "Ready",
+        ["TransferProgressCancelled"] = "Cancelled",
+        ["TooltipPauseTransfer"] = "Pause transfer",
+        ["TooltipResumeTransfer"] = "Resume transfer",
+        ["TooltipCancelTransfer"] = "Cancel transfer",
+        ["TooltipExpandTransfer"] = "Expand details",
+        ["TooltipCollapseTransfer"] = "Collapse details",
+        ["StatusSessionRecovered"] = "Recovered saved session",
+        ["StatusErrorFormat"] = "Error: {0}",
+        ["ConfirmDialogTitle"] = "Fluentia - Connection Request",
+        ["ConfirmDialogHeaderTitle"] = "Connection Request",
+        ["ConfirmDialogHeaderBody"] = "A device wants to pair with your PC",
+        ["ConfirmDialogVerificationTitle"] = "VERIFICATION ID",
+        ["ConfirmDialogVerificationHint"] = "Must match the code on your phone",
+        ["ConfirmDialogDeviceLabel"] = "Device",
+        ["ButtonReject"] = "Reject",
+        ["ButtonApprove"] = "Approve",
+        ["TrayShow"] = "Show",
+        ["TrayNewSession"] = "New Session",
+        ["TrayQuit"] = "Quit Fluentia",
+        ["TrayTooltipDisconnected"] = "Fluentia - Disconnected",
+        ["TrayTooltipConnected"] = "Fluentia",
+        ["TrayNotificationInputTargetTitle"] = "Choose a PC window",
+        ["TrayNotificationInputTargetBody"] = "Fluentia could not restore the previous target window. Bring the app you want to type into back to the foreground.",
+        ["TrayNotificationInputTargetBodyInvalid"] = "The previous target window is no longer valid. Open or focus the app you want to control, then continue typing from your phone.",
+        ["MessageEnterServerUrl"] = "Please enter a server URL.",
+    };
+
+    private static readonly IReadOnlyDictionary<string, string> Chinese = new Dictionary<string, string>
+    {
+        ["AppName"] = "Fluentia",
+        ["AppAlreadyRunningMessage"] = "Fluentia 已在运行。",
+        ["MainWindowTitle"] = "Fluentia",
+        ["MainWindowSubtitle"] = "Windows 中继",
+        ["TooltipHideToTray"] = "隐藏到通知区域",
+        ["TooltipQuit"] = "退出 Fluentia",
+        ["TooltipMinimize"] = "最小化",
+        ["TooltipMaximizeRestore"] = "最大化或还原",
+        ["TooltipOpenSettings"] = "打开设置",
+        ["TooltipCloseSettings"] = "关闭设置",
+        ["TooltipCopyDeviceCode"] = "复制连接码",
+        ["HeroTitle"] = "安全桌面配对",
+        ["StatusNotConnected"] = "未连接",
+        ["ButtonNewSession"] = "新建会话",
+        ["SectionConnection"] = "连接",
+        ["LabelServerUrl"] = "服务器地址",
+        ["ButtonConnect"] = "连接",
+        ["ButtonConnecting"] = "连接中...",
+        ["ButtonConnected"] = "已连接",
+        ["ButtonOffline"] = "离线",
+        ["SectionPairing"] = "配对",
+        ["PairingSubtitle"] = "可使用附近蓝牙配对，或在手机上扫描二维码、输入短连接码。",
+        ["ButtonShowQr"] = "显示二维码",
+        ["PairingNoticeReady"] = "就绪",
+        ["DeviceCodeTitle"] = "连接码",
+        ["DeviceCodeHint"] = "仅在没有手机连接时显示",
+        ["DiagnosticsTitle"] = "诊断",
+        ["SettingsTitle"] = "设置",
+        ["SettingsSubtitle"] = "桌面行为与文件处理",
+        ["CloseBehaviorTitle"] = "关闭按钮行为",
+        ["CloseBehaviorBody"] = "开启后，关闭窗口会把 Fluentia 隐藏到通知区域。",
+        ["StartupTitle"] = "随 Windows 启动",
+        ["StartupBody"] = "登录 Windows 后自动启动 Fluentia。",
+        ["ReceivedFilesTitle"] = "接收文件",
+        ["ReceivedFilesBody"] = "选择本机接收文件的保存位置。",
+        ["ButtonBrowse"] = "浏览",
+        ["ButtonSaveSettings"] = "保存设置",
+        ["ButtonSendFile"] = "发送文件到手机",
+        ["ButtonCreateNewSession"] = "创建新的配对会话",
+        ["BrowseDialogDescription"] = "选择接收文件的保存位置",
+        ["DialogSelectFileTitle"] = "选择要发送的文件",
+        ["DialogFileFilter"] = "所有文件|*.*",
+        ["SettingsLanguageTitle"] = "应用语言",
+        ["SettingsLanguageBody"] = "选择桌面客户端显示语言。",
+        ["LanguageSystem"] = "跟随系统",
+        ["LanguageEnglish"] = "英语",
+        ["LanguageChinese"] = "简体中文",
+        ["SettingsSessionTitle"] = "配对会话",
+        ["SettingsSessionBody"] = "只有在你需要轮换当前受信任密钥时，才创建新的配对会话。",
+        ["ConnectionHintNoNetwork"] = "请先让这台电脑重新联网，再生成配对会话。",
+        ["ConnectionHintTrustedWaiting"] = "你的手机已经受信任，Fluentia 正在等待它用已保存的密钥重新连接。",
+        ["ConnectionHintEncrypted"] = "你的手机已完成配对。如需使当前密钥失效，再创建新会话。",
+        ["ConnectionHintSessionReady"] = "会话已就绪。当前配对密钥最多可复用 {0} 天。",
+        ["ConnectionHintConnectedPreparing"] = "已连接到中继，正在准备可复用的配对会话。",
+        ["ConnectionHintConnectToRelay"] = "连接到你的中继服务器以准备可复用会话。",
+        ["PairingNoticeNetworkTitle"] = "网络已断开",
+        ["PairingNoticeNetworkBody"] = "请先让这台电脑重新联网，再显示二维码或连接码。",
+        ["PairingNoticeServerTitle"] = "服务器未连接",
+        ["PairingNoticeServerBody"] = "请先连接到中继服务器，再生成安全配对会话。",
+        ["PairingNoticePreparingTitle"] = "正在准备会话",
+        ["PairingNoticePreparingBody"] = "安全会话正在创建，配对控件将在准备完成后出现。",
+        ["PairingNoticeExpiredTitle"] = "会话已过期",
+        ["PairingNoticeExpiredBody"] = "请创建新的会话以继续配对手机。",
+        ["PairingNoticeWaitingReconnectTitle"] = "等待重新连接",
+        ["PairingNoticeWaitingReconnectBody"] = "这台手机已经完成配对。只要会话仍在有效期内，保留手机上的已保存会话即可自动重连。",
+        ["PairingNoticeReadyTitle"] = "安全通道已就绪",
+        ["PairingNoticeReadyBody"] = "你的手机已连接。除非你主动使当前密钥失效，否则不会再显示配对控件。",
+        ["PairingNoticeSecuringTitle"] = "正在建立安全连接",
+        ["PairingNoticeSecuringBody"] = "手机正在完成密钥交换。配对控件会暂时隐藏，以避免重复操作。",
+        ["QrSessionExpired"] = "会话已过期",
+        ["QrValidDays"] = "剩余 {0} 天有效",
+        ["QrValidHours"] = "剩余 {0} 小时有效",
+        ["QrValidMinutes"] = "剩余 {0} 分钟有效",
+        ["QrNoActiveSession"] = "当前没有有效会话",
+        ["QrSessionHint"] = "会话 {0} - 最多可复用 {1} 天",
+        ["QrHintClickToCollapse"] = "点击任意位置关闭",
+        ["StatusNetworkDisconnected"] = "网络已断开",
+        ["StatusPreparingSession"] = "正在准备会话",
+        ["StatusWaitingPhone"] = "等待手机连接",
+        ["StatusPhoneDetected"] = "已检测到手机",
+        ["StatusPhoneDisconnected"] = "手机已断开",
+        ["StatusPhoneDisconnectedWaiting"] = "手机已断开 - 正在等待重连",
+        ["StatusPhoneDisconnectedOffline"] = "手机已断开 - 电脑离线",
+        ["StatusEncrypted"] = "端到端加密已建立",
+        ["StatusConnectingServer"] = "正在连接服务器",
+        ["StatusAutoConnectFailed"] = "自动连接失败",
+        ["StatusConnectionFailed"] = "连接失败",
+        ["StatusConnectionCodeCopied"] = "连接码已复制",
+        ["StatusInvalidSavePath"] = "保存路径无效",
+        ["StatusSettingsSaved"] = "设置已保存",
+        ["RegexConfigErrorTitle"] = "正则规则无效",
+        ["StatusRegexConfigInvalid"] = "正则规则无效",
+        ["StatusRegexConfigInvalidFormat"] = "正则规则无效: {0}",
+        ["StatusRegexConfigSavedFormat"] = "已保存 {0} 条正则规则",
+        ["VersionIncompatibleTitle"] = "版本不兼容",
+        ["SavedSessionLostTitle"] = "已保存的会话不可用",
+        ["SavedSessionLostBody"] = "之前保存的受信任会话无法恢复，请重新扫码建立新的受信任配对。",
+        ["StatusSavedSessionLost"] = "已保存的会话不可用，请重新扫码恢复信任关系。",
+        ["StatusInputTargetRecovering"] = "正在恢复上一个 PC 目标窗口",
+        ["StatusInputTargetManual"] = "请手动激活要输入的 PC 窗口后继续输入",
+        ["StatusInputTargetManualInvalid"] = "上一个 PC 目标窗口已失效，请先激活新的目标窗口后继续输入",
+        ["StatusSendingFileFormat"] = "正在发送 {0}",
+        ["StatusFileSentFormat"] = "已发送 {0}",
+        ["StatusFileTooLargeFormat"] = "文件超过服务器 {0} MB 的限制",
+        ["StatusFileTransferUnavailable"] = "当前无法使用文件传输",
+        ["StatusFileSendFailed"] = "文件发送失败",
+        ["StatusFilesSentFormat"] = "已发送 {0} 个文件",
+        ["StatusFileReceivedFormat"] = "已接收 {0}",
+        ["TransferUploadingFilesFormat"] = "正在发送 {0} 个文件",
+        ["TransferReceivingFilesFormat"] = "正在接收 {0} 个文件",
+        ["TransferUploadedFilesFormat"] = "已发送 {0} 个文件",
+        ["TransferReceivedFilesFormat"] = "已接收 {0} 个文件",
+        ["TransferProgressPreparing"] = "0% · 正在准备",
+        ["TransferProgressPausedFormat"] = "{0}% · 已暂停",
+        ["TransferProgressSecondsLeftFormat"] = "{0}% · 约剩 {1} 秒",
+        ["TransferProgressComplete"] = "已完成",
+        ["TransferProgressTransferring"] = "传输中",
+        ["TransferProgressReady"] = "已就绪",
+        ["TransferProgressCancelled"] = "已取消",
+        ["TooltipPauseTransfer"] = "暂停传输",
+        ["TooltipResumeTransfer"] = "继续传输",
+        ["TooltipCancelTransfer"] = "取消传输",
+        ["TooltipExpandTransfer"] = "展开详情",
+        ["TooltipCollapseTransfer"] = "收起详情",
+        ["StatusSessionRecovered"] = "已恢复保存的会话",
+        ["StatusErrorFormat"] = "错误: {0}",
+        ["ConfirmDialogTitle"] = "Fluentia - 连接请求",
+        ["ConfirmDialogHeaderTitle"] = "连接请求",
+        ["ConfirmDialogHeaderBody"] = "有设备希望与你的电脑配对",
+        ["ConfirmDialogVerificationTitle"] = "校验码",
+        ["ConfirmDialogVerificationHint"] = "必须与手机上显示的代码一致",
+        ["ConfirmDialogDeviceLabel"] = "设备",
+        ["ButtonReject"] = "拒绝",
+        ["ButtonApprove"] = "允许",
+        ["TrayShow"] = "显示",
+        ["TrayNewSession"] = "新建会话",
+        ["TrayQuit"] = "退出 Fluentia",
+        ["TrayTooltipDisconnected"] = "Fluentia - 已断开",
+        ["TrayTooltipConnected"] = "Fluentia",
+        ["TrayNotificationInputTargetTitle"] = "请选择 PC 目标窗口",
+        ["TrayNotificationInputTargetBody"] = "Fluentia 无法恢复之前的目标窗口。请将你想输入的应用重新切回前台。",
+        ["TrayNotificationInputTargetBodyInvalid"] = "之前的目标窗口已失效。请先打开或切换到你要控制的应用，再继续在手机上输入。",
+        ["MessageEnterServerUrl"] = "请输入服务器地址。",
+    };
+
+    public static string CurrentLanguageSetting => _languageOverride ?? "system";
+
+    private static CultureInfo ActiveCulture =>
+        string.IsNullOrWhiteSpace(_languageOverride)
+            ? CultureInfo.CurrentUICulture
+            : new CultureInfo(_languageOverride);
+
+    private static IReadOnlyDictionary<string, string> Current =>
+        ActiveCulture.Name.StartsWith("zh", StringComparison.OrdinalIgnoreCase)
+            ? Chinese
+            : English;
+
+    public static void SetLanguagePreference(string? language)
+    {
+        _languageOverride = NormalizeLanguage(language);
+
+        if (_languageOverride == null)
+        {
+            CultureInfo.DefaultThreadCurrentUICulture = null;
+            CultureInfo.DefaultThreadCurrentCulture = null;
+            return;
+        }
+
+        var culture = new CultureInfo(_languageOverride);
+        CultureInfo.DefaultThreadCurrentUICulture = culture;
+        CultureInfo.DefaultThreadCurrentCulture = culture;
+    }
+
+    private static string? NormalizeLanguage(string? language)
+    {
+        if (string.IsNullOrWhiteSpace(language) || language.Equals("system", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        if (language.StartsWith("zh", StringComparison.OrdinalIgnoreCase))
+        {
+            return "zh-CN";
+        }
+
+        return "en";
+    }
+
+    public static string Get(string key, params object[] args)
+    {
+        var value = Current.TryGetValue(key, out var localized)
+            ? localized
+            : English.TryGetValue(key, out var fallback)
+                ? fallback
+                : key;
+
+        return args.Length == 0 ? value : string.Format(value, args);
+    }
+}

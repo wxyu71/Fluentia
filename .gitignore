@@ -1,0 +1,47 @@
+node_modules/
+dist/
+build/
+coverage/
+.DS_Store
+.env
+.vscode/
+# .github/ is needed for CI workflows
+.idea/
+video-frames/
+*.mp4
+*.log
+*.tmp
+*.bak
+*.swp
+*.swo
+*.zip
+*.tar.gz
+*.tgz
+*.7z
+
+# Go
+server/fluentia-server
+server/fluentia-server.exe
+server/data/
+
+# Test state
+.fluentia-test-state.json
+
+# C# / .NET
+client/Fluentia/bin/
+client/Fluentia/obj/
+client/Fluentia.Tests/bin/
+client/Fluentia.Tests/obj/
+*.user
+*.suo
+
+# OS
+*.pyc
+*.pyo
+*.class
+*.jar
+*.war
+CLAUDE.md
+
+# specific to this project
+bump-version.ps1

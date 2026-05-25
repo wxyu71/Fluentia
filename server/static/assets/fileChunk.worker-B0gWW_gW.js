@@ -1,0 +1,1 @@
+(function(){"use strict";self.onmessage=o=>{const{id:a,bytes:r}=o.data,s=new Uint8Array(r);let t="";const n=32768;for(let e=0;e<s.length;e+=n)t+=String.fromCharCode(...s.subarray(e,Math.min(e+n,s.length)));const i={id:a,base64:btoa(t)};self.postMessage(i)}})();

@@ -1,0 +1,20 @@
+pre-commit:
+  parallel: true
+  commands:
+    go-fmt:
+      glob: "server/*.go"
+      run: cd server && gofmt -w . && go vet ./...
+      stage_fixed: true
+    eslint:
+      glob: "mobile/src/**/*.{ts,tsx}"
+      run: cd mobile && npx eslint --fix src/
+      stage_fixed: true
+    prettier:
+      glob: "mobile/src/**/*.{ts,tsx}"
+      run: cd mobile && npx prettier --write src/
+      stage_fixed: true
+
+commit-msg:
+  commands:
+    conventional-commit:
+      run: npx commitlint --edit {1}

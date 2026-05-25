@@ -1,0 +1,35 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version (e.g. 1.6.0)'
+        required: true
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bump version across all components
+        run: |
+          VERSION="${{ inputs.version }}"
+          # mobile/package.json
+          sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" mobile/package.json
+          # mobile/src/types.ts
+          sed -i "s/PROTOCOL_VERSION = '[^']*'/PROTOCOL_VERSION = '$VERSION'/" mobile/src/types.ts
+          # server/protocol.go
+          sed -i "s/ProtocolVersion = \"[^\"]*\"/ProtocolVersion = \"$VERSION\"/" server/protocol.go
+          # client csproj (3 fields)
+          sed -i "s|<Version>[^<]*</Version>|<Version>$VERSION</Version>|" client/Fluentia/Fluentia.csproj
+          sed -i "s|<AssemblyVersion>[^<]*</AssemblyVersion>|<AssemblyVersion>${VERSION}.0</AssemblyVersion>|" client/Fluentia/Fluentia.csproj
+          sed -i "s|<FileVersion>[^<]*</FileVersion>|<FileVersion>${VERSION}.0</FileVersion>|" client/Fluentia/Fluentia.csproj
+          # client Messages.cs
+          sed -i "s/ProtocolVersion  = \"[^\"]*\"/ProtocolVersion  = \"$VERSION\"/" client/Fluentia/Models/Messages.cs
+      - name: Create PR
+        uses: peter-evans/create-pull-request@v6
+        with:
+          title: "chore: bump version to ${{ inputs.version }}"
+          branch: "release/v${{ inputs.version }}"
+          body: "Automated version bump to ${{ inputs.version }}"

@@ -1,0 +1,21 @@
+[*.cs]
+indent_style = space
+indent_size = 4
+end_of_line = crlf
+charset = utf-8-bom
+
+# IDE0005: Remove unnecessary import
+dotnet_diagnostic.IDE0005.severity = warning
+
+# IDE0040: Add accessibility modifiers
+dotnet_diagnostic.IDE0040.severity = suggestion
+
+# IDE1006: Naming styles
+dotnet_diagnostic.IDE1006.severity = warning
+
+[*.csproj]
+indent_size = 2
+
+[*.xaml]
+indent_style = space
+indent_size = 2
