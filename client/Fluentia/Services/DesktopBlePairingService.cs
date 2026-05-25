@@ -2,9 +2,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Fluentia.Models;
-using Windows.Devices.Bluetooth;
-using Windows.Devices.Bluetooth.GenericAttributeProfile;
-using Windows.Storage.Streams;
 
 namespace Fluentia.Services;
 

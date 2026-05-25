@@ -33,15 +33,15 @@ type DeviceCodeEntry struct {
 type Hub struct {
 	sessions          map[string]*Session
 	clients           map[*Client]bool
-	deviceCodes       map[string]*DeviceCodeEntry // code → entry
+	deviceCodes       map[string]*DeviceCodeEntry
 	persistedSessions map[string]persistedSession
-	codeAttempts      map[string][]time.Time // IP → timestamps (rate limiting)
-	mu                sync.RWMutex
-	rateMu            sync.Mutex
+	codeAttempts      map[string][]time.Time
 	MinVersion        string
 	SessionStorePath  string
 	SessionMaxAge     time.Duration
 	MaxFileMB         int
+	mu                sync.RWMutex
+	rateMu            sync.Mutex
 }
 
 func NewHub(sessionMaxAgeDays int) *Hub {

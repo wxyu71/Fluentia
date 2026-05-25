@@ -8,12 +8,12 @@ import (
 
 // Session represents a paired connection between a PC client and a mobile client.
 type Session struct {
-	PC         *Client
-	Mobile     *Client
-	GraceTimer *time.Timer // set when PC disconnects; fires when the reusable session finally expires
-	Token      string
 	CreatedAt  time.Time
 	ExpiresAt  time.Time
+	PC         *Client
+	Mobile     *Client
+	GraceTimer *time.Timer
+	Token      string
 }
 
 // NewSession creates a new session with a random token, owned by the given PC client.

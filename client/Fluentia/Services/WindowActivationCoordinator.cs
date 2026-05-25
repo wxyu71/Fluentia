@@ -1,8 +1,4 @@
-﻿using System;
-using System.Threading;
-using System.Threading.Tasks;
-
-namespace Fluentia.Services;
+﻿namespace Fluentia.Services;
 
 public sealed record WindowRestoreResult(bool Restored, bool CandidateInvalid, IntPtr WindowHandle);
 

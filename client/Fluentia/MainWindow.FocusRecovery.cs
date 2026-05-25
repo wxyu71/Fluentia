@@ -1,7 +1,4 @@
-﻿using System;
-using System.Threading;
-using System.Threading.Tasks;
-using H.NotifyIcon.Core;
+﻿using H.NotifyIcon.Core;
 
 namespace Fluentia;
 

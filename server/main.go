@@ -13,17 +13,17 @@ import (
 
 // ServerConfig holds all environment-driven settings.
 type ServerConfig struct {
-	AllowedIPs       []string // if non-empty, only these IPs may connect
 	Port             string
 	StaticDir        string
 	MinVersion       string
 	SessionStorePath string
-	SecretPath       string // if set, WS is served at /ws/<secret> instead of /ws
-	MaxFileMB        int    // -1=disabled, 0=unlimited, N=N MB
-	MobileExpiry     int    // seconds after mobile disconnects before PC shows window (default 60)
-	SessionMaxAge    int    // how long a session token remains reusable, in days
-	PrivateMode      bool   // require SecretPath
-	IPWhitelist      bool   // enforce AllowedIPs
+	SecretPath       string
+	AllowedIPs       []string
+	MaxFileMB        int
+	MobileExpiry     int
+	SessionMaxAge    int
+	PrivateMode      bool
+	IPWhitelist      bool
 }
 
 func loadConfig() ServerConfig {

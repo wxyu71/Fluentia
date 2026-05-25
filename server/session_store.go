@@ -11,9 +11,9 @@ import (
 )
 
 type persistedSession struct {
-	TokenHash string    `json:"tokenHash"`
 	ExpiresAt time.Time `json:"expiresAt"`
 	CreatedAt time.Time `json:"createdAt"`
+	TokenHash string    `json:"tokenHash"`
 }
 
 func (h *Hub) LoadPersistedSessions() error {
