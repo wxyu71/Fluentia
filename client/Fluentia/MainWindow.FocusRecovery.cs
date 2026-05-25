@@ -1,6 +1,4 @@
-﻿using H.NotifyIcon.Core;
-
-namespace Fluentia;
+﻿namespace Fluentia;
 
 public partial class MainWindow
 {

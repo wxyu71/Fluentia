@@ -14,7 +14,6 @@ using System.Windows.Threading;
 using Fluentia.Models;
 using Fluentia.Services;
 using Fluentia.Views;
-using H.NotifyIcon;
 using Microsoft.Win32;
 using Clipboard = System.Windows.Clipboard;
 using Color = System.Windows.Media.Color;

@@ -4,7 +4,6 @@ using System.Net.NetworkInformation;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
-using H.NotifyIcon;
 using Application = System.Windows.Application;
 using Color = System.Windows.Media.Color;
 

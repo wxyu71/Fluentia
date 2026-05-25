@@ -1,7 +1,6 @@
 ﻿using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
-using QRCoder;
 using Brushes = System.Windows.Media.Brushes;
 using Color = System.Windows.Media.Color;
 
