@@ -7,7 +7,7 @@ COPY mobile/ ./
 RUN npm run build
 
 # Build server
-FROM golang:1.22-alpine AS server-build
+FROM golang:1.24-alpine AS server-build
 WORKDIR /app/server
 COPY server/go.* ./
 RUN go mod download
