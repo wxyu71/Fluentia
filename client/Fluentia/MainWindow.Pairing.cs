@@ -3,6 +3,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using Brushes = System.Windows.Media.Brushes;
 using Color = System.Windows.Media.Color;
+using QRCoder;
 
 namespace Fluentia;
 

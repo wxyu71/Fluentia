@@ -5,7 +5,7 @@ end_of_line = crlf
 charset = utf-8-bom
 
 # IDE0005: Remove unnecessary import
-dotnet_diagnostic.IDE0005.severity = warning
+dotnet_diagnostic.IDE0005.severity = none
 
 # IDE0040: Add accessibility modifiers
 dotnet_diagnostic.IDE0040.severity = suggestion
