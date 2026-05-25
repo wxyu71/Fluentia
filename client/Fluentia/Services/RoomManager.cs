@@ -22,6 +22,8 @@ public sealed record VersionRequirementResult(bool IsCompatible, string? Message
 public class RoomManager : IDisposable
 {
     private readonly IRelayTransport _transport;
+    private IRelayTransport? _bleTransport;
+    private readonly DesktopTransportHealth _health = new();
     private readonly CryptoService _crypto;
     private string? _currentToken;
     private string? _serverUrl;
@@ -54,10 +56,12 @@ public class RoomManager : IDisposable
     public int SessionMaxAgeDays => _sessionMaxAgeDays;
     public bool FileTransferEnabled => _fileTransferEnabled;
     public int MaxFileMB => _maxFileMB;
-    public bool IsConnected => _transport.IsConnected;
+    public bool IsConnected => _transport.IsConnected || (_bleTransport?.IsConnected ?? false);
     public bool HasTrustedSession => _trustedSessionEstablished;
     public DateTimeOffset? SessionExpiresAtUtc => _sessionExpiresAtUtc;
     public RelayTransportKind ActiveTransportKind => _transport.TransportKind;
+    public DesktopTransportHealth TransportHealth => _health;
+    public bool HasBleTransport => _bleTransport != null;
 
     public BleDesktopSessionInfo? GetBleSessionInfo()
     {
@@ -80,6 +84,7 @@ public class RoomManager : IDisposable
         }
 
         BleLog.Write($"[BLE→PC] payload={msg.Payload?.Length ?? 0}B nonce={msg.Nonce?.Length ?? 0}B seq={msg.Seq?.ToString() ?? "null"} cryptoReady={_crypto.IsReady} ratchetReady={_crypto.RatchetReady}");
+        _health.OnBleSuccess();
         HandleEncrypted(msg);
     }
 
@@ -106,15 +111,23 @@ public class RoomManager : IDisposable
     }
 
     /// <summary>
-    /// Send an encrypted command from PC to mobile.
+    /// Send an encrypted command from PC to mobile using default routing (Control type).
     /// </summary>
-    public async Task<bool> SendToMobileAsync(string jsonPayload)
-    {
-        if (!_encryptionConfirmed || !_transport.IsConnected) return false;
+    public Task<bool> SendToMobileAsync(string jsonPayload)
+        => SendToMobileAsync(jsonPayload, TransportMessageType.Control);
 
+    /// <summary>
+    /// Send an encrypted command from PC to mobile with message-type-aware routing.
+    /// Uses TransportHealthMonitor to select the best transport channel.
+    /// </summary>
+    public async Task<bool> SendToMobileAsync(string jsonPayload, TransportMessageType messageType)
+    {
+        if (!_encryptionConfirmed) return false;
+
+        // Encrypt once — the same ciphertext goes to whichever transport we pick
+        WsMessage msg;
         try
         {
-            WsMessage msg;
             if (_crypto.SendRatchetReady)
             {
                 var (payload, nonce, seq) = _crypto.EncryptRatcheted(jsonPayload);
@@ -125,13 +138,61 @@ public class RoomManager : IDisposable
                 var (payload, nonce) = _crypto.Encrypt(jsonPayload);
                 msg = new WsMessage { Type = MsgTypes.Encrypted, Payload = payload, Nonce = nonce };
             }
-            await _transport.SendAsync(msg);
-            return true;
         }
         catch
         {
             return false;
         }
+
+        // Select transport based on health scores and message type
+        var transport = SelectTransport(messageType);
+        if (transport is null) return false;
+
+        try
+        {
+            await transport.SendAsync(msg);
+            return true;
+        }
+        catch
+        {
+            // Primary transport failed — try the other one as fallback
+            var fallback = transport == _transport ? _bleTransport : _transport;
+            if (fallback is { IsConnected: true })
+            {
+                try
+                {
+                    await fallback.SendAsync(msg);
+                    return true;
+                }
+                catch
+                {
+                    // Both failed
+                }
+            }
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Select the best transport for the given message type.
+    /// </summary>
+    private IRelayTransport? SelectTransport(TransportMessageType messageType)
+    {
+        // If no BLE transport, always use WS
+        if (_bleTransport is null || !_bleTransport.IsConnected)
+        {
+            return _transport.IsConnected ? _transport : null;
+        }
+
+        // If WS is down, use BLE
+        if (!_transport.IsConnected)
+        {
+            return _bleTransport.IsConnected ? _bleTransport : null;
+        }
+
+        // Both available — use health scores
+        var selected = _health.SelectTransport(messageType);
+        return selected == RelayTransportKind.BluetoothLowEnergy ? _bleTransport : _transport;
     }
 
     public RoomManager()
@@ -140,14 +201,36 @@ public class RoomManager : IDisposable
     }
 
     public RoomManager(IRelayTransport transport)
+        : this(transport, null)
+    {
+    }
+
+    public RoomManager(IRelayTransport transport, IRelayTransport? bleTransport)
     {
         _transport = transport;
+        _bleTransport = bleTransport;
         _crypto = new CryptoService();
+
+        // Wire up BLE transport if provided
+        if (_bleTransport != null)
+        {
+            _bleTransport.OnMessage += HandleMessage;
+            _bleTransport.OnConnected += () =>
+            {
+                OnTransportKindChanged?.Invoke(RelayTransportKind.BluetoothLowEnergy);
+                _health.OnBleSuccess();
+            };
+            _bleTransport.OnDisconnected += _ =>
+            {
+                _health.MarkDown(RelayTransportKind.BluetoothLowEnergy);
+            };
+        }
 
         _transport.OnConnected += () =>
         {
             OnServerConnectionChanged?.Invoke(true);
             OnTransportKindChanged?.Invoke(_transport.TransportKind);
+            _health.SetWsConnected(true);
             OnStatusChanged?.Invoke("Connected to server");
             // If we have an existing token, try to rejoin (grace period).
             // Otherwise, create a new session.
@@ -170,6 +253,7 @@ public class RoomManager : IDisposable
         _transport.OnDisconnected += (reason) =>
         {
             OnServerConnectionChanged?.Invoke(false);
+            _health.SetWsConnected(false);
             OnStatusChanged?.Invoke($"Disconnected: {reason}");
         };
 
@@ -462,6 +546,7 @@ public class RoomManager : IDisposable
 
     public void Dispose()
     {
+        _bleTransport?.Dispose();
         _transport.Dispose();
     }
 

@@ -124,6 +124,34 @@ Fluentia/
   docs/          Documentation
 ```
 
+## Dual-Channel Architecture (BLE + WebSocket)
+
+Fluentia supports simultaneous BLE and WebSocket transport. The routing is health-score-based:
+
+**Key principle:** Encrypt once, route to best channel. Never encrypt the same message twice.
+
+**Message routing rules:**
+- **Input messages** (diff, enter, backspace): prefer BLE for low latency
+- **File transfer** (file_start, file_chunk): always use WS (bandwidth)
+- **Handshake** (key_exchange, ratchet_init): single most reliable channel
+- **Control** (clipboard, ble_auth): best available
+
+**Health scoring (0-100):**
+- BLE: RSSI, consecutive failures, battery level
+- WS: heartbeat RTT, connection state, battery level
+- Battery <20%: prefer BLE (lower power), <10%: BLE only
+
+**Key files:**
+- `mobile/src/utils/transportHealth.ts` — Mobile health monitor
+- `mobile/src/services/bleTransport.ts` — Mobile BLE transport
+- `client/Fluentia/Services/DesktopTransportHealth.cs` — Desktop health monitor
+- `client/Fluentia/Services/BleTransport.cs` — Desktop BLE transport
+- `client/Fluentia/Services/RoomManager.cs` — Desktop dual-transport routing
+
+**Testing:**
+- `mobile/src/utils/dualChannelRouting.test.ts` — E2E routing smoke tests
+- `client/Fluentia.Tests/DesktopTransportHealthTests.cs` — Desktop health tests
+
 ## Version Management
 
 Version is managed via the GitHub Actions `release` workflow. Do not manually edit version numbers. Use:

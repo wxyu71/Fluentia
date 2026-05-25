@@ -3,6 +3,7 @@ import { dlog } from '../utils/debugLog';
 import { TRANSPORT_READY_STATE, type TransportConnection } from '../services/transport';
 import { createWebSocketTransport } from '../services/websocketTransport';
 import { CryptoService, type PersistedCryptoSession } from '../utils/crypto';
+import { TransportHealthMonitor, type MessageType } from '../utils/transportHealth';
 import type {
   WsMessage,
   ConnectionState,
@@ -64,6 +65,8 @@ export function useWebSocket(
   sendViaBle?: (message: Pick<WsMessage, 'payload' | 'nonce' | 'seq'>) => boolean,
   onEncryptedCommand?: (cmd: InputCommand) => void,
   bleTransportReady?: boolean,
+  healthMonitor?: TransportHealthMonitor,
+  bleTransport?: { send(data: string): void; readyState: number } | null,
 ): UseWebSocketReturn {
   const [connectionState, setConnectionState] = useState<ConnectionState>('disconnected');
   const [peerConnected, setPeerConnected] = useState(false);
@@ -394,11 +397,12 @@ export function useWebSocket(
     }
   }, [clearConnectTimeout, clearHandshakeTimer, clearHeartbeatInterval, clearHeartbeatTimeout, clearIncomingTransferHideTimer, clearOfflineGraceTimer, clearReconnectTimer, closeSocket, dropQueuedCommands, setBufferedInputMode, setEncryptionState]);
 
-  const sendEncryptedPayload = useCallback((plaintext: string) => {
+  const sendEncryptedPayload = useCallback((plaintext: string, messageType: MessageType = 'control') => {
     const ws = wsRef.current;
     if (!cryptoRef.current.isReady()) return false;
 
     try {
+      // Encrypt once — same ciphertext goes to whichever transport we pick
       let msg: WsMessage;
       if (cryptoRef.current.isRatchetReady()) {
         const { payload, nonce, seq } = cryptoRef.current.encryptRatcheted(plaintext);
@@ -408,6 +412,36 @@ export function useWebSocket(
         msg = { type: 'encrypted', payload, nonce };
       }
 
+      // Use health monitor to select transport if available
+      if (healthMonitor) {
+        const selected = healthMonitor.selectTransport(messageType);
+
+        if (selected === 'ble' && bleTransport && bleTransport.readyState === TRANSPORT_READY_STATE.OPEN) {
+          bleTransport.send(JSON.stringify(msg));
+          healthMonitor.onBleSuccess();
+          return true;
+        }
+
+        if (selected === 'ws' && ws && ws.readyState === TRANSPORT_READY_STATE.OPEN) {
+          ws.send(JSON.stringify(msg));
+          return true;
+        }
+
+        // Fallback: try the other transport
+        if (selected === 'ble' && ws && ws.readyState === TRANSPORT_READY_STATE.OPEN) {
+          ws.send(JSON.stringify(msg));
+          return true;
+        }
+        if (selected === 'ws' && bleTransport && bleTransport.readyState === TRANSPORT_READY_STATE.OPEN) {
+          bleTransport.send(JSON.stringify(msg));
+          healthMonitor.onBleSuccess();
+          return true;
+        }
+
+        return false;
+      }
+
+      // Legacy path: no health monitor, WS-first fallback
       if (ws && ws.readyState === TRANSPORT_READY_STATE.OPEN) {
         ws.send(JSON.stringify(msg));
         return true;
@@ -422,7 +456,7 @@ export function useWebSocket(
       console.error('Encryption error:', err);
       return false;
     }
-  }, [sendViaBle]);
+  }, [sendViaBle, healthMonitor, bleTransport]);
 
   const flushQueuedCommands = useCallback(() => {
     if (!encryptionReadyRef.current) {
@@ -431,7 +465,7 @@ export function useWebSocket(
 
     const remaining: InputCommand[] = [];
     for (const command of queuedCommandsRef.current) {
-      const sent = sendEncryptedPayload(JSON.stringify(command));
+      const sent = sendEncryptedPayload(JSON.stringify(command), 'input');
       if (!sent) {
         remaining.push(command);
       }
@@ -568,7 +602,7 @@ export function useWebSocket(
             persistCryptoState();
             setEncryptionState(true);
             clearHandshakeTimer();
-            sendEncryptedPayload(JSON.stringify({ type: 'handshake_ack' } satisfies InputCommand));
+            sendEncryptedPayload(JSON.stringify({ type: 'handshake_ack' } satisfies InputCommand), 'handshake');
             flushQueuedCommands();
           } else if (parsed.type === 'ble_auth_ok') {
             onEncryptedCommand?.(parsed);
@@ -895,7 +929,18 @@ export function useWebSocket(
 
   const sendEncrypted = useCallback((cmd: InputCommand) => {
     const ws = wsRef.current;
-    const sent = sendEncryptedPayload(JSON.stringify(cmd));
+
+    // Determine message type for transport routing
+    let messageType: MessageType = 'input';
+    if (cmd.type === 'file_start' || cmd.type === 'file_chunk' || cmd.type === 'file_abort') {
+      messageType = 'file';
+    } else if (cmd.type === 'ratchet_init' || cmd.type === 'pc_ratchet_init' || cmd.type === 'handshake_ack' || cmd.type === 'key_exchange') {
+      messageType = 'handshake';
+    } else if (cmd.type === 'ble_auth' || cmd.type === 'ble_auth_ok' || cmd.type === 'clipboard') {
+      messageType = 'control';
+    }
+
+    const sent = sendEncryptedPayload(JSON.stringify(cmd), messageType);
     dlog('SEND', `type=${cmd.type} sent=${sent} ble=${bleTransportReadyRef.current} enc=${encryptionReadyRef.current} ws=${ws?.readyState} conn=${connectionStateRef.current} crypto=${cryptoRef.current.isReady()}`);
     if (sent) {
       return;

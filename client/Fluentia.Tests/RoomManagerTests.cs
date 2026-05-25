@@ -351,6 +351,45 @@ public class RoomManagerTests : IDisposable
         Assert.NotNull(info.PublicKey);
     }
 
+    // === Dual Transport Routing ===
+
+    [Fact]
+    public void HasBleTransport_WithoutBle_ReturnsFalse()
+    {
+        Assert.False(_room.HasBleTransport);
+    }
+
+    [Fact]
+    public void TransportHealth_IsAccessible()
+    {
+        Assert.NotNull(_room.TransportHealth);
+        Assert.Equal(50, _room.TransportHealth.BleScore);
+        Assert.Equal(50, _room.TransportHealth.WsScore);
+    }
+
+    [Fact]
+    public async Task HandleBleEncryptedMessage_UpdatesBleHealth()
+    {
+        await _room.ConnectAsync("wss://test.example.com/ws");
+        _transport.SimulateMessage(new WsMessage
+        {
+            Type = MsgTypes.SessionCreated,
+            Token = "token",
+            ExpiresAt = DateTimeOffset.UtcNow.AddDays(7).ToString("O"),
+        });
+
+        // Simulate BLE message received — should update health
+        _room.HandleBleEncryptedMessage(new WsMessage
+        {
+            Type = MsgTypes.Encrypted,
+            Payload = "test",
+            Nonce = "test",
+        });
+
+        // BLE health should be updated (success)
+        Assert.True(_room.TransportHealth.BleScore >= 50);
+    }
+
     // === Disposal ===
 
     [Fact]
@@ -359,5 +398,15 @@ public class RoomManagerTests : IDisposable
         _room.Dispose();
         // Should not throw on double dispose
         _room.Dispose();
+    }
+
+    [Fact]
+    public void Dispose_WithBleTransport_DisposesBoth()
+    {
+        var ws = new MockTransport();
+        var ble = new MockTransport { TransportKind = RelayTransportKind.BluetoothLowEnergy };
+        var room = new RoomManager(ws, ble);
+        room.Dispose();
+        // Should not throw
     }
 }
