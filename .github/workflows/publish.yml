@@ -1,0 +1,175 @@
+name: Publish
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  # === Verify version consistency ===
+  check-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.extract.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract and verify version consistency
+        id: extract
+        run: |
+          # Extract version from tag
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+
+          # Extract from each file
+          PKG_VERSION=$(grep -oP '"version":\s*"\K[^"]+' mobile/package.json)
+          TS_VERSION=$(grep -oP "PROTOCOL_VERSION = '\K[^']+" mobile/src/types.ts)
+          GO_VERSION=$(grep -oP 'ProtocolVersion = "\K[^"]+' server/protocol.go)
+          CSPROJ_VERSION=$(grep -oP '<Version>\K[^<]+' client/Fluentia/Fluentia.csproj)
+          CS_VERSION=$(grep -oP 'ProtocolVersion\s+= "\K[^"]+' client/Fluentia/Models/Messages.cs)
+
+          echo "Tag: $TAG_VERSION"
+          echo "package.json: $PKG_VERSION"
+          echo "types.ts: $TS_VERSION"
+          echo "protocol.go: $GO_VERSION"
+          echo "csproj: $CSPROJ_VERSION"
+          echo "Messages.cs: $CS_VERSION"
+
+          # Verify all match
+          VERSIONS="$PKG_VERSION $TS_VERSION $GO_VERSION $CSPROJ_VERSION $CS_VERSION"
+          for v in $VERSIONS; do
+            if [ "$v" != "$TAG_VERSION" ]; then
+              echo "::error::Version mismatch! Tag=$TAG_VERSION, found=$v"
+              echo "All versions: $VERSIONS"
+              exit 1
+            fi
+          done
+
+          echo "All versions consistent: $TAG_VERSION"
+          echo "version=$TAG_VERSION" >> "$GITHUB_OUTPUT"
+
+  # === Build all components ===
+  build-mobile:
+    needs: check-version
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mobile-dist
+          path: mobile/dist/
+
+  build-server:
+    needs: check-version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      - run: |
+          cd server
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ../fluentia-server-linux-amd64 .
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o ../fluentia-server-linux-arm64 .
+          CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -o ../fluentia-server-darwin-amd64 .
+          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o ../fluentia-server-darwin-arm64 .
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o ../fluentia-server-windows-amd64.exe .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: server-binaries
+          path: fluentia-server-*
+
+  build-client:
+    needs: check-version
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0'
+      - run: dotnet publish client/Fluentia/Fluentia.csproj -c Release -r win-x64 --self-contained -o publish/win-x64/
+      - run: Compress-Archive -Path publish/win-x64/* -DestinationPath fluentia-win-x64.zip
+        shell: pwsh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: client-windows
+          path: fluentia-win-x64.zip
+
+  build-docker:
+    needs: [build-mobile, build-server]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: mobile-dist
+          path: server/static/
+      - uses: actions/download-artifact@v4
+        with:
+          name: server-binaries
+          path: server/
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}:${{ needs.check-version.outputs.version }}
+            ghcr.io/${{ github.repository }}:latest
+
+  # === Create GitHub Release ===
+  release:
+    needs: [check-version, build-mobile, build-server, build-client, build-docker]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Fluentia v${{ needs.check-version.outputs.version }}
+          body: |
+            ## Fluentia v${{ needs.check-version.outputs.version }}
+
+            ### Downloads
+            - **Windows Desktop** (`fluentia-win-x64.zip`): WPF client for Windows 10+
+            - **Server binaries**: Pre-built Go binaries for Linux/macOS/Windows
+            - **Docker**: `ghcr.io/${{ github.repository }}:${{ needs.check-version.outputs.version }}`
+
+            ### Docker Quick Start
+            ```
+            docker pull ghcr.io/${{ github.repository }}:${{ needs.check-version.outputs.version }}
+            docker run -p 8778:8080 ghcr.io/${{ github.repository }}:${{ needs.check-version.outputs.version }}
+            ```
+
+            ### Changes
+            See [commit history](https://github.com/${{ github.repository }}/commits/v${{ needs.check-version.outputs.version }}) for details.
+          files: |
+            artifacts/client-windows/fluentia-win-x64.zip
+            artifacts/server-binaries/fluentia-server-linux-amd64
+            artifacts/server-binaries/fluentia-server-linux-arm64
+            artifacts/server-binaries/fluentia-server-darwin-amd64
+            artifacts/server-binaries/fluentia-server-darwin-arm64
+            artifacts/server-binaries/fluentia-server-windows-amd64.exe
+          draft: false
+          prerelease: false

@@ -14,9 +14,6 @@ public static class TextInjector
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
 
-    /// <summary>Diagnostic logging callback — set by MainWindow.</summary>
-    public static Action<string>? DiagnosticLog { get; set; }
-
     // ── INPUT struct with correct 64-bit layout (40 bytes) ──
     // The Windows INPUT union is as large as MOUSEINPUT (32 bytes on x64).
     // Without padding, KEYBDINPUT-only union would be 24 bytes → wrong array stride.
@@ -47,13 +44,11 @@ public static class TextInjector
         if (inputs.Length == 0) return;
 
         var fg = GetForegroundWindow();
-        DiagnosticLog?.Invoke($"[Inject] fg=0x{fg:X}, events={inputs.Length}, structSize={Marshal.SizeOf<INPUT>()}");
 
         uint sent = SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<INPUT>());
         if (sent != (uint)inputs.Length)
         {
             int err = Marshal.GetLastWin32Error();
-            DiagnosticLog?.Invoke($"[Inject] FAIL sent={sent}/{inputs.Length} err={err}");
         }
     }
 
@@ -146,7 +141,6 @@ public static class TextInjector
 
         if (list.Count > 0)
         {
-            DiagnosticLog?.Invoke($"[ApplyDiff] bs={backspace} insert={text?.Length ?? 0} chars, events={list.Count}");
             Inject(list.ToArray());
         }
     }
@@ -193,7 +187,6 @@ public static class TextInjector
             });
         }
 
-        DiagnosticLog?.Invoke($"[ReplaceAll] {text.Length} chars");
         Inject(list.ToArray());
     }
 }

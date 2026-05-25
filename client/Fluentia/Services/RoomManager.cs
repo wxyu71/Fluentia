@@ -83,7 +83,6 @@ public class RoomManager : IDisposable
             return;
         }
 
-        BleLog.Write($"[BLE→PC] payload={msg.Payload?.Length ?? 0}B nonce={msg.Nonce?.Length ?? 0}B seq={msg.Seq?.ToString() ?? "null"} cryptoReady={_crypto.IsReady} ratchetReady={_crypto.RatchetReady}");
         _health.OnBleSuccess();
         HandleEncrypted(msg);
     }
@@ -478,7 +477,6 @@ public class RoomManager : IDisposable
         if (msg.Payload == null || msg.Nonce == null) return;
         if (!_crypto.IsReady)
         {
-            BleLog.Write($"[BLE→PC] DROPPED: crypto not ready (peerKey={_crypto.PublicKeyBase64?.Length ?? 0}B)");
             return;
         }
 
@@ -497,7 +495,6 @@ public class RoomManager : IDisposable
             var cmd = InputCommand.Deserialize(plaintext);
             if (cmd != null)
             {
-                BleLog.Write($"[BLE→PC] decrypted OK type={cmd.Type} textLen={cmd.Text?.Length ?? 0}");
 
                 if (cmd.Type == "ratchet_init" && cmd.Seed != null)
                 {
@@ -534,12 +531,10 @@ public class RoomManager : IDisposable
             }
             else
             {
-                BleLog.Write("[BLE→PC] decrypted but cmd is null");
             }
         }
         catch (Exception ex)
         {
-            BleLog.Write($"[BLE→PC] decrypt FAILED: {ex.Message}");
             OnError?.Invoke("Decryption failed");
         }
     }

@@ -1,5 +1,4 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { dlog } from '../utils/debugLog';
 import { TRANSPORT_READY_STATE, type TransportConnection } from '../services/transport';
 import { createWebSocketTransport } from '../services/websocketTransport';
 import { CryptoService, type PersistedCryptoSession } from '../utils/crypto';
@@ -452,8 +451,7 @@ export function useWebSocket(
       }
 
       return false;
-    } catch (err) {
-      console.error('Encryption error:', err);
+    } catch {
       return false;
     }
   }, [sendViaBle, healthMonitor, bleTransport]);
@@ -493,7 +491,6 @@ export function useWebSocket(
       ws.send(JSON.stringify({ type: 'encrypted', payload, nonce } satisfies WsMessage));
     } catch (err) {
       handshakeStartedRef.current = false;
-      console.error('Failed to initialize ratchet:', err);
     }
   }, [persistCryptoState, startHandshakeTimeout]);
 
@@ -847,7 +844,6 @@ export function useWebSocket(
     ws.onclose = () => {
       if (wsRef.current !== ws) return;
 
-      dlog('WS', `onclose ble=${bleTransportReadyRef.current} enc=${encryptionReadyRef.current} vis=${document.visibilityState}`);
       wsRef.current = null;
       clearConnectTimeout();
       clearHandshakeTimer();
@@ -941,7 +937,6 @@ export function useWebSocket(
     }
 
     const sent = sendEncryptedPayload(JSON.stringify(cmd), messageType);
-    dlog('SEND', `type=${cmd.type} sent=${sent} ble=${bleTransportReadyRef.current} enc=${encryptionReadyRef.current} ws=${ws?.readyState} conn=${connectionStateRef.current} crypto=${cryptoRef.current.isReady()}`);
     if (sent) {
       return;
     }

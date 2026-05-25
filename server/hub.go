@@ -10,6 +10,14 @@ import (
 	"time"
 )
 
+// shortToken returns the first 8 characters of a token for safe logging.
+func shortToken(token string) string {
+	if len(token) > 8 {
+		return token[:8]
+	}
+	return token
+}
+
 // DeviceCodeEntry stores a pending device code and its associated session.
 type DeviceCodeEntry struct {
 	Code      string
@@ -170,19 +178,19 @@ func (h *Hub) Unregister(c *Client) {
 		remaining := time.Until(session.ExpiresAt)
 		if remaining <= 0 {
 			go h.expireSession(token)
-			log.Printf("Session %s: PC disconnected after session expiry", token)
+			log.Printf("Session %s: PC disconnected after session expiry", shortToken(token))
 		} else {
 			session.GraceTimer = time.AfterFunc(remaining, func() {
 				h.expireSession(token)
 			})
-			log.Printf("Session %s: PC disconnected, reusable until %s", token, session.ExpiresAt.Format(time.RFC3339))
+			log.Printf("Session %s: PC disconnected, reusable until %s", shortToken(token), session.ExpiresAt.Format(time.RFC3339))
 		}
 	} else if c.role == "mobile" {
 		session.Mobile = nil
 		if session.PC != nil {
 			session.PC.SendMessage(Message{Type: MsgPeerLeft, Role: "mobile", DeviceID: c.deviceID})
 		}
-		log.Printf("Mobile %s left session %s", c.deviceID, session.Token)
+		log.Printf("Mobile %s left session %s", c.deviceID, shortToken(session.Token))
 	}
 	c.session = nil
 }
@@ -211,7 +219,7 @@ func (h *Hub) expireSession(token string) {
 	delete(h.sessions, token)
 	delete(h.persistedSessions, tokenFingerprint(token))
 	h.saveSessionsLocked()
-	log.Printf("Session %s destroyed (session expired while PC offline)", token)
+	log.Printf("Session %s destroyed (session expired while PC offline)", shortToken(token))
 }
 
 func (h *Hub) hydratePersistedSessionLocked(token string) (*Session, bool) {
@@ -306,7 +314,7 @@ func (h *Hub) handleCreateSession(c *Client) {
 	}
 	h.saveSessionsLocked()
 
-	log.Printf("Session created: %s (expires %s)", session.Token, session.ExpiresAt.Format(time.RFC3339))
+	log.Printf("Session created: %s (expires %s)", shortToken(session.Token), session.ExpiresAt.Format(time.RFC3339))
 	c.SendMessage(Message{
 		Type:      MsgSessionCreated,
 		Token:     session.Token,
@@ -359,7 +367,7 @@ func (h *Hub) handleRejoinSession(c *Client, msg Message) {
 	c.session = session
 	session.PC = c
 
-	log.Printf("Session %s: PC rejoined", session.Token)
+	log.Printf("Session %s: PC rejoined", shortToken(session.Token))
 	c.SendMessage(Message{
 		Type:      MsgRejoined,
 		Token:     session.Token,
@@ -407,7 +415,7 @@ func (h *Hub) handleJoinSession(c *Client, msg Message) {
 	// Preempt existing mobile client (force-disconnect)
 	if old := session.Mobile; old != nil && old != c {
 		sameDevice := old.deviceID != "" && old.deviceID == c.deviceID
-		log.Printf("Preempting device %s in session %s (new: %s)", old.deviceID, session.Token, c.deviceID)
+		log.Printf("Preempting device %s in session %s (new: %s)", old.deviceID, shortToken(session.Token), c.deviceID)
 		session.Mobile = nil
 		old.session = nil
 		delete(h.clients, old)
@@ -421,7 +429,7 @@ func (h *Hub) handleJoinSession(c *Client, msg Message) {
 	}
 
 	session.Mobile = c
-	log.Printf("Device %s joined session %s", c.deviceID, session.Token)
+	log.Printf("Device %s joined session %s", c.deviceID, shortToken(session.Token))
 
 	c.SendMessage(Message{Type: MsgJoined, Role: "mobile", Token: session.Token, Version: ProtocolVersion, MinVersion: h.MinVersion})
 	if session.PC != nil {
@@ -472,7 +480,7 @@ func (h *Hub) handleDeviceCodeRequest(c *Client) {
 
 	code := h.GenerateDeviceCode(c.session, c)
 	c.SendMessage(Message{Type: MsgDeviceCodeCreated, DeviceCode: code})
-	log.Printf("Device code %s created for session %s", code, c.session.Token)
+	log.Printf("Device code %s created for session %s", code, shortToken(c.session.Token))
 }
 
 // handleDeviceCodeJoin: mobile submits a device code to join.
@@ -577,7 +585,7 @@ func (h *Hub) handleDeviceCodeConfirm(c *Client, msg Message) {
 		session.PC.SendMessage(Message{Type: MsgPeerJoined, Role: "mobile", DeviceID: mobile.deviceID})
 	}
 
-	log.Printf("Device code %s confirmed, device joined session %s", code, session.Token)
+	log.Printf("Device code %s confirmed, device joined session %s", code, shortToken(session.Token))
 }
 
 // handleDeviceCodeReject: PC rejects the device code join.

@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useCallback, useState } from 'react';
 import { computeDiff } from '../utils/diff';
-import { getLogs } from '../utils/debugLog';
 import { ScanIcon, ClipboardIcon, BluetoothIcon } from './Icons';
 import { FileTransfer } from './FileTransfer';
 import { TransferStatusCard } from './TransferStatusCard';
@@ -363,25 +362,6 @@ export const InputArea: React.FC<InputAreaProps> = ({
             >
               <ClipboardIcon size={16} />
               Copy to PC
-            </button>
-            <button
-              onClick={() => {
-                const log = getLogs();
-                if (log) {
-                  navigator.clipboard.writeText(log).catch(() => {});
-                }
-              }}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: 'var(--text-tertiary)',
-                cursor: 'pointer',
-                padding: '6px',
-                fontSize: 11,
-              }}
-              title="Copy debug log to clipboard"
-            >
-              🐛
             </button>
           </div>
         </div>

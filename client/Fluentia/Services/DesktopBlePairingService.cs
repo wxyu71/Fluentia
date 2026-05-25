@@ -152,7 +152,6 @@ public sealed class DesktopBlePairingService : IDisposable
             var request = await args.GetRequestAsync();
             if (request?.Value is null)
             {
-                BleLog.Write("[BLE] WriteRequested: null value");
                 return;
             }
 
@@ -160,12 +159,10 @@ public sealed class DesktopBlePairingService : IDisposable
             var json = ReadString(request.Value);
             request.Respond();
 
-            BleLog.Write($"[BLE] WriteRequested rawLen={rawLen} jsonLen={json.Length} json={json[..Math.Min(json.Length, 80)]}");
 
             var envelope = JsonSerializer.Deserialize<BleEnvelope>(json);
             if (envelope is null)
             {
-                BleLog.Write("[BLE] WriteRequested: null envelope");
                 await SendAsync(new BleEnvelope { Type = "error", Payload = "Invalid BLE payload." });
                 return;
             }
@@ -347,7 +344,6 @@ public sealed class DesktopBlePairingService : IDisposable
     {
         if (string.IsNullOrWhiteSpace(envelope.Payload) || string.IsNullOrWhiteSpace(envelope.Nonce))
         {
-            BleLog.Write($"[BLE] HandleEncryptedEnvelope: payload={envelope.Payload?.Length ?? 0} nonce={envelope.Nonce?.Length ?? 0}");
             return;
         }
 
@@ -359,7 +355,6 @@ public sealed class DesktopBlePairingService : IDisposable
             Seq = envelope.Seq,
         };
 
-        BleLog.Write($"[BLE] HandleEncryptedEnvelope: forwarding payload={envelope.Payload.Length}B seq={envelope.Seq?.ToString() ?? "null"}");
 
         // Fire both the legacy sink and the new event
         _encryptedMessageSink?.Invoke(msg);
@@ -368,7 +363,6 @@ public sealed class DesktopBlePairingService : IDisposable
 
     private void HandlePollRequest(BleEnvelope envelope)
     {
-        BleLog.Write("[BLE] Poll request received from mobile");
         PollReceived?.Invoke(envelope.PublicKey ?? "");
     }
 

@@ -7,8 +7,31 @@ on:
     branches: [main]
 
 jobs:
+  # === Stage 0: Version Consistency ===
+  check-version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify version consistency across all components
+        run: |
+          PKG=$(grep -oP '"version":\s*"\K[^"]+' mobile/package.json)
+          TS=$(grep -oP "PROTOCOL_VERSION = '\K[^']+" mobile/src/types.ts)
+          GO=$(grep -oP 'ProtocolVersion = "\K[^"]+' server/protocol.go)
+          CS=$(grep -oP '<Version>\K[^<]+' client/Fluentia/Fluentia.csproj)
+          MSG=$(grep -oP 'ProtocolVersion\s+= "\K[^"]+' client/Fluentia/Models/Messages.cs)
+
+          echo "package.json=$PKG types.ts=$TS protocol.go=$GO csproj=$CS Messages.cs=$MSG"
+
+          if [ "$PKG" != "$TS" ] || [ "$PKG" != "$GO" ] || [ "$PKG" != "$CS" ] || [ "$PKG" != "$MSG" ]; then
+            echo "::error::Version mismatch detected! All components must have the same version."
+            echo "Expected all to match package.json=$PKG"
+            exit 1
+          fi
+          echo "Version consistent: $PKG"
+
   # === Stage 1: Lint ===
   lint-go:
+    needs: check-version
     runs-on: ubuntu-latest
     defaults:
       run:

@@ -79,9 +79,8 @@ public sealed class BleTransport : IRelayTransport
                 }
             }
         }
-        catch (Exception ex)
+        catch
         {
-            BleLog.Write($"[BleTransport] SendAsync error: {ex.Message}");
             // Queue for retry on next poll
             lock (_queueLock)
             {

@@ -205,11 +205,6 @@ public partial class MainWindow : Window
         MouseEnter += (_, _) => ShowTrafficIcons(true);
         MouseLeave += (_, _) => ShowTrafficIcons(false);
 
-        TextInjector.DiagnosticLog = (message) =>
-        {
-            if (_devMode) _ = Dispatcher.BeginInvoke(() => AppendLog(message));
-        };
-
         Task.Run(ProcessCommandQueue);
 
         _lastForegroundWindow = GetForegroundWindow();
