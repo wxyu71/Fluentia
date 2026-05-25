@@ -45,6 +45,17 @@ public sealed class DesktopBlePairingService : IDisposable
 
     public bool IsAdvertising => _started;
 
+    /// <summary>
+    /// Fired when an encrypted message arrives from mobile via BLE write characteristic.
+    /// BleTransport subscribes to this to forward messages to RoomManager.
+    /// </summary>
+    public event Action<WsMessage>? EncryptedMessageReceived;
+
+    /// <summary>
+    /// Fired when mobile sends a "poll" request to retrieve queued messages.
+    /// </summary>
+    public event Action<string>? PollReceived;
+
     public void AuthorizeRemotePublicKey(string remotePublicKey)
     {
         if (string.IsNullOrWhiteSpace(remotePublicKey))
@@ -162,6 +173,12 @@ public sealed class DesktopBlePairingService : IDisposable
             if (string.Equals(envelope.Type, MsgTypes.Encrypted, StringComparison.Ordinal))
             {
                 HandleEncryptedEnvelope(envelope);
+                return;
+            }
+
+            if (string.Equals(envelope.Type, "poll", StringComparison.Ordinal))
+            {
+                HandlePollRequest(envelope);
                 return;
             }
 
@@ -328,20 +345,55 @@ public sealed class DesktopBlePairingService : IDisposable
 
     private void HandleEncryptedEnvelope(BleEnvelope envelope)
     {
-        if (_encryptedMessageSink is null || string.IsNullOrWhiteSpace(envelope.Payload) || string.IsNullOrWhiteSpace(envelope.Nonce))
+        if (string.IsNullOrWhiteSpace(envelope.Payload) || string.IsNullOrWhiteSpace(envelope.Nonce))
         {
-            BleLog.Write($"[BLE] HandleEncryptedEnvelope: sink={_encryptedMessageSink != null} payload={envelope.Payload?.Length ?? 0} nonce={envelope.Nonce?.Length ?? 0}");
+            BleLog.Write($"[BLE] HandleEncryptedEnvelope: payload={envelope.Payload?.Length ?? 0} nonce={envelope.Nonce?.Length ?? 0}");
             return;
         }
 
-        BleLog.Write($"[BLE] HandleEncryptedEnvelope: forwarding payload={envelope.Payload.Length}B seq={envelope.Seq?.ToString() ?? "null"}");
-        _encryptedMessageSink(new WsMessage
+        var msg = new WsMessage
         {
             Type = MsgTypes.Encrypted,
             Payload = envelope.Payload,
             Nonce = envelope.Nonce,
             Seq = envelope.Seq,
-        });
+        };
+
+        BleLog.Write($"[BLE] HandleEncryptedEnvelope: forwarding payload={envelope.Payload.Length}B seq={envelope.Seq?.ToString() ?? "null"}");
+
+        // Fire both the legacy sink and the new event
+        _encryptedMessageSink?.Invoke(msg);
+        EncryptedMessageReceived?.Invoke(msg);
+    }
+
+    private void HandlePollRequest(BleEnvelope envelope)
+    {
+        BleLog.Write("[BLE] Poll request received from mobile");
+        PollReceived?.Invoke(envelope.PublicKey ?? "");
+    }
+
+    /// <summary>
+    /// Public wrapper around SendAsync that returns bool instead of throwing.
+    /// Used by BleTransport to send queued messages.
+    /// </summary>
+    public async Task<bool> SendEnvelopeAsync(BleTransportEnvelope envelope)
+    {
+        try
+        {
+            var bleEnvelope = new BleEnvelope
+            {
+                Type = envelope.Type,
+                Payload = envelope.Payload,
+                Nonce = envelope.Nonce,
+                Seq = envelope.Seq,
+            };
+            await SendAsync(bleEnvelope);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private async Task SendAsync(BleEnvelope envelope)
