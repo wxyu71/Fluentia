@@ -115,8 +115,7 @@ export function useBlePairing(
     clearAuthTimeout();
     try {
       notifyCharacteristicRef.current?.removeEventListener('characteristicvaluechanged', () => undefined);
-    } catch {
-    }
+    } catch { /* already disconnected */ }
 
     if (serverRef.current?.connected) {
       serverRef.current.disconnect();
@@ -254,8 +253,7 @@ export function useBlePairing(
               setStatus('BLE reconnected — authorizing...');
               onAuthorizePublicKeyRef.current(handshakeRef.current.publicKey);
               return;
-            } catch {
-            }
+            } catch { /* retry */ }
           }
           setStatus('BLE reconnect failed');
         })();

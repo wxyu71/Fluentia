@@ -20,8 +20,8 @@ public static class TextInjector
     [StructLayout(LayoutKind.Explicit, Size = 40)]
     private struct INPUT
     {
-        [FieldOffset(0)]  public uint Type;
-        [FieldOffset(8)]  public KEYBDINPUT ki;
+        [FieldOffset(0)] public uint Type;
+        [FieldOffset(8)] public KEYBDINPUT ki;
     }
 
     [StructLayout(LayoutKind.Sequential)]

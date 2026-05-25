@@ -154,5 +154,5 @@ public static class MsgTypes
     public const string DeviceCodeCreated = "device_code_created";
     public const string DeviceCodePending = "device_code_pending";
     public const string DeviceCodeConfirm = "device_code_confirm";
-    public const string DeviceCodeReject  = "device_code_reject";
+    public const string DeviceCodeReject = "device_code_reject";
 }
