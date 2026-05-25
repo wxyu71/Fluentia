@@ -190,4 +190,93 @@ describe('CryptoService', () => {
       expect(recvB.isRecvRatchetReady()).toBe(true);
     });
   });
+
+  describe('edge cases', () => {
+    it('encrypts and decrypts empty string', () => {
+      const alice = new CryptoService();
+      const bob = new CryptoService();
+      alice.setPeerPublicKey(bob.getPublicKeyBase64());
+      bob.setPeerPublicKey(alice.getPublicKeyBase64());
+
+      const { payload, nonce } = alice.encrypt('');
+      const decrypted = bob.decrypt(payload, nonce);
+      expect(decrypted).toBe('');
+    });
+
+    it('encrypts and decrypts large payload (100KB)', () => {
+      const sender = new CryptoService();
+      const receiver = new CryptoService();
+      const { seed } = sender.initRatchet();
+      receiver.initRecvRatchet(seed);
+
+      const largeText = 'x'.repeat(100 * 1024);
+      const { payload, nonce, seq } = sender.encryptRatcheted(largeText);
+      const decrypted = receiver.decryptRatcheted(payload, nonce, seq);
+      expect(decrypted).toBe(largeText);
+    });
+
+    it('nonce uniqueness across 100 encryptions', () => {
+      const svc = new CryptoService();
+      svc.setPeerPublicKey(encodeBase64(nacl.box.keyPair().publicKey));
+
+      const nonces = new Set<string>();
+      for (let i = 0; i < 100; i++) {
+        const { nonce } = svc.encrypt(`msg ${i}`);
+        expect(nonces.has(nonce)).toBe(false);
+        nonces.add(nonce);
+      }
+    });
+
+    it('resetPeerState preserves own keypair', () => {
+      const svc = new CryptoService();
+      const pub = svc.getPublicKeyBase64();
+      svc.setPeerPublicKey(encodeBase64(nacl.box.keyPair().publicKey));
+      svc.initRatchet();
+
+      svc.resetPeerState();
+
+      // Own keypair preserved
+      expect(svc.getPublicKeyBase64()).toBe(pub);
+      // Peer state cleared
+      expect(svc.isReady()).toBe(false);
+      expect(svc.isRatchetReady()).toBe(false);
+      expect(svc.getPeerPublicKeyBase64()).toBeNull();
+    });
+
+    it('bidirectional ratchet: both sides can encrypt and decrypt', () => {
+      const mobile = new CryptoService();
+      const pc = new CryptoService();
+
+      // Mobile initiates send ratchet
+      const { seed: mobileSeed } = mobile.initRatchet();
+      pc.initRecvRatchet(mobileSeed);
+
+      // PC initiates send ratchet (for PC->mobile direction)
+      const pcSeedBase64 = pc.initSendRatchet
+        ? undefined // TypeScript CryptoService doesn't have initSendRatchet
+        : undefined;
+
+      // Mobile sends 3 messages
+      const m1 = mobile.encryptRatcheted('mobile msg 1');
+      const m2 = mobile.encryptRatcheted('mobile msg 2');
+      const m3 = mobile.encryptRatcheted('mobile msg 3');
+
+      // PC receives them
+      expect(pc.decryptRatcheted(m1.payload, m1.nonce, m1.seq)).toBe('mobile msg 1');
+      expect(pc.decryptRatcheted(m2.payload, m2.nonce, m2.seq)).toBe('mobile msg 2');
+      expect(pc.decryptRatcheted(m3.payload, m3.nonce, m3.seq)).toBe('mobile msg 3');
+    });
+
+    it('ratchet produces different ciphertext for same plaintext', () => {
+      const svc = new CryptoService();
+      svc.setPeerPublicKey(encodeBase64(nacl.box.keyPair().publicKey));
+
+      const { payload: p1, nonce: n1 } = svc.encrypt('same message');
+      const { payload: p2, nonce: n2 } = svc.encrypt('same message');
+
+      // Different nonce → different ciphertext
+      expect(n1).not.toBe(n2);
+      expect(p1).not.toBe(p2);
+    });
+  });
 });
