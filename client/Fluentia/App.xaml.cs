@@ -2,6 +2,7 @@
 using System.Windows.Media;
 using Fluentia.Services;
 using Microsoft.Win32;
+using Velopack;
 using Application = System.Windows.Application;
 using Color = System.Windows.Media.Color;
 using MessageBox = System.Windows.MessageBox;
@@ -16,6 +17,9 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        // Velopack: must be called first — handles install hooks and --Velopack:restart args
+        VelopackApp.Build().Run();
+
         const string mutexName = "Fluentia_SingleInstance_Mutex";
         _mutex = new Mutex(true, mutexName, out bool createdNew);
         if (!createdNew)

@@ -96,6 +96,8 @@ jobs:
   build-client:
     needs: check-version
     runs-on: windows-latest
+    env:
+      VERSION: ${{ needs.check-version.outputs.version }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-dotnet@v5
@@ -104,10 +106,25 @@ jobs:
       - run: dotnet publish client/Fluentia/Fluentia.csproj -c Release -r win-x64 --self-contained -o publish/win-x64/
       - run: Compress-Archive -Path publish/win-x64/* -DestinationPath fluentia-win-x64.zip
         shell: pwsh
+      # Build Velopack packages for auto-update
+      - run: dotnet tool install --global vpk
+      - run: |
+          vpk pack `
+            --packId Fluentia `
+            --packVersion $env:VERSION `
+            --packDir publish/win-x64 `
+            --outputDir velopack-output `
+            --exe Fluentia.exe `
+            --icon client/Fluentia/fluentia.ico `
+            --displayName "Fluentia" `
+            --framework net8.0.13
+        shell: pwsh
       - uses: actions/upload-artifact@v4
         with:
           name: client-windows
-          path: fluentia-win-x64.zip
+          path: |
+            fluentia-win-x64.zip
+            velopack-output/**/*
 
   build-docker:
     needs: [check-version, build-mobile, build-server]
@@ -180,6 +197,9 @@ jobs:
             See [commit history](https://github.com/${{ github.repository }}/commits/v${{ env.VERSION }}) for details.
           files: |
             artifacts/client-windows/fluentia-win-x64.zip
+            artifacts/client-windows/velopack-output/Fluentia-*-full.nupkg
+            artifacts/client-windows/velopack-output/Fluentia-*-delta.nupkg
+            artifacts/client-windows/velopack-output/RELEASES
             artifacts/server-binaries/fluentia-server-linux-amd64
             artifacts/server-binaries/fluentia-server-linux-arm64
             artifacts/server-binaries/fluentia-server-darwin-amd64

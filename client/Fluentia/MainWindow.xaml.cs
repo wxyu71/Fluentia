@@ -3,6 +3,8 @@ using System.IO;
 using System.Net.NetworkInformation;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using Velopack;
+using Velopack.Sources;
 using System.Threading.Channels;
 using System.Windows;
 using System.Windows.Controls;
@@ -207,6 +209,9 @@ public partial class MainWindow : Window
         App.ThemeChanged += App_ThemeChanged;
         NetworkChange.NetworkAvailabilityChanged += NetworkAvailabilityChanged;
         NetworkChange.NetworkAddressChanged += NetworkAddressChanged;
+
+        // Check for updates in the background
+        _ = CheckForUpdatesAsync();
     }
 
     private void SetupRoomManagerEvents()
@@ -1173,4 +1178,35 @@ public partial class MainWindow : Window
         RefreshTransferProgressCard();
     }
 
+    private static async Task CheckForUpdatesAsync()
+    {
+        try
+        {
+            // Velopack update source: GitHub Releases
+            var source = new GithubSource("https://github.com/wxyu71/Fluentia", null, false);
+            var mgr = new UpdateManager(source);
+
+            var info = await mgr.CheckForUpdatesAsync();
+            if (info == null) return; // no updates available
+
+            // Download the update silently
+            await mgr.DownloadUpdatesAsync(info);
+
+            // Prompt user to restart
+            var result = System.Windows.MessageBox.Show(
+                $"Fluentia {info.TargetFullRelease.Version} is available. Restart to update?",
+                "Update Available",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Information);
+
+            if (result == MessageBoxResult.Yes)
+            {
+                mgr.ApplyUpdatesAndRestart(info);
+            }
+        }
+        catch
+        {
+            // Silently ignore update check failures (network issues, etc.)
+        }
+    }
 }
