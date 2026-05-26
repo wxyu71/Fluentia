@@ -347,7 +347,7 @@ export const App: React.FC = () => {
     });
   }, [encryptionReady, sendEncrypted, settings.regexFilterEnabled, settings.regexFilterMarkdown]);
 
-  const handleSendCommand = useCallback((cmd: InputCommand): boolean => {
+  const handleSendCommand = useCallback(async (cmd: InputCommand): Promise<boolean> => {
     return sendEncrypted(cmd);
   }, [sendEncrypted]);
 

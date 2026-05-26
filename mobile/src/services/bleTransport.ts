@@ -66,7 +66,7 @@ export class BleTransport implements TransportConnection {
     this.startPolling();
   }
 
-  send(data: string): void {
+  async send(data: string): Promise<boolean> {
     if (this._readyState !== TRANSPORT_READY_STATE.OPEN) {
       throw new Error('BleTransport: not open');
     }
@@ -76,7 +76,7 @@ export class BleTransport implements TransportConnection {
       ...JSON.parse(data),
     };
 
-    this.writeEnvelope(envelope);
+    return this.writeEnvelope(envelope);
   }
 
   close(_code?: number, _reason?: string): void {
@@ -132,30 +132,30 @@ export class BleTransport implements TransportConnection {
     }
   };
 
-  private writeEnvelope(envelope: BleEnvelope): void {
-    if (!this._writeCharacteristic) return;
+  private async writeEnvelope(envelope: BleEnvelope): Promise<boolean> {
+    if (!this._writeCharacteristic) return false;
 
     const json = JSON.stringify(envelope);
     const bytes = new TextEncoder().encode(json);
     const buffer = new ArrayBuffer(bytes.byteLength);
     new Uint8Array(buffer).set(bytes);
 
-    this._writeCharacteristic.writeValueWithResponse(buffer).then(
-      () => {
-        this._failureCount = 0;
-        this.onBleSuccess?.();
-      },
-      (err) => {
-        this._failureCount++;
-        this.onBleFailure?.();
-        if (this._failureCount >= 3) {
-          console.error('[BleTransport] 3 consecutive failures, closing');
-          this.close();
-        } else {
-          console.warn('[BleTransport] write failed:', err);
-        }
-      },
-    );
+    try {
+      await this._writeCharacteristic.writeValueWithResponse(buffer);
+      this._failureCount = 0;
+      this.onBleSuccess?.();
+      return true;
+    } catch (err) {
+      this._failureCount++;
+      this.onBleFailure?.();
+      if (this._failureCount >= 3) {
+        console.error('[BleTransport] 3 consecutive failures, closing');
+        this.close();
+      } else {
+        console.warn('[BleTransport] write failed:', err);
+      }
+      return false;
+    }
   }
 
   private startPolling(): void {

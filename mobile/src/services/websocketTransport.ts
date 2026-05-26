@@ -20,8 +20,9 @@ class BrowserWebSocketTransport implements TransportConnection {
     return this.socket.readyState;
   }
 
-  send(data: string): void {
+  async send(data: string): Promise<boolean> {
     this.socket.send(data);
+    return true;
   }
 
   close(code?: number, reason?: string): void {

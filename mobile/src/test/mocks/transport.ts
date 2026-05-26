@@ -25,11 +25,12 @@ export class MockTransport implements TransportConnection {
     }
   }
 
-  send(data: string): void {
+  async send(data: string): Promise<boolean> {
     if (this.readyState !== TRANSPORT_READY_STATE.OPEN) {
       throw new Error('MockTransport: cannot send, not open');
     }
     this.sent.push(data);
+    return true;
   }
 
   close(code?: number, reason?: string): void {

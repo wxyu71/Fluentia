@@ -129,10 +129,12 @@ describe('useWebSocket', () => {
   });
 
   describe('sendEncrypted', () => {
-    it('queues command when not connected', () => {
+    it('queues command when not connected', async () => {
       const { result } = renderWsHook();
       // sendEncrypted should not throw when not connected
-      act(() => result.current.sendEncrypted({ type: 'diff', text: 'hello' }));
+      await act(async () => {
+        await result.current.sendEncrypted({ type: 'diff', text: 'hello' });
+      });
       // Command should be queued (we can't easily verify internal state)
     });
   });

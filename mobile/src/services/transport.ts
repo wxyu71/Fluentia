@@ -15,6 +15,6 @@ export interface TransportConnection {
   onmessage: ((event: TransportMessageEvent) => void) | null;
   onclose: (() => void) | null;
   onerror: (() => void) | null;
-  send(data: string): void;
+  send(data: string): Promise<boolean>;
   close(code?: number, reason?: string): void;
 }

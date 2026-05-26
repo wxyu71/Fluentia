@@ -50,7 +50,7 @@ interface UseWebSocketReturn {
   encryptionReady: boolean;
   connect: (info: ConnectionInfo) => void;
   disconnect: () => void;
-  sendEncrypted: (cmd: InputCommand) => boolean;
+  sendEncrypted: (cmd: InputCommand) => Promise<boolean>;
   lastError: string | null;
   pendingStatus: string | null;
   bufferedInputActive: boolean;
@@ -396,7 +396,7 @@ export function useWebSocket(
     }
   }, [clearConnectTimeout, clearHandshakeTimer, clearHeartbeatInterval, clearHeartbeatTimeout, clearIncomingTransferHideTimer, clearOfflineGraceTimer, clearReconnectTimer, closeSocket, dropQueuedCommands, setBufferedInputMode, setEncryptionState]);
 
-  const sendEncryptedPayload = useCallback((plaintext: string, messageType: MessageType = 'control') => {
+  const sendEncryptedPayload = useCallback(async (plaintext: string, messageType: MessageType = 'control') => {
     const ws = wsRef.current;
     if (!cryptoRef.current.isReady()) return false;
 
@@ -414,27 +414,24 @@ export function useWebSocket(
       // Use health monitor to select transport if available
       if (healthMonitor) {
         const selected = healthMonitor.selectTransport(messageType);
+        const serialized = JSON.stringify(msg);
 
         if (selected === 'ble' && bleTransport && bleTransport.readyState === TRANSPORT_READY_STATE.OPEN) {
-          bleTransport.send(JSON.stringify(msg));
-          healthMonitor.onBleSuccess();
-          return true;
+          return bleTransport.send(serialized);
         }
 
         if (selected === 'ws' && ws && ws.readyState === TRANSPORT_READY_STATE.OPEN) {
-          ws.send(JSON.stringify(msg));
+          ws.send(serialized);
           return true;
         }
 
         // Fallback: try the other transport
         if (selected === 'ble' && ws && ws.readyState === TRANSPORT_READY_STATE.OPEN) {
-          ws.send(JSON.stringify(msg));
+          ws.send(serialized);
           return true;
         }
         if (selected === 'ws' && bleTransport && bleTransport.readyState === TRANSPORT_READY_STATE.OPEN) {
-          bleTransport.send(JSON.stringify(msg));
-          healthMonitor.onBleSuccess();
-          return true;
+          return bleTransport.send(serialized);
         }
 
         return false;
@@ -927,7 +924,7 @@ export function useWebSocket(
     setLastError(null);
   }, [cleanup]);
 
-  const sendEncrypted = useCallback((cmd: InputCommand): boolean => {
+  const sendEncrypted = useCallback(async (cmd: InputCommand): Promise<boolean> => {
     const ws = wsRef.current;
 
     // Determine message type for transport routing
@@ -940,7 +937,7 @@ export function useWebSocket(
       messageType = 'control';
     }
 
-    const sent = sendEncryptedPayload(JSON.stringify(cmd), messageType);
+    const sent = await sendEncryptedPayload(JSON.stringify(cmd), messageType);
     if (sent) {
       return true;
     }
