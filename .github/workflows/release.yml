@@ -14,7 +14,7 @@ jobs:
       contents: write
       pull-requests: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Bump version across all components
         run: |
           VERSION="${{ inputs.version }}"
@@ -24,8 +24,10 @@ jobs:
           sed -i "s|<Version>[^<]*</Version>|<Version>$VERSION</Version>|" client/Fluentia/Fluentia.csproj
           sed -i "s|<AssemblyVersion>[^<]*</AssemblyVersion>|<AssemblyVersion>${VERSION}.0</AssemblyVersion>|" client/Fluentia/Fluentia.csproj
           sed -i "s|<FileVersion>[^<]*</FileVersion>|<FileVersion>${VERSION}.0</FileVersion>|" client/Fluentia/Fluentia.csproj
-          sed -i "s/ProtocolVersion  = \"[^\"]*\"/ProtocolVersion  = \"$VERSION\"/" client/Fluentia/Models/Messages.cs
+          sed -i "s/ProtocolVersion = \"[^\"]*\"/ProtocolVersion = \"$VERSION\"/" client/Fluentia/Models/Messages.cs
           sed -i "s/| \`MIN_VERSION\` | \`[^`]*\`/| \`MIN_VERSION\` | \`$VERSION\`/" README.md
+          # Update Go test assertion
+          sed -i "s/\"1\.[0-9]*\.[0-9]*\"/\"$VERSION\"/" server/protocol_test.go
       - name: Create PR
         uses: peter-evans/create-pull-request@v6
         with:
