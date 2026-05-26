@@ -84,6 +84,7 @@ public partial class MainWindow : Window
     private bool _isShuttingDown;
     private bool _isApplyingLanguageSelection;
     private bool _qrVisible = true;
+    private Window? _qrPreviewWindow;
     private bool _outgoingTransferPaused;
     private bool _outgoingTransferCancelRequested;
     private string? _deviceCode;
@@ -333,6 +334,7 @@ public partial class MainWindow : Window
             _inputTargetWindow = IntPtr.Zero;
             PersistSettings();
             ShowQrArea(false);
+            CloseQrPreviewIfOpen();
             SetStatus(L("StatusEncrypted"), true);
             RefreshVisualState();
             Hide();

@@ -237,6 +237,14 @@ public partial class MainWindow
         RefreshVisualState();
     }
 
+    private void CloseQrPreviewIfOpen()
+    {
+        if (_qrPreviewWindow is { IsVisible: true })
+        {
+            _qrPreviewWindow.Close();
+        }
+    }
+
     private void RefreshStatusFromState()
     {
         if (!CanUseConfiguredServer())

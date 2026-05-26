@@ -658,6 +658,9 @@ public partial class MainWindow
             return;
         }
 
+        // Close any existing preview
+        _qrPreviewWindow?.Close();
+
         var qrMetaText = string.IsNullOrWhiteSpace(_deviceCode)
             ? QrTimerText.Text
             : $"{QrTimerText.Text}\n{L("DeviceCodeTitle")}: {_deviceCode}";
@@ -726,7 +729,9 @@ public partial class MainWindow
                 preview.Close();
             }
         };
+        preview.Closed += (_, _) => { _qrPreviewWindow = null; };
 
+        _qrPreviewWindow = preview;
         preview.ShowDialog();
     }
 
