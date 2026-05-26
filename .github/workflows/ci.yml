@@ -103,9 +103,9 @@ jobs:
 
   # === Stage 2: Test ===
   test-go:
-    needs: lint-go
+    needs: [changes, lint-go]
     runs-on: ubuntu-latest
-    if: ${{ !cancelled() && !failure() }}
+    if: ${{ !cancelled() && !failure() && needs.changes.outputs.server == 'true' }}
     defaults:
       run:
         working-directory: server
@@ -122,9 +122,9 @@ jobs:
           path: server/coverage.out
 
   test-mobile:
-    needs: lint-mobile
+    needs: [changes, lint-mobile]
     runs-on: ubuntu-latest
-    if: ${{ !cancelled() && !failure() }}
+    if: ${{ !cancelled() && !failure() && needs.changes.outputs.mobile == 'true' }}
     defaults:
       run:
         working-directory: mobile
@@ -139,9 +139,9 @@ jobs:
       - run: npx vitest run --coverage
 
   test-client:
-    needs: lint-client
+    needs: [changes, lint-client]
     runs-on: windows-latest
-    if: ${{ !cancelled() && !failure() }}
+    if: ${{ !cancelled() && !failure() && needs.changes.outputs.client == 'true' }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-dotnet@v5
@@ -151,9 +151,9 @@ jobs:
 
   # === Stage 3: Build ===
   build-docker:
-    needs: [test-go, test-mobile]
+    needs: [changes, test-go, test-mobile]
     runs-on: ubuntu-latest
-    if: ${{ !cancelled() && !failure() }}
+    if: ${{ !cancelled() && !failure() && (needs.changes.outputs.server == 'true' || needs.changes.outputs.mobile == 'true') }}
     steps:
       - uses: actions/checkout@v6
       - uses: docker/build-push-action@v7
@@ -163,9 +163,9 @@ jobs:
           tags: fluentia:ci-${{ github.sha }}
 
   build-mobile:
-    needs: test-mobile
+    needs: [changes, test-mobile]
     runs-on: ubuntu-latest
-    if: ${{ !cancelled() && !failure() }}
+    if: ${{ !cancelled() && !failure() && needs.changes.outputs.mobile == 'true' }}
     defaults:
       run:
         working-directory: mobile
@@ -184,9 +184,9 @@ jobs:
           path: mobile/dist/
 
   build-client:
-    needs: test-client
+    needs: [changes, test-client]
     runs-on: windows-latest
-    if: ${{ !cancelled() && !failure() }}
+    if: ${{ !cancelled() && !failure() && needs.changes.outputs.client == 'true' }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-dotnet@v5
@@ -200,10 +200,10 @@ jobs:
 
   # === Stage 4: Security ===
   security:
-    needs: [test-go, test-mobile, test-client]
+    needs: [changes, test-go, test-mobile, test-client]
     runs-on: ubuntu-latest
     continue-on-error: true
-    if: always()
+    if: ${{ always() && (needs.changes.outputs.server == 'true' || needs.changes.outputs.mobile == 'true') }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
