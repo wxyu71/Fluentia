@@ -128,7 +128,7 @@ public partial class MainWindow : Window
     private const string StartupRegistryPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private const string StartupRegistryValue = "Fluentia";
     private static readonly string AppVersion = typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? MsgTypes.ProtocolVersion;
-    private static readonly TimeSpan DiffBatchWindow = TimeSpan.FromMilliseconds(45);
+    private static readonly TimeSpan DiffBatchWindow = TimeSpan.FromMilliseconds(100);
 
     private WinEventDelegate? _winEventDelegate;
     private IntPtr _winEventHook;
@@ -561,6 +561,7 @@ public partial class MainWindow : Window
             return;
         }
 
+        // Prefix optimization: find longest common prefix
         var prefix = 0;
         var limit = Math.Min(_appliedInputBuffer.Length, nextText.Length);
         while (prefix < limit && _appliedInputBuffer[prefix] == nextText[prefix])
@@ -568,8 +569,34 @@ public partial class MainWindow : Window
             prefix++;
         }
 
-        var backspace = _appliedInputBuffer.Length - prefix;
-        var insert = nextText[prefix..];
+        // Suffix optimization: find longest common suffix (after prefix)
+        // This reduces backspace count for beginning-of-text edits.
+        // Example: "AAAA" → "BAAA": prefix=0, suffix=3, backspace=1, insert="B"
+        var suffix = 0;
+        var oldEnd = _appliedInputBuffer.Length - 1;
+        var newEnd = nextText.Length - 1;
+        while (suffix < limit - prefix &&
+               oldEnd - suffix >= prefix &&
+               newEnd - suffix >= prefix &&
+               _appliedInputBuffer[oldEnd - suffix] == nextText[newEnd - suffix])
+        {
+            suffix++;
+        }
+
+        // Ensure we don't split a surrogate pair at the suffix boundary
+        if (suffix > 0)
+        {
+            var suffixStart = _appliedInputBuffer.Length - suffix;
+            if (suffixStart > 0 && suffixStart < _appliedInputBuffer.Length &&
+                char.IsLowSurrogate(_appliedInputBuffer[suffixStart]))
+            {
+                suffix--;
+            }
+        }
+
+        var backspace = _appliedInputBuffer.Length - prefix - suffix;
+        var insertLength = nextText.Length - prefix - suffix;
+        var insert = insertLength > 0 ? nextText.Substring(prefix, insertLength) : string.Empty;
         TextInjector.ApplyDiff(backspace, insert);
         _appliedInputBuffer = nextText;
     }

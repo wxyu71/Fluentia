@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useCallback, useState } from 'react';
 import { computeDiff } from '../utils/diff';
+import { DIFF_DEBOUNCE_MS } from '../constants';
 import { ScanIcon, ClipboardIcon, BluetoothIcon } from './Icons';
 import { FileTransfer } from './FileTransfer';
 import { TransferStatusCard } from './TransferStatusCard';
@@ -58,6 +59,8 @@ export const InputArea: React.FC<InputAreaProps> = ({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isComposingRef = useRef(false);
   const fileTransferRef = useRef<FileTransferHandle>(null);
+  const diffTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingDiffTextRef = useRef<string | null>(null);
   const [resetNotice, setResetNotice] = useState(false);
   const [outgoingTransferBatch, setOutgoingTransferBatch] = useState<TransferBatchProgress | null>(null);
   const [blePanelMode, setBlePanelMode] = useState<'expanded' | 'collapsed' | 'hidden'>('collapsed');
@@ -87,13 +90,39 @@ export const InputArea: React.FC<InputAreaProps> = ({
     }
   }, [bleNeedsAttention, showBlePanel]);
 
-  const sendDiff = useCallback((newText: string) => {
-    const diff = computeDiff(lastSentRef.current, newText);
+  // Shared helper: compute diff and send command immediately
+  const flushDiffToCommand = useCallback((targetText: string) => {
+    const diff = computeDiff(lastSentRef.current, targetText);
     if (diff.backspace > 0 || diff.insert) {
       onSendCommand({ type: 'diff', count: diff.backspace, text: diff.insert || '' });
     }
-    lastSentRef.current = newText;
+    lastSentRef.current = targetText;
   }, [onSendCommand]);
+
+  // Debounced sendDiff — coalesces rapid keystrokes into one diff
+  const sendDiff = useCallback((newText: string) => {
+    if (diffTimerRef.current !== null) {
+      clearTimeout(diffTimerRef.current);
+    }
+    pendingDiffTextRef.current = newText;
+    diffTimerRef.current = setTimeout(() => {
+      diffTimerRef.current = null;
+      const pending = pendingDiffTextRef.current;
+      pendingDiffTextRef.current = null;
+      if (pending === null) return;
+      flushDiffToCommand(pending);
+    }, DIFF_DEBOUNCE_MS);
+  }, [flushDiffToCommand]);
+
+  // Immediate sendDiff — for Enter/commit paths that must flush now
+  const sendDiffImmediate = useCallback((newText: string) => {
+    if (diffTimerRef.current !== null) {
+      clearTimeout(diffTimerRef.current);
+      diffTimerRef.current = null;
+    }
+    pendingDiffTextRef.current = null;
+    flushDiffToCommand(newText);
+  }, [flushDiffToCommand]);
 
   const addHistoryEntry = useCallback((paragraphText: string) => {
     if (!paragraphText.trim() || !autoSaveHistory) return;
@@ -107,7 +136,7 @@ export const InputArea: React.FC<InputAreaProps> = ({
   const commitParagraph = useCallback((paragraphText: string) => {
     const normalized = applyRegexFilters(paragraphText.replace(/\r/g, ''), regexFilterMarkdown, regexFilterEnabled);
     if (normalized !== lastSentRef.current) {
-      sendDiff(normalized);
+      sendDiffImmediate(normalized);
     }
 
     onSendCommand({ type: 'enter' });
@@ -119,7 +148,7 @@ export const InputArea: React.FC<InputAreaProps> = ({
     if (textareaRef.current) {
       textareaRef.current.value = '';
     }
-  }, [addHistoryEntry, onSendCommand, regexFilterEnabled, regexFilterMarkdown, sendDiff, setText]);
+  }, [addHistoryEntry, onSendCommand, regexFilterEnabled, regexFilterMarkdown, sendDiffImmediate, setText]);
 
   const processTextValue = useCallback((rawValue: string, source?: HTMLTextAreaElement | null) => {
     const normalized = applyRegexFilters(rawValue.replace(/\r/g, ''), regexFilterMarkdown, regexFilterEnabled);
@@ -130,7 +159,7 @@ export const InputArea: React.FC<InputAreaProps> = ({
 
       for (const segment of completed) {
         if (segment !== lastSentRef.current) {
-          sendDiff(segment);
+          sendDiffImmediate(segment);
         }
         onSendCommand({ type: 'enter' });
         addHistoryEntry(segment);
@@ -158,7 +187,7 @@ export const InputArea: React.FC<InputAreaProps> = ({
     if (encryptionReady) {
       sendDiff(normalized);
     }
-  }, [addHistoryEntry, encryptionReady, onSendCommand, regexFilterEnabled, regexFilterMarkdown, sendDiff, setText]);
+  }, [addHistoryEntry, encryptionReady, onSendCommand, regexFilterEnabled, regexFilterMarkdown, sendDiff, sendDiffImmediate, setText]);
 
   const handleInput = useCallback((e: React.FormEvent<HTMLTextAreaElement>) => {
     processTextValue(e.currentTarget.value, e.currentTarget);
@@ -188,6 +217,13 @@ export const InputArea: React.FC<InputAreaProps> = ({
   useEffect(() => {
     if (inputResetVersion === 0) return;
 
+    // Cancel pending debounced diff
+    if (diffTimerRef.current !== null) {
+      clearTimeout(diffTimerRef.current);
+      diffTimerRef.current = null;
+    }
+    pendingDiffTextRef.current = null;
+
     setText('');
     textRef.current = '';
     lastSentRef.current = '';
@@ -202,6 +238,15 @@ export const InputArea: React.FC<InputAreaProps> = ({
 
     return () => window.clearTimeout(timer);
   }, [inputResetVersion, setText]);
+
+  // Cleanup debounce timer on unmount
+  useEffect(() => {
+    return () => {
+      if (diffTimerRef.current !== null) {
+        clearTimeout(diffTimerRef.current);
+      }
+    };
+  }, []);
 
   return (
     <div className="input-page" style={{ padding: '0 20px' }}>
