@@ -1,6 +1,8 @@
 services:
   fluentia:
-    build: .
+    image: ghcr.io/wxyu71/fluentia:latest
+    # 本地构建时取消注释下面两行，注释掉上面的 image 行
+    # build: .
     ports:
       - "127.0.0.1:8778:8080"
     environment:
@@ -21,4 +23,6 @@ services:
       # How many seconds after mobile disconnects before PC window re-appears (default 60)
       # Set longer if you frequently switch apps and want the session to stay quiet
       - MOBILE_EXPIRY_SECS=60
+    volumes:
+      - ./data:/app/data
     restart: unless-stopped
