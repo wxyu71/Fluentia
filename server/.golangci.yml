@@ -1,3 +1,5 @@
+version: "2"
+
 linters:
   enable:
     - errcheck
@@ -10,13 +12,13 @@ linters:
     - gofmt
     - goimports
 
-linters-settings:
-  govet:
-    enable-all: true
-  gocritic:
-    enabled-tags:
-      - diagnostic
-      - performance
+  settings:
+    govet:
+      enable-all: true
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - performance
 
 issues:
   exclude-rules:
