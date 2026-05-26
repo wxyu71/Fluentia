@@ -24,7 +24,6 @@ jobs:
       - name: Extract and verify version consistency
         id: extract
         run: |
-          # For tag push: extract from GITHUB_REF_NAME; for manual: use input
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             TAG_VERSION="${{ inputs.version }}"
           else
@@ -43,7 +42,7 @@ jobs:
           VERSIONS="$PKG_VERSION $TS_VERSION $GO_VERSION $CSPROJ_VERSION $CS_VERSION"
           for v in $VERSIONS; do
             if [ "$v" != "$TAG_VERSION" ]; then
-              echo "::error::Version mismatch! Tag=$TAG_VERSION, found=$v"
+              echo "::error::Version mismatch! Expected=$TAG_VERSION, found=$v"
               exit 1
             fi
           done
@@ -136,8 +135,8 @@ jobs:
           context: .
           push: true
           tags: |
-            ghcr.io/${{ github.repository }}:${{ env.VERSION }}
-            ghcr.io/${{ github.repository }}:latest
+            ghcr.io/wxyu71/fluentia:${{ env.VERSION }}
+            ghcr.io/wxyu71/fluentia:latest
 
   # === Create GitHub Release ===
   release:
@@ -161,12 +160,12 @@ jobs:
             ### Downloads
             - **Windows Desktop** (`fluentia-win-x64.zip`): WPF client for Windows 10+
             - **Server binaries**: Pre-built Go binaries for Linux/macOS/Windows
-            - **Docker**: `ghcr.io/${{ github.repository }}:${{ env.VERSION }}`
+            - **Docker**: `ghcr.io/wxyu71/fluentia:${{ env.VERSION }}`
 
             ### Docker Quick Start
             ```
-            docker pull ghcr.io/${{ github.repository }}:${{ env.VERSION }}
-            docker run -p 8778:8080 ghcr.io/${{ github.repository }}:${{ env.VERSION }}
+            docker pull ghcr.io/wxyu71/fluentia:${{ env.VERSION }}
+            docker run -p 8778:8080 ghcr.io/wxyu71/fluentia:${{ env.VERSION }}
             ```
 
             ### Changes
