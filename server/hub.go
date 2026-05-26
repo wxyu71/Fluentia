@@ -164,7 +164,8 @@ func (h *Hub) Unregister(c *Client) {
 	}
 
 	session := c.session
-	if c.role == "pc" {
+	switch c.role {
+	case "pc":
 		session.PC = nil
 		// Keep the session reusable until its configured expiry so the desktop can
 		// recover after a restart, power loss, or a longer network outage.
@@ -186,7 +187,7 @@ func (h *Hub) Unregister(c *Client) {
 			})
 			log.Printf("Session %s: PC disconnected, reusable until %s", shortToken(token), session.ExpiresAt.Format(time.RFC3339))
 		}
-	} else if c.role == "mobile" {
+	case "mobile":
 		session.Mobile = nil
 		if session.PC != nil {
 			session.PC.SendMessage(&Message{Type: MsgPeerLeft, Role: "mobile", DeviceID: c.deviceID})
