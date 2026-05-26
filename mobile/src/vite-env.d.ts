@@ -9,6 +9,24 @@ declare module 'tweetnacl-util' {
 
 declare const __APP_VERSION__: string;
 
+// Intl.Segmenter is available in modern browsers but not in TypeScript's default lib
+declare namespace Intl {
+  interface SegmenterOptions {
+    granularity?: 'grapheme' | 'word' | 'sentence';
+    localeMatcher?: 'lookup' | 'best fit';
+  }
+  interface Segment {
+    segment: string;
+    index: number;
+    input: string;
+    isWordLike?: boolean;
+  }
+  class Segmenter {
+    constructor(locale?: string, options?: SegmenterOptions);
+    segment(input: string): Iterable<Segment>;
+  }
+}
+
 interface Navigator {
   bluetooth: Bluetooth;
   getBattery?: () => Promise<BatteryManager>;

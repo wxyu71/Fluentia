@@ -108,16 +108,7 @@ jobs:
         shell: pwsh
       # Build Velopack packages for auto-update
       - run: dotnet tool install --global vpk
-      - run: |
-          vpk pack `
-            --packId Fluentia `
-            --packVersion $env:VERSION `
-            --packDir publish/win-x64 `
-            --outputDir velopack-output `
-            --exe Fluentia.exe `
-            --icon client/Fluentia/fluentia.ico `
-            --displayName "Fluentia" `
-            --framework net8.0.13
+      - run: vpk pack --packId Fluentia --packVersion $env:VERSION --packDir publish/win-x64 --outputDir velopack-output -e Fluentia.exe --icon client/Fluentia/fluentia.ico
         shell: pwsh
       - uses: actions/upload-artifact@v4
         with:
