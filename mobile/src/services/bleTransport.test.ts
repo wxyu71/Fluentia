@@ -100,8 +100,8 @@ describe('BleTransport', () => {
       expect(sent.payload).toBe('test');
     });
 
-    it('throws when not open', () => {
-      expect(() => transport.send('test')).toThrow('BleTransport: not open');
+    it('throws when not open', async () => {
+      await expect(transport.send('test')).rejects.toThrow('BleTransport: not open');
     });
   });
 
