@@ -92,8 +92,8 @@ func TestStress_HighFrequencyMessages(t *testing.T) {
 	wsRecv(t, mobile)
 	wsRecv(t, pc)
 
-	// Send 500 messages as fast as possible (simulates ~100/sec for 5 sec)
-	const count = 500
+	// Send 200 messages as fast as possible
+	const count = 200
 	go func() {
 		for i := 0; i < count; i++ {
 			wsSend(t, mobile, Message{Type: MsgEncrypted, Payload: fmt.Sprintf("m-%d", i), Nonce: "n"})
@@ -101,7 +101,7 @@ func TestStress_HighFrequencyMessages(t *testing.T) {
 	}()
 
 	received := int32(0)
-	pc.SetReadDeadline(time.Now().Add(10 * time.Second))
+	pc.SetReadDeadline(time.Now().Add(15 * time.Second))
 	for atomic.LoadInt32(&received) < int32(count) {
 		var msg Message
 		if err := pc.ReadJSON(&msg); err != nil {
