@@ -67,7 +67,7 @@ jobs:
           cache-dependency-path: mobile/package-lock.json
       - run: npm ci
       - run: npm run build
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@v4
         with:
           name: mobile-dist
           path: mobile/dist/
@@ -88,7 +88,7 @@ jobs:
           CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -o ../fluentia-server-darwin-amd64 .
           CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o ../fluentia-server-darwin-arm64 .
           CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o ../fluentia-server-windows-amd64.exe .
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@v4
         with:
           name: server-binaries
           path: fluentia-server-*
@@ -104,7 +104,7 @@ jobs:
       - run: dotnet publish client/Fluentia/Fluentia.csproj -c Release -r win-x64 --self-contained -o publish/win-x64/
       - run: Compress-Archive -Path publish/win-x64/* -DestinationPath fluentia-win-x64.zip
         shell: pwsh
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@v4
         with:
           name: client-windows
           path: fluentia-win-x64.zip
@@ -116,11 +116,11 @@ jobs:
       VERSION: ${{ needs.check-version.outputs.version }}
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v4
         with:
           name: mobile-dist
           path: server/static/
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v4
         with:
           name: server-binaries
           path: server/
@@ -147,9 +147,16 @@ jobs:
       VERSION: ${{ needs.check-version.outputs.version }}
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v7
+      - name: Download Windows client
+        uses: actions/download-artifact@v4
         with:
-          path: artifacts/
+          name: client-windows
+          path: artifacts/client-windows/
+      - name: Download server binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: server-binaries
+          path: artifacts/server-binaries/
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
