@@ -4,6 +4,11 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version (e.g. 1.6.0) — required for manual trigger'
+        required: true
 
 permissions:
   contents: write
@@ -19,7 +24,12 @@ jobs:
       - name: Extract and verify version consistency
         id: extract
         run: |
-          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          # For tag push: extract from GITHUB_REF_NAME; for manual: use input
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG_VERSION="${{ inputs.version }}"
+          else
+            TAG_VERSION="${GITHUB_REF_NAME#v}"
+          fi
 
           PKG_VERSION=$(grep -oP '"version":\s*"\K[^"]+' mobile/package.json)
           TS_VERSION=$(grep -oP "PROTOCOL_VERSION = '\K[^']+" mobile/src/types.ts)
@@ -27,12 +37,8 @@ jobs:
           CSPROJ_VERSION=$(grep -oP '<Version>\K[^<]+' client/Fluentia/Fluentia.csproj)
           CS_VERSION=$(grep -oP 'ProtocolVersion\s+= "\K[^"]+' client/Fluentia/Models/Messages.cs)
 
-          echo "Tag: $TAG_VERSION"
-          echo "package.json: $PKG_VERSION"
-          echo "types.ts: $TS_VERSION"
-          echo "protocol.go: $GO_VERSION"
-          echo "csproj: $CSPROJ_VERSION"
-          echo "Messages.cs: $CS_VERSION"
+          echo "Resolved version: $TAG_VERSION"
+          echo "package.json=$PKG_VERSION types.ts=$TS_VERSION protocol.go=$GO_VERSION csproj=$CSPROJ_VERSION Messages.cs=$CS_VERSION"
 
           VERSIONS="$PKG_VERSION $TS_VERSION $GO_VERSION $CSPROJ_VERSION $CS_VERSION"
           for v in $VERSIONS; do
@@ -104,8 +110,10 @@ jobs:
           path: fluentia-win-x64.zip
 
   build-docker:
-    needs: [build-mobile, build-server]
+    needs: [check-version, build-mobile, build-server]
     runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.check-version.outputs.version }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/download-artifact@v7
@@ -128,13 +136,15 @@ jobs:
           context: .
           push: true
           tags: |
-            ghcr.io/${{ github.repository }}:${{ needs.check-version.outputs.version }}
+            ghcr.io/${{ github.repository }}:${{ env.VERSION }}
             ghcr.io/${{ github.repository }}:latest
 
   # === Create GitHub Release ===
   release:
     needs: [check-version, build-mobile, build-server, build-client, build-docker]
     runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.check-version.outputs.version }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/download-artifact@v7
@@ -144,23 +154,23 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          name: Fluentia v${{ needs.check-version.outputs.version }}
+          name: Fluentia v${{ env.VERSION }}
           body: |
-            ## Fluentia v${{ needs.check-version.outputs.version }}
+            ## Fluentia v${{ env.VERSION }}
 
             ### Downloads
             - **Windows Desktop** (`fluentia-win-x64.zip`): WPF client for Windows 10+
             - **Server binaries**: Pre-built Go binaries for Linux/macOS/Windows
-            - **Docker**: `ghcr.io/${{ github.repository }}:${{ needs.check-version.outputs.version }}`
+            - **Docker**: `ghcr.io/${{ github.repository }}:${{ env.VERSION }}`
 
             ### Docker Quick Start
             ```
-            docker pull ghcr.io/${{ github.repository }}:${{ needs.check-version.outputs.version }}
-            docker run -p 8778:8080 ghcr.io/${{ github.repository }}:${{ needs.check-version.outputs.version }}
+            docker pull ghcr.io/${{ github.repository }}:${{ env.VERSION }}
+            docker run -p 8778:8080 ghcr.io/${{ github.repository }}:${{ env.VERSION }}
             ```
 
             ### Changes
-            See [commit history](https://github.com/${{ github.repository }}/commits/v${{ needs.check-version.outputs.version }}) for details.
+            See [commit history](https://github.com/${{ github.repository }}/commits/v${{ env.VERSION }}) for details.
           files: |
             artifacts/client-windows/fluentia-win-x64.zip
             artifacts/server-binaries/fluentia-server-linux-amd64
