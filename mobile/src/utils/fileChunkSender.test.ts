@@ -34,9 +34,6 @@ async function simulateSendChunks(
       const chunkIndex = nextChunkIndex;
       nextChunkIndex += 1;
 
-      // Simulate: encode chunk (instant in test)
-      const b64 = 'chunk-data';
-
       // This is the BUG: onSendCommand is called but return value is not checked
       const actuallySent = sendFn(chunkIndex);
 
@@ -135,7 +132,7 @@ describe('File Chunk Sender — Bug Reproduction', () => {
       let completedChunks = 0;
       const sentChunks: number[] = [];
       const totalChunks = 10;
-      const failUntilChunk = 5; // chunks 0-4 fail initially, succeed on retry
+      // Chunks 0-4 fail initially, succeed on retry
 
       // Simulate: first attempt fails for chunks 0-4, retry succeeds
       const pendingChunks = new Set<number>();

@@ -59,7 +59,7 @@ describe('FileTransfer Bug — sendChunk does not check send success', () => {
     it('BUG: onSendCommand was void — no way to detect failure', () => {
       // Before fix: onSendCommand returned void
       // completedChunks incremented regardless of send success
-      const mockOnSendCommand = vi.fn((cmd: InputCommand) => {
+      const mockOnSendCommand = vi.fn((_cmd: InputCommand) => {
         // Returns void (old behavior)
       });
 
@@ -72,7 +72,7 @@ describe('FileTransfer Bug — sendChunk does not check send success', () => {
 
   describe('FIX behavior (after fix)', () => {
     it('onSendCommand returns boolean indicating send success', () => {
-      const mockOnSendCommand = vi.fn((cmd: InputCommand): boolean => {
+      const mockOnSendCommand = vi.fn((_cmd: InputCommand): boolean => {
         return true;
       });
 

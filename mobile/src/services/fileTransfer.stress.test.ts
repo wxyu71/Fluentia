@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * File transfer stress tests — reproduces the bug where sending a 9MB file
  * causes BLE disconnection at ~10%, followed by WebSocket disconnection,
@@ -265,7 +266,7 @@ describe('File Transfer Stress — BLE Disconnection Bug', () => {
 
     it('transfer should resume from lastAckedChunk after reconnection (expected fix)', () => {
       const totalChunks = 144;
-      let lastAckedChunk = 14;
+      const lastAckedChunk = 14;
 
       const resumeFrom = lastAckedChunk + 1;
       expect(resumeFrom).toBe(15);
@@ -291,7 +292,7 @@ describe('File Transfer Stress — BLE Disconnection Bug', () => {
 
       // Simulate: send succeeds for first 15, then returns false (transport down)
       for (let i = 0; i < totalChunks; i++) {
-        const sent = i < 15; // first 15 succeed
+        // first 15 succeed
         // sendChunk doesn't check this — it just increments
         completedChunks++;
       }
