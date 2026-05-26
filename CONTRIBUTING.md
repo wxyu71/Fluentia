@@ -154,8 +154,38 @@ Fluentia supports simultaneous BLE and WebSocket transport. The routing is healt
 
 ## Version Management
 
-Version is managed via the GitHub Actions `release` workflow. Do not manually edit version numbers. Use:
+> **⚠️ 禁止手动修改版本号。** 版本号分散在 6 个文件中（package.json、types.ts、protocol.go、protocol_test.go、Fluentia.csproj、Messages.cs、README.md），手动修改极易遗漏或不一致。必须通过 CI workflow 一键更新。
 
-1. Go to Actions > Release > Run workflow
-2. Enter the new version (e.g., `1.6.0`)
-3. The workflow creates a PR with all version bumps
+### 升级版本
+
+```bash
+# 一条命令完成所有组件的版本升级
+gh workflow run release.yml -f version=1.6.0
+```
+
+该 workflow 会自动：
+1. 更新所有 6 个文件中的版本号
+2. 更新 README.md 中的 MIN_VERSION
+3. 创建一个 PR 到 main 分支
+
+### 版本一致性检查
+
+CI 中的 `check-version` job 会在每次 push 时自动校验所有组件版本是否一致。如果手动修改了某个文件的版本号而遗漏了其他文件，CI 会报错：
+
+```
+::error::Version mismatch detected! All components must have the same version.
+```
+
+### 为什么不能手动改？
+
+版本号存在于以下位置，手动修改极易遗漏：
+
+| 文件 | 字段 |
+|------|------|
+| `mobile/package.json` | `version` |
+| `mobile/src/types.ts` | `PROTOCOL_VERSION` |
+| `server/protocol.go` | `ProtocolVersion` |
+| `server/protocol_test.go` | 版本断言 |
+| `client/Fluentia/Fluentia.csproj` | `Version` / `AssemblyVersion` / `FileVersion` |
+| `client/Fluentia/Models/Messages.cs` | `ProtocolVersion` |
+| `README.md` | `MIN_VERSION` |
