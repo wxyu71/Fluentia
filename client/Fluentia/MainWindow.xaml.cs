@@ -133,6 +133,7 @@ public partial class MainWindow : Window
     private IntPtr _winEventHook;
     private IntPtr _lastForegroundWindow;
     private IntPtr _lastExternalForegroundWindow;
+    private bool _pendingClearOnReconnect;
     private string _appliedInputBuffer = string.Empty;
     private bool _manualInputTargetRecoveryNotified;
 
@@ -337,6 +338,13 @@ public partial class MainWindow : Window
             Hide();
             _ = InitializeBlePairingAsync();
             BeginInputTargetRecovery();
+
+            // Send any pending clear message that failed during reconnect
+            if (_pendingClearOnReconnect)
+            {
+                _pendingClearOnReconnect = false;
+                _ = _roomManager.SendToMobileAsync(JsonSerializer.Serialize(new { type = "clear" }));
+            }
         });
 
         _roomManager.OnSessionRecovered += () => Dispatcher.Invoke(async () =>
@@ -719,7 +727,12 @@ public partial class MainWindow : Window
             AppendLog("Foreground app changed, clearing mobile editor state.");
         }
 
-        await _roomManager.SendToMobileAsync(JsonSerializer.Serialize(new { type = "clear" }));
+        var sent = await _roomManager.SendToMobileAsync(JsonSerializer.Serialize(new { type = "clear" }));
+        if (!sent)
+        {
+            // Encryption not ready or transport down — queue for later
+            _pendingClearOnReconnect = true;
+        }
     }
 
     private static byte[] CombineChunks(List<byte[]> chunks)
