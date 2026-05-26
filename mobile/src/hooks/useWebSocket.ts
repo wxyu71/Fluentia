@@ -50,7 +50,7 @@ interface UseWebSocketReturn {
   encryptionReady: boolean;
   connect: (info: ConnectionInfo) => void;
   disconnect: () => void;
-  sendEncrypted: (cmd: InputCommand) => void;
+  sendEncrypted: (cmd: InputCommand) => boolean;
   lastError: string | null;
   pendingStatus: string | null;
   bufferedInputActive: boolean;
@@ -927,7 +927,7 @@ export function useWebSocket(
     setLastError(null);
   }, [cleanup]);
 
-  const sendEncrypted = useCallback((cmd: InputCommand) => {
+  const sendEncrypted = useCallback((cmd: InputCommand): boolean => {
     const ws = wsRef.current;
 
     // Determine message type for transport routing
@@ -942,7 +942,7 @@ export function useWebSocket(
 
     const sent = sendEncryptedPayload(JSON.stringify(cmd), messageType);
     if (sent) {
-      return;
+      return true;
     }
 
     if (bleTransportReadyRef.current) {
@@ -950,7 +950,7 @@ export function useWebSocket(
       if ((!ws || ws.readyState !== TRANSPORT_READY_STATE.OPEN) && connInfoRef.current) {
         connectWs(connInfoRef.current);
       }
-      return;
+      return false;
     }
 
     if ((hadEncryptedSessionRef.current || bufferedInputActiveRef.current) && connectionStateRef.current !== 'preempted') {
@@ -960,7 +960,7 @@ export function useWebSocket(
       if ((!ws || ws.readyState !== TRANSPORT_READY_STATE.OPEN) && connInfoRef.current) {
         connectWs(connInfoRef.current);
       }
-      return;
+      return false;
     }
 
     if (!sent && (!ws || ws.readyState !== TRANSPORT_READY_STATE.OPEN)) {
@@ -970,6 +970,7 @@ export function useWebSocket(
       setConnectionState('connecting');
       connectionStateRef.current = 'connecting';
     }
+    return false;
   }, [connectWs, sendEncryptedPayload, setEncryptionState, startOfflineGrace, updateQueuedCommandCount]);
 
   useEffect(() => {

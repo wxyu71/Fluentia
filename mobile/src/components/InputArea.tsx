@@ -17,7 +17,7 @@ interface InputAreaProps {
   regexFilterMarkdown: string;
   text: string;
   setText: (text: string) => void;
-  onSendCommand: (cmd: InputCommand) => void;
+  onSendCommand: (cmd: InputCommand) => boolean;
   onAddHistory: (entry: HistoryEntry) => void;
   onOpenScanner: () => void;
   autoSaveHistory: boolean;

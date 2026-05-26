@@ -347,8 +347,8 @@ export const App: React.FC = () => {
     });
   }, [encryptionReady, sendEncrypted, settings.regexFilterEnabled, settings.regexFilterMarkdown]);
 
-  const handleSendCommand = useCallback((cmd: InputCommand) => {
-    sendEncrypted(cmd);
+  const handleSendCommand = useCallback((cmd: InputCommand): boolean => {
+    return sendEncrypted(cmd);
   }, [sendEncrypted]);
 
   const handleAddHistory = useCallback((entry: HistoryEntry) => {

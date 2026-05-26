@@ -13,7 +13,7 @@ interface ChunkEncodeResponse {
 
 interface FileTransferProps {
   encryptionReady: boolean;
-  onSendCommand: (cmd: InputCommand) => void;
+  onSendCommand: (cmd: InputCommand) => boolean;
   compact?: boolean;
   maxFileMB?: number;
   onBatchStateChange?: (batch: TransferBatchProgress | null) => void;
@@ -262,7 +262,21 @@ export const FileTransfer = forwardRef<FileTransferHandle, FileTransferProps>(
               return;
             }
 
-            onSendCommand({ type: 'file_chunk', transferId, chunkIndex, chunkData: b64, isLast: chunkIndex === totalChunks - 1 });
+            const MAX_CHUNK_RETRIES = 3;
+            let chunkSent = false;
+            for (let retry = 0; retry < MAX_CHUNK_RETRIES && !chunkSent; retry++) {
+              if (abortRef.current) return;
+              chunkSent = onSendCommand({ type: 'file_chunk', transferId, chunkIndex, chunkData: b64, isLast: chunkIndex === totalChunks - 1 });
+              if (!chunkSent) {
+                // Transport temporarily down — wait before retry
+                await new Promise<void>((resolve) => setTimeout(resolve, 1000));
+              }
+            }
+            if (!chunkSent) {
+              setError('Transfer failed: connection lost');
+              abortRef.current = true;
+              return;
+            }
             completedChunks += 1;
 
             updateBatch((current) => current ? {
