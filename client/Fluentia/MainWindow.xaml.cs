@@ -521,7 +521,22 @@ public partial class MainWindow : Window
                                 continue;
                             }
 
+                            // Non-diff command (enter, clipboard, etc.) encountered.
+                            // Drain remaining queued diffs to reach the final state
+                            // before deferring the command — prevents intermediate
+                            // "delete all, retype all" flickering on Enter.
                             deferredCommand = queuedCommand;
+                            while (_cmdChannel.Reader.TryRead(out var remaining))
+                            {
+                                if (remaining.Type == "diff")
+                                {
+                                    nextText = ApplyDiffToBuffer(nextText, remaining.Count, remaining.Text);
+                                }
+                                else if (deferredCommand == null)
+                                {
+                                    deferredCommand = remaining;
+                                }
+                            }
                             break;
                         }
 
