@@ -129,7 +129,7 @@ describe('Focus State Sync — inputResetVersion', () => {
   });
 
   it('BUG: clear message arrives but effect does not fire', () => {
-    let inputText = 'hello world';
+    const inputText = 'hello world';
     let inputResetVersion = 0;
 
     // Simulate: clear message arrives but effect is not triggered
