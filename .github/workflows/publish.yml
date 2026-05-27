@@ -125,11 +125,11 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
-      - run: cd android && chmod +x gradlew && ./gradlew :app:assembleRelease
+      - run: cd android && chmod +x gradlew && ./gradlew :app:assembleDebug
       - uses: actions/upload-artifact@v5
         with:
           name: android-apk
-          path: android/app/build/outputs/apk/release/app-release-unsigned.apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
 
   build-docker:
     needs: [check-version, build-mobile, build-server]
@@ -207,7 +207,7 @@ jobs:
             ### Changes
             See [commit history](https://github.com/${{ github.repository }}/commits/v${{ env.VERSION }}) for details.
           files: |
-            artifacts/android/app-release-unsigned.apk
+            artifacts/android/app-debug.apk
             artifacts/client-windows/fluentia-win-x64.zip
             artifacts/client-windows/velopack-output/Fluentia-*-full.nupkg
             artifacts/client-windows/velopack-output/Fluentia-*-delta.nupkg
