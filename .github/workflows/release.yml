@@ -15,6 +15,8 @@ jobs:
       pull-requests: write
     steps:
       - uses: actions/checkout@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
       - name: Bump version across all components
         run: |
           VERSION="${{ inputs.version }}"
@@ -30,7 +32,7 @@ jobs:
           sed -i "s/versionName = \"[^\"]*\"/versionName = \"$VERSION\"/" android/app/build.gradle.kts
           sed -i "s/const val PROTOCOL_VERSION = \"[^\"]*\"/const val PROTOCOL_VERSION = \"$VERSION\"/" android/app/src/main/java/com/fluentia/app/data/constants/AppConstants.kt
       - name: Create PR
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@v7
         with:
           title: "chore: bump version to ${{ inputs.version }}"
           branch: "release/v${{ inputs.version }}"
