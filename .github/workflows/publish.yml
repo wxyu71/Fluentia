@@ -67,7 +67,7 @@ jobs:
           cache-dependency-path: mobile/package-lock.json
       - run: npm ci
       - run: npm run build
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: mobile-dist
           path: mobile/dist/
@@ -88,7 +88,7 @@ jobs:
           CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -o ../fluentia-server-darwin-amd64 .
           CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o ../fluentia-server-darwin-arm64 .
           CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o ../fluentia-server-windows-amd64.exe .
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: server-binaries
           path: fluentia-server-*
@@ -106,16 +106,30 @@ jobs:
       - run: dotnet publish client/Fluentia/Fluentia.csproj -c Release -r win-x64 --self-contained -o publish/win-x64/
       - run: Compress-Archive -Path publish/win-x64/* -DestinationPath fluentia-win-x64.zip
         shell: pwsh
-      # Build Velopack packages for auto-update
       - run: dotnet tool install --global vpk
       - run: vpk pack --packId Fluentia --packVersion $env:VERSION --packDir publish/win-x64 --outputDir velopack-output -e Fluentia.exe --icon client/Fluentia/fluentia.ico
         shell: pwsh
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: client-windows
           path: |
             fluentia-win-x64.zip
             velopack-output/**/*
+
+  build-android:
+    needs: check-version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+      - run: cd android && ./gradlew :app:assembleRelease
+      - uses: actions/upload-artifact@v5
+        with:
+          name: android-apk
+          path: android/app/build/outputs/apk/release/*.apk
 
   build-docker:
     needs: [check-version, build-mobile, build-server]
@@ -124,11 +138,11 @@ jobs:
       VERSION: ${{ needs.check-version.outputs.version }}
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           name: mobile-dist
           path: server/static/
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           name: server-binaries
           path: server/
@@ -149,24 +163,29 @@ jobs:
 
   # === Create GitHub Release ===
   release:
-    needs: [check-version, build-mobile, build-server, build-client, build-docker]
+    needs: [check-version, build-mobile, build-server, build-client, build-android, build-docker]
     runs-on: ubuntu-latest
     env:
       VERSION: ${{ needs.check-version.outputs.version }}
     steps:
       - uses: actions/checkout@v6
       - name: Download Windows client
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: client-windows
           path: artifacts/client-windows/
       - name: Download server binaries
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: server-binaries
           path: artifacts/server-binaries/
+      - name: Download Android APK
+        uses: actions/download-artifact@v5
+        with:
+          name: android-apk
+          path: artifacts/android/
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v4
         with:
           tag_name: ${{ github.ref_name }}
           name: Fluentia v${{ env.VERSION }}
@@ -174,6 +193,7 @@ jobs:
             ## Fluentia v${{ env.VERSION }}
 
             ### Downloads
+            - **Android** (`app-release.apk`): Native Android app (API 34+)
             - **Windows Desktop** (`fluentia-win-x64.zip`): WPF client for Windows 10+
             - **Server binaries**: Pre-built Go binaries for Linux/macOS/Windows
             - **Docker**: `ghcr.io/wxyu71/fluentia:${{ env.VERSION }}`
@@ -187,6 +207,7 @@ jobs:
             ### Changes
             See [commit history](https://github.com/${{ github.repository }}/commits/v${{ env.VERSION }}) for details.
           files: |
+            artifacts/android/app-release.apk
             artifacts/client-windows/fluentia-win-x64.zip
             artifacts/client-windows/velopack-output/Fluentia-*-full.nupkg
             artifacts/client-windows/velopack-output/Fluentia-*-delta.nupkg
