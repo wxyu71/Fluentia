@@ -29,6 +29,7 @@ function decodeBleEnvelope(view: DataView): BleEnvelope | null {
     const text = new TextDecoder().decode(bytes);
     return JSON.parse(text) as BleEnvelope;
   } catch {
+    // Malformed BLE data — cannot decode envelope.
     return null;
   }
 }

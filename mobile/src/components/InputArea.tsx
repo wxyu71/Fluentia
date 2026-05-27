@@ -184,7 +184,7 @@ export const InputArea: React.FC<InputAreaProps> = ({
 
     setText(normalized);
     textRef.current = normalized;
-    if (encryptionReady) {
+    if (encryptionReady && !isComposingRef.current) {
       sendDiff(normalized);
     }
   }, [addHistoryEntry, encryptionReady, onSendCommand, regexFilterEnabled, regexFilterMarkdown, sendDiff, sendDiffImmediate, setText]);

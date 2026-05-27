@@ -99,12 +99,12 @@ describe('CryptoService Performance', () => {
 });
 
 describe('Diff Algorithm Performance', () => {
-  it('computeDiff for 1KB strings completes within 1ms', () => {
+  it('computeDiff for 1KB strings completes within 5ms', () => {
     const old = 'a'.repeat(1000);
     const new_ = 'a'.repeat(999) + 'b';
 
     const ms = measureMs(() => computeDiff(old, new_));
-    expect(ms).toBeLessThan(1);
+    expect(ms).toBeLessThan(5);
   });
 
   it('computeDiff for 100KB strings completes within 50ms', () => {

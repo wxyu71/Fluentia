@@ -6,6 +6,15 @@ const CHUNK_SIZE = 64 * 1024;
 const CHUNK_CONCURRENCY = 3;
 const WORKER_POOL_SIZE = 2;
 
+function uint8ArrayToBase64(chunk: Uint8Array): string {
+  let binary = '';
+  const sliceSize = 8192;
+  for (let i = 0; i < chunk.length; i += sliceSize) {
+    binary += String.fromCharCode.apply(null, Array.from(chunk.subarray(i, i + sliceSize)));
+  }
+  return btoa(binary);
+}
+
 interface ChunkEncodeResponse {
   id: number;
   base64: string;
@@ -151,7 +160,7 @@ export const FileTransfer = forwardRef<FileTransferHandle, FileTransferProps>(
   const encodeChunk = useCallback((chunk: Uint8Array) => {
     const workers = workersRef.current;
     if (workers.length === 0) {
-      return Promise.resolve(btoa(String.fromCharCode(...chunk)));
+      return Promise.resolve(uint8ArrayToBase64(chunk));
     }
 
     const worker = workers[nextWorkerRef.current % workers.length];
