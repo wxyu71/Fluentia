@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 )
 
 // shortToken returns the first 8 characters of a token for safe logging.
@@ -22,14 +23,16 @@ func shortToken(token string) string {
 // to prevent log injection and excessive log output.
 func sanitizeForLog(s string) string {
 	const maxLen = 64
-	if len(s) > maxLen {
-		s = s[:maxLen]
+	var b strings.Builder
+	for i, r := range s {
+		if i >= maxLen {
+			break
+		}
+		if r == '\t' || !unicode.IsControl(r) {
+			b.WriteRune(r)
+		}
 	}
-	// Replace newlines, carriage returns, and tabs with spaces.
-	s = strings.ReplaceAll(s, "\n", " ")
-	s = strings.ReplaceAll(s, "\r", " ")
-	s = strings.ReplaceAll(s, "\t", " ")
-	return s
+	return b.String()
 }
 
 // DeviceCodeEntry stores a pending device code and its associated session.

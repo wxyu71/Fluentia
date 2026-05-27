@@ -81,10 +81,8 @@ export const QRScanner: React.FC<QRScannerProps> = ({ onScan, deviceId: _deviceI
     return () => {
       const scanner = scannerRef.current;
       if (scanner) {
-        scanner.stop().catch(() => {}).finally(() => {
-          scannerRef.current = null;
-          setScanning(false);
-        });
+        scanner.stop().catch(() => {});
+        scannerRef.current = null;
       }
     };
   }, []);

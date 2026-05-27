@@ -81,9 +81,14 @@ func envBool(key string, fallback bool) bool {
 	return fallback
 }
 
+// isLocalhost returns true if the host (without port) is a loopback address.
+func isLocalhost(host string) bool {
+	return host == "localhost" || host == "127.0.0.1" || host == "::1" || host == "0.0.0.0"
+}
+
 // validateOrigin checks that the WebSocket Origin header matches the request Host
-// to prevent Cross-Site WebSocket Hijacking (CSWSH). This allows same-host
-// connections while rejecting cross-origin requests from malicious websites.
+// to prevent Cross-Site WebSocket Hijacking (CSWSH). Compares the full host:port
+// pair, with an exception for localhost variants (any port allowed for local dev).
 func validateOrigin(r *http.Request) bool {
 	origin := r.Header.Get("Origin")
 	if origin == "" {
@@ -96,21 +101,30 @@ func validateOrigin(r *http.Request) bool {
 		return false
 	}
 
-	// Compare origin host against the request Host header.
-	originHost := parsed.Hostname()
-	reqHost := r.Host
-	if h, _, err := net.SplitHostPort(reqHost); err == nil {
-		reqHost = h
+	originHost := parsed.Hostname() // strips brackets from IPv6, e.g. "::1"
+	reqHost, reqPort, splitErr := net.SplitHostPort(r.Host)
+	if splitErr != nil {
+		// No port in Host header — compare hostname only.
+		reqHost = r.Host
+		reqPort = ""
 	}
 
-	// Allow localhost variants for local development.
-	if originHost == "localhost" || originHost == "127.0.0.1" || originHost == "[::1]" {
-		if reqHost == "localhost" || reqHost == "127.0.0.1" || reqHost == "[::1]" || reqHost == "0.0.0.0" {
-			return true
-		}
+	// Allow localhost variants with any port for local development.
+	if isLocalhost(originHost) && isLocalhost(reqHost) {
+		return true
 	}
 
-	return strings.EqualFold(originHost, reqHost)
+	// For non-localhost, compare the full host:port pair.
+	originFull := originHost
+	if originPort := parsed.Port(); originPort != "" {
+		originFull = net.JoinHostPort(originHost, originPort)
+	}
+	reqFull := reqHost
+	if reqPort != "" {
+		reqFull = net.JoinHostPort(reqHost, reqPort)
+	}
+
+	return strings.EqualFold(originFull, reqFull)
 }
 
 var upgrader = websocket.Upgrader{
@@ -239,21 +253,26 @@ func main() {
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 
+	errCh := make(chan error, 1)
 	go func() {
 		log.Printf("Fluentia relay server v%s starting on :%s", ProtocolVersion, cfg.Port)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("ListenAndServe error: %v", err)
+			errCh <- err
 		}
 	}()
 
-	sig := <-stop
-	log.Printf("Received signal %v, shutting down gracefully...", sig)
+	select {
+	case err := <-errCh:
+		log.Fatalf("ListenAndServe error: %v", err)
+	case sig := <-stop:
+		log.Printf("Received signal %v, shutting down gracefully...", sig)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
 
-	if err := srv.Shutdown(ctx); err != nil {
-		log.Fatalf("Server shutdown error: %v", err)
+		if err := srv.Shutdown(ctx); err != nil {
+			log.Fatalf("Server shutdown error: %v", err)
+		}
+		log.Println("Server stopped")
 	}
-	log.Println("Server stopped")
 }

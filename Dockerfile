@@ -17,7 +17,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o fluentia-server .
 # Final image
 FROM alpine:3.20
 RUN apk --no-cache add ca-certificates && \
-    addgroup -S fluentia && adduser -S fluentia -G fluentia
+    addgroup -S fluentia && adduser -S -u 1000 fluentia -G fluentia
 WORKDIR /app
 COPY --from=server-build /app/server/fluentia-server .
 COPY --from=mobile-build /app/mobile/dist ./static/

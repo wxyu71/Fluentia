@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -105,7 +106,7 @@ func (h *Hub) writeSessionsSnapshot(snapshot []persistedSession) {
 		return
 	}
 
-	tempPath := h.SessionStorePath + ".tmp"
+	tempPath := h.SessionStorePath + "." + strconv.FormatInt(time.Now().UnixNano(), 36) + ".tmp"
 	if err := os.WriteFile(tempPath, payload, 0o600); err != nil {
 		log.Printf("failed to write persisted sessions: %v", err)
 		return
