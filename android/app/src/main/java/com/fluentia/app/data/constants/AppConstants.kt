@@ -1,7 +1,7 @@
 package com.fluentia.app.data.constants
 
 object AppConstants {
-    const val PROTOCOL_VERSION = "1.7.0"
+    const val PROTOCOL_VERSION = "1.7.2"
 
     const val DIFF_DEBOUNCE_MS = 60L
 
