@@ -11,3 +11,5 @@
 -keep class com.sun.jna.** { *; }
 -keep class org.libsodium.** { *; }
 -keep class com.goterl.lazysodium.** { *; }
+-dontwarn java.awt.**
+-dontwarn com.sun.jna.**
