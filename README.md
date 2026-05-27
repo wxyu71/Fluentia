@@ -60,7 +60,7 @@ All settings via environment variables in `docker-compose.yml`:
 | `SECRET_PATH` | — | Secret URL path (when private mode enabled) |
 | `IP_WHITELIST` | `false` | Enable IP-based access control |
 | `ALLOWED_IPS` | — | Comma-separated IPs/CIDRs |
-| `MIN_VERSION` | `1.6.1` | Minimum compatible client version enforced after handshake |
+| `MIN_VERSION` | `1.7.0` | Minimum compatible client version enforced after handshake |
 | `MAX_FILE_MB` | `100` | Max file size (-1=disabled, 0=unlimited) |
 | `SESSION_MAX_AGE_DAYS` | `7` | How long a session token and its trusted desktop key remain reusable before a new session is required |
 | `SESSION_STORE_PATH` | `./data/sessions.json` | JSON file used by the relay to persist reusable session metadata only (token fingerprint + timestamps) across restarts |
