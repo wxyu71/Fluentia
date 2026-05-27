@@ -129,7 +129,7 @@ jobs:
       - uses: actions/upload-artifact@v5
         with:
           name: android-apk
-          path: android/app/build/outputs/apk/release/*.apk
+          path: android/app/build/outputs/apk/release/app-release-unsigned.apk
 
   build-docker:
     needs: [check-version, build-mobile, build-server]
@@ -207,7 +207,7 @@ jobs:
             ### Changes
             See [commit history](https://github.com/${{ github.repository }}/commits/v${{ env.VERSION }}) for details.
           files: |
-            artifacts/android/app-release.apk
+            artifacts/android/app-release-unsigned.apk
             artifacts/client-windows/fluentia-win-x64.zip
             artifacts/client-windows/velopack-output/Fluentia-*-full.nupkg
             artifacts/client-windows/velopack-output/Fluentia-*-delta.nupkg
