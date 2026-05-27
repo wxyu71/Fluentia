@@ -185,7 +185,7 @@ jobs:
           name: android-apk
           path: artifacts/android/
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v4
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           name: Fluentia v${{ env.VERSION }}
