@@ -93,6 +93,7 @@ public partial class MainWindow : Window
     private int _trayCreationRetriesRemaining;
     private string _fileSavePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
     private CancellationTokenSource? _inputTargetRecoveryCts;
+    private CancellationTokenSource? _commandQueueCts;
     private IntPtr _inputTargetWindow;
     private IntPtr _windowHandle;
     private TransferProgressBatch? _transferProgressBatch;
@@ -200,7 +201,8 @@ public partial class MainWindow : Window
         MouseEnter += (_, _) => ShowTrafficIcons(true);
         MouseLeave += (_, _) => ShowTrafficIcons(false);
 
-        Task.Run(ProcessCommandQueue);
+        _commandQueueCts = new CancellationTokenSource();
+        _ = Task.Run(() => ProcessCommandQueue(_commandQueueCts.Token));
 
         _lastForegroundWindow = GetForegroundWindow();
         RememberExternalForegroundWindow(_lastForegroundWindow);
@@ -232,7 +234,7 @@ public partial class MainWindow : Window
             RefreshVisualState();
         });
 
-        _roomManager.OnSessionCreated += (token) => Dispatcher.Invoke(async () =>
+        _roomManager.OnSessionCreated += (token) => Dispatcher.Invoke(() =>
         {
             _persistedSessionLost = false;
             _deviceCode = null;
@@ -247,7 +249,7 @@ public partial class MainWindow : Window
             UpdateSessionCountdown();
             SetStatus(L("StatusWaitingPhone"), false);
             RefreshVisualState();
-            await _roomManager.RequestDeviceCode();
+            _ = _roomManager.RequestDeviceCode();
         });
 
         _roomManager.OnDeviceCodeCreated += (code) => Dispatcher.Invoke(() =>
@@ -295,7 +297,7 @@ public partial class MainWindow : Window
             RefreshVisualState();
         });
 
-        _roomManager.OnMobileDisconnected += () => Dispatcher.Invoke(async () =>
+        _roomManager.OnMobileDisconnected += () => Dispatcher.Invoke(() =>
         {
             _mobileConnected = false;
             _handshakePending = false;
@@ -317,7 +319,7 @@ public partial class MainWindow : Window
                 if (_serverConnected && !IsSessionExpired())
                 {
                     UpdateQRCode();
-                    await _roomManager.RequestDeviceCode();
+                    _ = _roomManager.RequestDeviceCode();
                 }
 
                 StartDisconnectReminderTimer();
@@ -349,7 +351,7 @@ public partial class MainWindow : Window
             }
         });
 
-        _roomManager.OnSessionRecovered += () => Dispatcher.Invoke(async () =>
+        _roomManager.OnSessionRecovered += () => Dispatcher.Invoke(() =>
         {
             _qrVisible = true;
 
@@ -367,7 +369,7 @@ public partial class MainWindow : Window
 
             if (!_roomManager.HasTrustedSession)
             {
-                await _roomManager.RequestDeviceCode();
+                _ = _roomManager.RequestDeviceCode();
             }
         });
 
@@ -489,15 +491,15 @@ public partial class MainWindow : Window
     }
 
 
-    private async Task ProcessCommandQueue()
+    private async Task ProcessCommandQueue(CancellationToken cancellationToken)
     {
         InputCommand? deferredCommand = null;
 
-        while (true)
+        while (!cancellationToken.IsCancellationRequested)
         {
             try
             {
-                var cmd = deferredCommand ?? await _cmdChannel.Reader.ReadAsync();
+                var cmd = deferredCommand ?? await _cmdChannel.Reader.ReadAsync(cancellationToken);
                 deferredCommand = null;
 
                 if (cmd.Type == "diff")
@@ -551,6 +553,10 @@ public partial class MainWindow : Window
                 }
 
                 HandleInputCommand(cmd);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
             }
             catch (Exception ex)
             {
@@ -645,7 +651,7 @@ public partial class MainWindow : Window
                     Dispatcher.Invoke(() =>
                     {
                         try { Clipboard.SetText(cmd.Text); }
-                        catch { }
+                        catch { /* Safe to ignore: clipboard operations may fail if another process holds the clipboard */ }
                     });
                 }
                 break;
@@ -1032,6 +1038,7 @@ public partial class MainWindow : Window
             }
             catch
             {
+                // Safe to ignore: DragMove throws if mouse button is released during drag
             }
         }
     }
@@ -1091,6 +1098,7 @@ public partial class MainWindow : Window
         }
         catch
         {
+            // Safe to ignore: clipboard operations may fail if another process holds the clipboard
         }
     }
 

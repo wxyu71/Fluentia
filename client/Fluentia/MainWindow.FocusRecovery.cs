@@ -39,6 +39,7 @@ public partial class MainWindow
         }
         catch (OperationCanceledException)
         {
+            // Safe to ignore: cancellation is expected when recovery is cancelled
         }
         finally
         {
@@ -94,6 +95,7 @@ public partial class MainWindow
         }
         catch
         {
+            // Safe to ignore: tray notification failure is non-critical
         }
     }
 }

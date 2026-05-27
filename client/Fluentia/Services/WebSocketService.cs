@@ -30,13 +30,13 @@ public class WebSocketService : IRelayTransport
     public RelayTransportKind TransportKind => RelayTransportKind.WebSocket;
     public bool IsConnected => _webSocket?.State == WebSocketState.Open;
 
-    public async Task ConnectAsync(string serverUrl)
+    public async Task ConnectAsync(string serverUrl, CancellationToken cancellationToken = default)
     {
         _serverUrl = serverUrl;
         _intentionalClose = false;
         _reconnectAttempts = 0;
         CancelReconnectLoop();
-        await ConnectInternal(serverUrl, CancellationToken.None, notifyDisconnect: true);
+        await ConnectInternal(serverUrl, cancellationToken, notifyDisconnect: true);
     }
 
     private async Task<bool> ConnectInternal(string serverUrl, CancellationToken cancellationToken, bool notifyDisconnect)
@@ -237,6 +237,7 @@ public class WebSocketService : IRelayTransport
                     }
                     catch
                     {
+                        // Safe to ignore: Abort may throw if socket is already closing
                     }
 
                     HandleDisconnect("Heartbeat timeout");
@@ -255,20 +256,22 @@ public class WebSocketService : IRelayTransport
         }
     }
 
-    public async Task SendAsync(WsMessage msg)
+    public async Task SendAsync(WsMessage msg, CancellationToken cancellationToken = default)
     {
         if (_webSocket?.State != WebSocketState.Open) return;
 
-        await _sendLock.WaitAsync();
+        await _sendLock.WaitAsync(cancellationToken);
         try
         {
             var json = msg.Serialize();
             var bytes = Encoding.UTF8.GetBytes(json);
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken, _cts?.Token ?? CancellationToken.None);
             await _webSocket.SendAsync(
                 new ArraySegment<byte>(bytes),
                 WebSocketMessageType.Text,
                 true,
-                _cts?.Token ?? CancellationToken.None);
+                linkedCts.Token);
         }
         finally
         {
@@ -285,9 +288,9 @@ public class WebSocketService : IRelayTransport
             {
                 if (_webSocket.State == WebSocketState.Open)
                 {
-                    _webSocket.CloseAsync(
-                        WebSocketCloseStatus.NormalClosure, "closing",
-                        CancellationToken.None).Wait(TimeSpan.FromSeconds(2));
+                    // Use Abort() instead of blocking .Wait() on CloseAsync to avoid
+                    // potential deadlocks when Dispose is called from a synchronization context.
+                    _webSocket.Abort();
                 }
             }
             catch { /* ignore */ }
@@ -312,5 +315,7 @@ public class WebSocketService : IRelayTransport
         _intentionalClose = true;
         CancelReconnectLoop();
         DisposeConnection(disposeUrl: true);
+        _sendLock.Dispose();
+        _connectLock.Dispose();
     }
 }

@@ -82,6 +82,7 @@ public partial class MainWindow
         }
         catch
         {
+            // Safe to ignore: tray icon creation failure is non-critical
         }
     }
 
@@ -156,6 +157,7 @@ public partial class MainWindow
         var tempIcon = System.Drawing.Icon.FromHandle(hIcon);
         using var stream = new MemoryStream();
         tempIcon.Save(stream);
+        tempIcon.Dispose();
         stream.Position = 0;
         var icon = new System.Drawing.Icon(stream);
         DestroyIcon(hIcon);
@@ -255,6 +257,8 @@ public partial class MainWindow
 
     private void CleanupResources()
     {
+        _commandQueueCts?.Cancel();
+        _commandQueueCts?.Dispose();
         _sessionTimer?.Stop();
         _disconnectTimer?.Stop();
         _receivedFilesRevealTimer?.Stop();
