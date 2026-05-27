@@ -40,6 +40,7 @@ client/Fluentia.Tests/obj/
 *.pyo
 *.class
 *.jar
+!android/gradle/wrapper/gradle-wrapper.jar
 *.war
 CLAUDE.md
 
