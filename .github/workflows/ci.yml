@@ -48,15 +48,25 @@ jobs:
           GO=$(grep -oP 'ProtocolVersion = "\K[^"]+' server/protocol.go)
           CS=$(grep -oP '<Version>\K[^<]+' client/Fluentia/Fluentia.csproj)
           MSG=$(grep -oP 'ProtocolVersion\s+= "\K[^"]+' client/Fluentia/Models/Messages.cs)
-          ANDROID=$(grep -oP 'versionName = "\K[^"]+' android/app/build.gradle.kts)
 
-          echo "package.json=$PKG types.ts=$TS protocol.go=$GO csproj=$CS Messages.cs=$MSG android=$ANDROID"
+          echo "package.json=$PKG types.ts=$TS protocol.go=$GO csproj=$CS Messages.cs=$MSG"
 
-          if [ "$PKG" != "$TS" ] || [ "$PKG" != "$GO" ] || [ "$PKG" != "$CS" ] || [ "$PKG" != "$MSG" ] || [ "$PKG" != "$ANDROID" ]; then
+          if [ "$PKG" != "$TS" ] || [ "$PKG" != "$GO" ] || [ "$PKG" != "$CS" ] || [ "$PKG" != "$MSG" ]; then
             echo "::error::Version mismatch detected! All components must have the same version."
             echo "Expected all to match package.json=$PKG"
             exit 1
           fi
+
+          # Check android version if the file exists (not present on all branches)
+          if [ -f android/app/build.gradle.kts ]; then
+            ANDROID=$(grep -oP 'versionName = "\K[^"]+' android/app/build.gradle.kts)
+            echo "android=$ANDROID"
+            if [ "$PKG" != "$ANDROID" ]; then
+              echo "::error::Android version mismatch! Expected $PKG, got $ANDROID"
+              exit 1
+            fi
+          fi
+
           echo "Version consistent: $PKG"
 
   # === Stage 1: Lint ===
@@ -71,7 +81,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
-          go-version: '1.24'
+          go-version: '1.25'
           cache: false
       - run: go vet ./...
       - name: golangci-lint
@@ -134,7 +144,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
-          go-version: '1.24'
+          go-version: '1.25'
           cache: false
       - run: go test -v -race -coverprofile=coverage.out ./...
       - uses: actions/upload-artifact@v7
@@ -261,7 +271,7 @@ jobs:
         if: needs.changes.outputs.server == 'true'
         uses: actions/setup-go@v6
         with:
-          go-version: '1.24'
+          go-version: '1.25'
       - name: Run govulncheck
         if: needs.changes.outputs.server == 'true'
         run: |
