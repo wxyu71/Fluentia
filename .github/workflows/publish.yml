@@ -125,7 +125,7 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
-      - run: cd android && ./gradlew :app:assembleRelease
+      - run: cd android && chmod +x gradlew && ./gradlew :app:assembleRelease
       - uses: actions/upload-artifact@v5
         with:
           name: android-apk
