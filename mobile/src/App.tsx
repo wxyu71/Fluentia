@@ -87,11 +87,6 @@ export const App: React.FC = () => {
   const [fileTransferEnabled, setFileTransferEnabled] = useState(false);
   const [maxFileMB, setMaxFileMB] = useState(0);
   const [bleAuthorizedPublicKey, setBleAuthorizedPublicKey] = useState<string | null>(null);
-  const [transportSummary, setTransportSummary] = useState(() =>
-    typeof navigator !== 'undefined' && 'bluetooth' in navigator
-      ? 'WS + BLE available'
-      : 'WS only'
-  );
   const connectRef = useRef<(info: ConnectionInfo) => void>(() => undefined);
   const fetchConfigRef = useRef<(info: ConnectionInfo) => void>(() => undefined);
   const authorizeBleRef = useRef<(publicKey: string) => void>(() => undefined);
@@ -152,53 +147,6 @@ export const App: React.FC = () => {
   }, [connect, fetchServerConfig, sendEncrypted]);
 
   const bleOnly = connectionState === 'connecting' && encryptionReady && blePairing.isTransportReady;
-
-  useEffect(() => {
-    if (!blePairing.isSupported) {
-      setTransportSummary('WS only');
-      return;
-    }
-
-    if (bleOnly) {
-      setTransportSummary('BLE only');
-      return;
-    }
-
-    if (!encryptionReady) {
-      setTransportSummary('WS active');
-      return;
-    }
-
-    if (blePairing.error) {
-      setTransportSummary('BLE error');
-      return;
-    }
-
-    if (blePairing.isTransportReady) {
-      setTransportSummary('Encrypted + BLE');
-      return;
-    }
-
-    if (blePairing.isConnecting) {
-      setTransportSummary('BLE connecting');
-      return;
-    }
-
-    if (!blePairing.isAvailable) {
-      setTransportSummary('BLE off');
-      return;
-    }
-
-    setTransportSummary('WS + BLE available');
-  }, [
-    bleOnly,
-    blePairing.error,
-    blePairing.isAvailable,
-    blePairing.isConnecting,
-    blePairing.isSupported,
-    blePairing.isTransportReady,
-    encryptionReady,
-  ]);
 
   // Swipe state
   const touchStartRef = useRef<{ x: number; y: number; t: number } | null>(null);
@@ -476,8 +424,6 @@ export const App: React.FC = () => {
         peerConnected={peerConnected}
         encryptionReady={encryptionReady}
         pendingStatus={pendingStatus}
-        transportSummary={transportSummary}
-        showBluetoothIndicator={blePairing.isSupported}
         bleTransportReady={blePairing.isTransportReady}
         wsDisconnected={bleOnly}
       />

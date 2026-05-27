@@ -9,13 +9,11 @@ interface HeaderProps {
   peerConnected: boolean;
   encryptionReady: boolean;
   pendingStatus?: string | null;
-  transportSummary?: string;
-  showBluetoothIndicator?: boolean;
   bleTransportReady?: boolean;
   wsDisconnected?: boolean;
 }
 
-export const Header: React.FC<HeaderProps> = ({ connectionState, peerConnected, encryptionReady, pendingStatus, transportSummary, showBluetoothIndicator, bleTransportReady, wsDisconnected }) => {
+export const Header: React.FC<HeaderProps> = ({ connectionState, peerConnected, encryptionReady, pendingStatus, bleTransportReady, wsDisconnected }) => {
   const bleOnly = wsDisconnected && bleTransportReady && encryptionReady;
 
   const statusText = (): string => {
@@ -70,18 +68,6 @@ export const Header: React.FC<HeaderProps> = ({ connectionState, peerConnected, 
             v{APP_VERSION}
           </span>
         </div>
-        <span style={{
-          fontSize: 10,
-          color: 'var(--text-secondary)',
-          letterSpacing: '0.03em',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-          lineHeight: 1.2,
-        }}>
-          {showBluetoothIndicator && <BluetoothIcon size={12} color="var(--accent)" />}
-          {transportSummary ?? 'WS + BLE available'}
-        </span>
       </div>
 
       <div className="glass glass-xs" style={{
