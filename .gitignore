@@ -43,5 +43,17 @@ client/Fluentia.Tests/obj/
 *.war
 CLAUDE.md
 
+# Android
+android/.gradle/
+android/local.properties
+android/app/build/
+android/build/
+android/captures/
+android/.externalNativeBuild/
+android/.cxx/
+*.apk
+*.aab
+*.dex
+
 # specific to this project
 bump-version.ps1
