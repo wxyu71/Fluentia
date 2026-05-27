@@ -12,7 +12,13 @@ export interface WsMessage {
   nonce?: string;
   error?: string;
   version?: string;
+  min_version?: string;
+  expiresAt?: string;
   seq?: number;
+  // Device code auth fields
+  deviceCode?: string;
+  verifyId?: string;
+  userAgent?: string;
   approved?: boolean;
 }
 

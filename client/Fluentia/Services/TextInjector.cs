@@ -43,12 +43,10 @@ public static class TextInjector
     {
         if (inputs.Length == 0) return;
 
-        var fg = GetForegroundWindow();
-
         uint sent = SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<INPUT>());
         if (sent != (uint)inputs.Length)
         {
-            int err = Marshal.GetLastWin32Error();
+            _ = Marshal.GetLastWin32Error();
         }
     }
 

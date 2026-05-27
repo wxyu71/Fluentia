@@ -4,7 +4,7 @@ using Sodium;
 
 namespace Fluentia.Services;
 
-public class CryptoService
+public class CryptoService : IDisposable
 {
     private KeyPair _keyPair;
     private byte[]? _peerPublicKey;
@@ -45,11 +45,11 @@ public class CryptoService
 
     public void ResetPeerState()
     {
-        _peerPublicKey = null;
-        _recvChainKey = null;
+        if (_peerPublicKey != null) { Array.Clear(_peerPublicKey); _peerPublicKey = null; }
+        if (_recvChainKey != null) { Array.Clear(_recvChainKey); _recvChainKey = null; }
         _expectedSeq = 0;
         _ratchetReady = false;
-        _sendChainKey = null;
+        if (_sendChainKey != null) { Array.Clear(_sendChainKey); _sendChainKey = null; }
         _sendSeq = 0;
         _sendRatchetReady = false;
     }
@@ -163,8 +163,18 @@ public class CryptoService
 
     public void Reset()
     {
+        var oldPrivate = _keyPair.PrivateKey;
         _keyPair = PublicKeyBox.GenerateKeyPair();
+        Array.Clear(oldPrivate);
         ResetPeerState();
+    }
+
+    public void Dispose()
+    {
+        ResetPeerState();
+        var privateKey = _keyPair.PrivateKey;
+        _keyPair = PublicKeyBox.GenerateKeyPair();
+        Array.Clear(privateKey);
     }
 
     public string CreateBleVerificationCode(string remotePublicKeyBase64)

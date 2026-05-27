@@ -21,6 +21,8 @@ public sealed record VersionRequirementResult(bool IsCompatible, string? Message
 /// </summary>
 public class RoomManager : IDisposable
 {
+    private static readonly System.Net.Http.HttpClient _httpClient = new() { Timeout = TimeSpan.FromSeconds(5) };
+
     private readonly IRelayTransport _transport;
     private IRelayTransport? _bleTransport;
     private readonly DesktopTransportHealth _health = new();
@@ -112,14 +114,14 @@ public class RoomManager : IDisposable
     /// <summary>
     /// Send an encrypted command from PC to mobile using default routing (Control type).
     /// </summary>
-    public Task<bool> SendToMobileAsync(string jsonPayload)
-        => SendToMobileAsync(jsonPayload, TransportMessageType.Control);
+    public Task<bool> SendToMobileAsync(string jsonPayload, CancellationToken cancellationToken = default)
+        => SendToMobileAsync(jsonPayload, TransportMessageType.Control, cancellationToken);
 
     /// <summary>
     /// Send an encrypted command from PC to mobile with message-type-aware routing.
     /// Uses TransportHealthMonitor to select the best transport channel.
     /// </summary>
-    public async Task<bool> SendToMobileAsync(string jsonPayload, TransportMessageType messageType)
+    public async Task<bool> SendToMobileAsync(string jsonPayload, TransportMessageType messageType, CancellationToken cancellationToken = default)
     {
         if (!_encryptionConfirmed) return false;
 
@@ -149,7 +151,7 @@ public class RoomManager : IDisposable
 
         try
         {
-            await transport.SendAsync(msg);
+            await transport.SendAsync(msg, cancellationToken);
             return true;
         }
         catch
@@ -160,7 +162,7 @@ public class RoomManager : IDisposable
             {
                 try
                 {
-                    await fallback.SendAsync(msg);
+                    await fallback.SendAsync(msg, cancellationToken);
                     return true;
                 }
                 catch
@@ -259,7 +261,7 @@ public class RoomManager : IDisposable
         _transport.OnMessage += HandleMessage;
     }
 
-    public async Task ConnectAsync(string serverUrl)
+    public async Task ConnectAsync(string serverUrl, CancellationToken cancellationToken = default)
     {
         _serverUrl = serverUrl;
         // Don't reset crypto — we want to keep keys for rejoin.
@@ -274,7 +276,7 @@ public class RoomManager : IDisposable
         OnStatusChanged?.Invoke("Connecting...");
         // Fetch server config (non-blocking — best effort)
         _ = FetchServerConfigAsync(serverUrl);
-        await _transport.ConnectAsync(serverUrl);
+        await _transport.ConnectAsync(serverUrl, cancellationToken);
     }
 
     private async Task FetchServerConfigAsync(string wsUrl)
@@ -286,8 +288,7 @@ public class RoomManager : IDisposable
                 .Replace("/ws", "/api/config")
                 .Replace("wss://", "https://")
                 .Replace("ws://", "http://");
-            using var http = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(5) };
-            var json = await http.GetStringAsync(httpUrl);
+            var json = await _httpClient.GetStringAsync(httpUrl);
             using var doc = System.Text.Json.JsonDocument.Parse(json);
             if (doc.RootElement.TryGetProperty("mobileExpirySecs", out var expEl))
                 _mobileExpirySecs = expEl.GetInt32();
@@ -301,7 +302,7 @@ public class RoomManager : IDisposable
         catch { /* best-effort; use defaults */ }
     }
 
-    public async Task RefreshSession()
+    public async Task RefreshSession(CancellationToken cancellationToken = default)
     {
         _crypto.Reset();
         _encryptionConfirmed = false;
@@ -309,7 +310,7 @@ public class RoomManager : IDisposable
         _sessionExpiresAtUtc = null;
         if (_transport.IsConnected)
         {
-            await _transport.SendAsync(new WsMessage { Type = MsgTypes.CreateSession, Version = MsgTypes.ProtocolVersion });
+            await _transport.SendAsync(new WsMessage { Type = MsgTypes.CreateSession, Version = MsgTypes.ProtocolVersion }, cancellationToken);
         }
     }
 
@@ -533,9 +534,9 @@ public class RoomManager : IDisposable
             {
             }
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            OnError?.Invoke("Decryption failed");
+            OnError?.Invoke($"Decryption failed: {ex.Message}");
         }
     }
 
@@ -543,6 +544,7 @@ public class RoomManager : IDisposable
     {
         _bleTransport?.Dispose();
         _transport.Dispose();
+        _crypto.Dispose();
     }
 
     private static DateTimeOffset? ParseSessionExpiry(string? expiresAt)

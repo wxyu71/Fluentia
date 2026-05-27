@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -45,7 +46,7 @@ func (h *Hub) LoadPersistedSessions() error {
 		}
 
 		h.persistedSessions[entry.TokenHash] = entry
-		loadedCount += 1
+		loadedCount++
 	}
 
 	if loadedCount > 0 {
@@ -55,11 +56,9 @@ func (h *Hub) LoadPersistedSessions() error {
 	return nil
 }
 
-func (h *Hub) saveSessionsLocked() {
-	if strings.TrimSpace(h.SessionStorePath) == "" {
-		return
-	}
-
+// snapshotSessions builds a snapshot of all persisted sessions.
+// Caller must hold h.mu.
+func (h *Hub) snapshotSessions() []persistedSession {
 	now := time.Now()
 	snapshotMap := make(map[string]persistedSession, len(h.persistedSessions)+len(h.sessions))
 
@@ -86,6 +85,15 @@ func (h *Hub) saveSessionsLocked() {
 	for _, entry := range snapshotMap {
 		snapshot = append(snapshot, entry)
 	}
+	return snapshot
+}
+
+// writeSessionsSnapshot persists the snapshot to disk.
+// This performs file I/O and should be called WITHOUT holding h.mu.
+func (h *Hub) writeSessionsSnapshot(snapshot []persistedSession) {
+	if strings.TrimSpace(h.SessionStorePath) == "" {
+		return
+	}
 
 	if err := os.MkdirAll(filepath.Dir(h.SessionStorePath), 0o755); err != nil {
 		log.Printf("failed to create session store directory: %v", err)
@@ -98,7 +106,7 @@ func (h *Hub) saveSessionsLocked() {
 		return
 	}
 
-	tempPath := h.SessionStorePath + ".tmp"
+	tempPath := h.SessionStorePath + "." + strconv.FormatInt(time.Now().UnixNano(), 36) + ".tmp"
 	if err := os.WriteFile(tempPath, payload, 0o600); err != nil {
 		log.Printf("failed to write persisted sessions: %v", err)
 		return
@@ -107,4 +115,10 @@ func (h *Hub) saveSessionsLocked() {
 	if err := os.Rename(tempPath, h.SessionStorePath); err != nil {
 		log.Printf("failed to replace persisted sessions: %v", err)
 	}
+}
+
+// saveSessionsLocked builds a snapshot under lock and writes it synchronously.
+// Kept for backward compatibility with tests; prefer snapshotSessions + writeSessionsSnapshot.
+func (h *Hub) saveSessionsLocked() {
+	h.writeSessionsSnapshot(h.snapshotSessions())
 }

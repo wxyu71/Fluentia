@@ -155,7 +155,6 @@ public sealed class DesktopBlePairingService : IDisposable
                 return;
             }
 
-            var rawLen = request.Value.Length;
             var json = ReadString(request.Value);
             request.Respond();
 
@@ -202,6 +201,7 @@ public sealed class DesktopBlePairingService : IDisposable
             }
             catch
             {
+                // Safe to ignore: error notification send failure is non-critical
             }
         }
         finally

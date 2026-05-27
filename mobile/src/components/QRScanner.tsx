@@ -78,7 +78,13 @@ export const QRScanner: React.FC<QRScannerProps> = ({ onScan, deviceId: _deviceI
   };
 
   useEffect(() => {
-    return () => { stopScanner(); };
+    return () => {
+      const scanner = scannerRef.current;
+      if (scanner) {
+        scanner.stop().catch(() => {});
+        scannerRef.current = null;
+      }
+    };
   }, []);
 
   const content = (
@@ -123,7 +129,7 @@ export const QRScanner: React.FC<QRScannerProps> = ({ onScan, deviceId: _deviceI
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}>
-                  <button className="glass-btn accent" onClick={startScanner}>
+                  <button className="glass-btn accent" onClick={() => { void startScanner(); }}>
                     <ScanIcon size={16} color="white" /> Start Camera
                   </button>
                 </div>
@@ -141,7 +147,7 @@ export const QRScanner: React.FC<QRScannerProps> = ({ onScan, deviceId: _deviceI
               }}>
                 {error}
                 <div style={{ marginTop: 8 }}>
-                  <button className="glass-btn" style={{ fontSize: 13, padding: '8px 16px' }} onClick={startScanner}>
+                  <button className="glass-btn" style={{ fontSize: 13, padding: '8px 16px' }} onClick={() => { void startScanner(); }}>
                     Retry
                   </button>
                 </div>
@@ -150,7 +156,7 @@ export const QRScanner: React.FC<QRScannerProps> = ({ onScan, deviceId: _deviceI
 
             {scanning && (
               <div style={{ marginTop: 12 }}>
-                <button className="glass-btn danger" style={{ fontSize: 13, padding: '8px 16px' }} onClick={stopScanner}>
+                <button className="glass-btn danger" style={{ fontSize: 13, padding: '8px 16px' }} onClick={() => { void stopScanner(); }}>
                   Stop Camera
                 </button>
               </div>
@@ -170,7 +176,7 @@ export const QRScanner: React.FC<QRScannerProps> = ({ onScan, deviceId: _deviceI
               cursor: 'pointer',
               padding: '4px 8px',
             }}
-            onClick={() => { setManualMode(!manualMode); if (scanning) stopScanner(); }}
+            onClick={() => { setManualMode(!manualMode); if (scanning) void stopScanner(); }}
           >
             {manualMode ? 'Use Camera' : 'Manual Connection'}
           </button>
@@ -182,7 +188,7 @@ export const QRScanner: React.FC<QRScannerProps> = ({ onScan, deviceId: _deviceI
   if (overlay) {
     return (
       <div className="scan-overlay">
-        <button className="scan-overlay-close" onClick={() => { stopScanner(); onClose?.(); }}>
+        <button className="scan-overlay-close" onClick={() => { void stopScanner(); onClose?.(); }}>
           <CloseIcon size={18} color="white" />
         </button>
         {content}

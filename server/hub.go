@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 )
 
 // shortToken returns the first 8 characters of a token for safe logging.
@@ -16,6 +17,22 @@ func shortToken(token string) string {
 		return token[:8]
 	}
 	return token
+}
+
+// sanitizeForLog strips control characters and truncates user-supplied strings
+// to prevent log injection and excessive log output.
+func sanitizeForLog(s string) string {
+	const maxLen = 64
+	var b strings.Builder
+	for i, r := range s {
+		if i >= maxLen {
+			break
+		}
+		if r == '\t' || !unicode.IsControl(r) {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
 
 // DeviceCodeEntry stores a pending device code and its associated session.
@@ -42,6 +59,7 @@ type Hub struct {
 	MaxFileMB         int
 	mu                sync.RWMutex
 	rateMu            sync.Mutex
+	rateCleanupCount  int // counter for periodic rate limiter cleanup
 }
 
 func NewHub(sessionMaxAgeDays int) *Hub {
@@ -65,11 +83,9 @@ func tokenFingerprint(token string) string {
 	return hex.EncodeToString(hash[:])
 }
 
-// GenerateDeviceCode creates an 8-char alphanumeric code for a session.
-func (h *Hub) GenerateDeviceCode(session *Session, pc *Client) string {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-
+// generateDeviceCodeLocked creates an 8-char alphanumeric code for a session.
+// Caller must hold h.mu.
+func (h *Hub) generateDeviceCodeLocked(session *Session, pc *Client) string {
 	// Remove any existing code for this session
 	for code, entry := range h.deviceCodes {
 		if entry.Session == session {
@@ -86,6 +102,14 @@ func (h *Hub) GenerateDeviceCode(session *Session, pc *Client) string {
 		ExpiresAt: session.ExpiresAt,
 	}
 	return code
+}
+
+// GenerateDeviceCode creates an 8-char alphanumeric code for a session.
+// Exported for tests; callers that already hold h.mu should use generateDeviceCodeLocked.
+func (h *Hub) GenerateDeviceCode(session *Session, pc *Client) string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.generateDeviceCodeLocked(session, pc)
 }
 
 func (h *Hub) sessionExpiredLocked(session *Session) bool {
@@ -106,7 +130,27 @@ func (h *Hub) CheckDeviceCodeRateLimit(ip string) bool {
 	now := time.Now()
 	cutoff := now.Add(-1 * time.Minute)
 
-	// Clean old entries
+	// Periodically clean up stale IP entries to prevent unbounded memory growth.
+	// Run cleanup every 100 calls to amortize cost.
+	h.rateCleanupCount++
+	if h.rateCleanupCount >= 100 {
+		h.rateCleanupCount = 0
+		for k, attempts := range h.codeAttempts {
+			var valid []time.Time
+			for _, t := range attempts {
+				if t.After(cutoff) {
+					valid = append(valid, t)
+				}
+			}
+			if len(valid) == 0 {
+				delete(h.codeAttempts, k)
+			} else {
+				h.codeAttempts[k] = valid
+			}
+		}
+	}
+
+	// Clean old entries for this IP
 	var valid []time.Time
 	for _, t := range h.codeAttempts[ip] {
 		if t.After(cutoff) {
@@ -192,7 +236,7 @@ func (h *Hub) Unregister(c *Client) {
 		if session.PC != nil {
 			session.PC.SendMessage(&Message{Type: MsgPeerLeft, Role: "mobile", DeviceID: c.deviceID})
 		}
-		log.Printf("Mobile %s left session %s", c.deviceID, shortToken(session.Token))
+		log.Printf("Mobile %s left session %s", sanitizeForLog(c.deviceID), shortToken(session.Token))
 	}
 	c.session = nil
 }
@@ -220,7 +264,7 @@ func (h *Hub) expireSession(token string) {
 	}
 	delete(h.sessions, token)
 	delete(h.persistedSessions, tokenFingerprint(token))
-	h.saveSessionsLocked()
+	go h.writeSessionsSnapshot(h.snapshotSessions())
 	log.Printf("Session %s destroyed (session expired while PC offline)", shortToken(token))
 }
 
@@ -230,7 +274,7 @@ func (h *Hub) hydratePersistedSessionLocked(token string) (*Session, bool) {
 	if !ok || !entry.ExpiresAt.After(time.Now()) {
 		if ok {
 			delete(h.persistedSessions, fingerprint)
-			h.saveSessionsLocked()
+			go h.writeSessionsSnapshot(h.snapshotSessions())
 		}
 		return nil, false
 	}
@@ -302,7 +346,7 @@ func (h *Hub) handleCreateSession(c *Client) {
 		}
 		delete(h.sessions, oldSession.Token)
 		delete(h.persistedSessions, tokenFingerprint(oldSession.Token))
-		h.saveSessionsLocked()
+		go h.writeSessionsSnapshot(h.snapshotSessions())
 	}
 
 	session := NewSession(c, h.SessionMaxAge)
@@ -314,7 +358,7 @@ func (h *Hub) handleCreateSession(c *Client) {
 		CreatedAt: session.CreatedAt,
 		ExpiresAt: session.ExpiresAt,
 	}
-	h.saveSessionsLocked()
+	go h.writeSessionsSnapshot(h.snapshotSessions())
 
 	log.Printf("Session created: %s (expires %s)", shortToken(session.Token), session.ExpiresAt.Format(time.RFC3339))
 	c.SendMessage(&Message{
@@ -347,7 +391,7 @@ func (h *Hub) handleRejoinSession(c *Client, msg *Message) {
 	}
 	if h.sessionExpiredLocked(session) {
 		delete(h.sessions, session.Token)
-		h.saveSessionsLocked()
+		go h.writeSessionsSnapshot(h.snapshotSessions())
 		c.SendMessage(&Message{Type: MsgError, Error: "session expired, create a new session"})
 		return
 	}
@@ -405,7 +449,7 @@ func (h *Hub) handleJoinSession(c *Client, msg *Message) {
 	}
 	if h.sessionExpiredLocked(session) {
 		delete(h.sessions, session.Token)
-		h.saveSessionsLocked()
+		go h.writeSessionsSnapshot(h.snapshotSessions())
 		c.SendMessage(&Message{Type: MsgError, Error: "session expired, scan a new code"})
 		return
 	}
@@ -417,7 +461,7 @@ func (h *Hub) handleJoinSession(c *Client, msg *Message) {
 	// Preempt existing mobile client (force-disconnect)
 	if old := session.Mobile; old != nil && old != c {
 		sameDevice := old.deviceID != "" && old.deviceID == c.deviceID
-		log.Printf("Preempting device %s in session %s (new: %s)", old.deviceID, shortToken(session.Token), c.deviceID)
+		log.Printf("Preempting device %s in session %s (new: %s)", sanitizeForLog(old.deviceID), shortToken(session.Token), sanitizeForLog(c.deviceID))
 		session.Mobile = nil
 		old.session = nil
 		delete(h.clients, old)
@@ -431,7 +475,7 @@ func (h *Hub) handleJoinSession(c *Client, msg *Message) {
 	}
 
 	session.Mobile = c
-	log.Printf("Device %s joined session %s", c.deviceID, shortToken(session.Token))
+	log.Printf("Device %s joined session %s", sanitizeForLog(c.deviceID), shortToken(session.Token))
 
 	c.SendMessage(&Message{Type: MsgJoined, Role: "mobile", Token: session.Token, Version: ProtocolVersion, MinVersion: h.MinVersion})
 	if session.PC != nil {
@@ -467,20 +511,20 @@ func (h *Hub) handleRelay(c *Client, msg *Message) {
 
 // handleDeviceCodeRequest: PC requests a device code for its session.
 func (h *Hub) handleDeviceCodeRequest(c *Client) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
 	if c.session == nil {
 		c.SendMessage(&Message{Type: MsgError, Error: "create a session first"})
 		return
 	}
 
-	h.mu.RLock()
-	expired := h.sessionExpiredLocked(c.session)
-	h.mu.RUnlock()
-	if expired {
+	if h.sessionExpiredLocked(c.session) {
 		c.SendMessage(&Message{Type: MsgError, Error: "session expired, create a new session"})
 		return
 	}
 
-	code := h.GenerateDeviceCode(c.session, c)
+	code := h.generateDeviceCodeLocked(c.session, c)
 	c.SendMessage(&Message{Type: MsgDeviceCodeCreated, DeviceCode: code})
 	log.Printf("Device code %s created for session %s", code, shortToken(c.session.Token))
 }
@@ -597,13 +641,11 @@ func (h *Hub) handleDeviceCodeReject(c *Client, msg *Message) {
 
 	code := msg.DeviceCode
 	entry, ok := h.deviceCodes[code]
-	if !ok || entry.Pending == nil {
+	if !ok || entry.Pending == nil || entry.PC != c {
 		return
 	}
 
-	if entry.Pending != nil {
-		entry.Pending.SendMessage(&Message{Type: MsgError, Error: "connection rejected by PC"})
-	}
+	entry.Pending.SendMessage(&Message{Type: MsgError, Error: "connection rejected by PC"})
 	entry.Pending = nil
 	entry.VerifyID = ""
 }

@@ -13,7 +13,7 @@
 
 import type { TransportConnection, TransportMessageEvent } from './transport';
 import { TRANSPORT_READY_STATE } from './transport';
-import { type BleEnvelope } from '../utils/ble';
+import type { BleEnvelope } from '../utils/ble';
 
 const POLL_INTERVAL_MS = 500; // poll PC for pending messages every 500ms
 

@@ -167,6 +167,7 @@ public sealed class DesktopSettingsStore
         }
         catch
         {
+            // TODO: consider logging this error — session restore failure may cause data loss
         }
 
         return new DesktopSettingsLoadResult(
@@ -216,6 +217,7 @@ public sealed class DesktopSettingsStore
         }
         catch
         {
+            // TODO: consider logging this error — session backup failure may cause data loss
         }
     }
 }

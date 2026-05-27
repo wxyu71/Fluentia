@@ -42,8 +42,9 @@ public sealed class BleTransport : IRelayTransport
     /// "Connect" marks the BLE transport as ready. The actual GATT setup
     /// is handled by DesktopBlePairingService.StartAsync().
     /// </summary>
-    public Task ConnectAsync(string endpoint)
+    public Task ConnectAsync(string endpoint, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         _connected = true;
         OnConnected?.Invoke();
         return Task.CompletedTask;
@@ -54,7 +55,7 @@ public sealed class BleTransport : IRelayTransport
     /// If the notify characteristic has no subscribers, the message is queued
     /// and sent when mobile sends a poll request.
     /// </summary>
-    public async Task SendAsync(WsMessage msg)
+    public async Task SendAsync(WsMessage msg, CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 

@@ -106,17 +106,23 @@ func (c *Client) SendMessage(msg *Message) {
 	select {
 	case c.send <- data:
 	default:
-		log.Printf("send buffer full for client %s", c.deviceID)
+		log.Printf("send buffer full for client %s", sanitizeForLog(c.deviceID))
 	}
 }
 
 // SendAndClose sends a final message then closes the send channel.
 func (c *Client) SendAndClose(msg *Message) {
 	c.closeOnce.Do(func() {
-		data, _ := json.Marshal(msg)
-		select {
-		case c.send <- data:
-		default:
+		data, err := json.Marshal(msg)
+		if err != nil {
+			log.Printf("SendAndClose marshal error: %v", err)
+		}
+		if data != nil {
+			select {
+			case c.send <- data:
+			default:
+				log.Printf("SendAndClose: send buffer full for client %s, message dropped", sanitizeForLog(c.deviceID))
+			}
 		}
 		close(c.send)
 	})

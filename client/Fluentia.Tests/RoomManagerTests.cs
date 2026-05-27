@@ -18,7 +18,7 @@ public class RoomManagerTests : IDisposable
         public IReadOnlyList<WsMessage> Sent => _sent;
         public string? LastEndpoint { get; private set; }
 
-        public Task ConnectAsync(string endpoint)
+        public Task ConnectAsync(string endpoint, CancellationToken cancellationToken = default)
         {
             LastEndpoint = endpoint;
             IsConnected = true;
@@ -26,7 +26,7 @@ public class RoomManagerTests : IDisposable
             return Task.CompletedTask;
         }
 
-        public Task SendAsync(WsMessage msg)
+        public Task SendAsync(WsMessage msg, CancellationToken cancellationToken = default)
         {
             _sent.Add(msg);
             return Task.CompletedTask;

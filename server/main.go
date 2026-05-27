@@ -1,12 +1,18 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -75,10 +81,56 @@ func envBool(key string, fallback bool) bool {
 	return fallback
 }
 
+// isLocalhost returns true if the host (without port) is a loopback address.
+func isLocalhost(host string) bool {
+	return host == "localhost" || host == "127.0.0.1" || host == "::1" || host == "0.0.0.0"
+}
+
+// validateOrigin checks that the WebSocket Origin header matches the request Host
+// to prevent Cross-Site WebSocket Hijacking (CSWSH). Compares the full host:port
+// pair, with an exception for localhost variants (any port allowed for local dev).
+func validateOrigin(r *http.Request) bool {
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		// Non-browser clients (CLI tools, native apps) typically omit Origin.
+		return true
+	}
+
+	parsed, err := url.Parse(origin)
+	if err != nil {
+		return false
+	}
+
+	originHost := parsed.Hostname() // strips brackets from IPv6, e.g. "::1"
+	reqHost, reqPort, splitErr := net.SplitHostPort(r.Host)
+	if splitErr != nil {
+		// No port in Host header — compare hostname only.
+		reqHost = r.Host
+		reqPort = ""
+	}
+
+	// Allow localhost variants with any port for local development.
+	if isLocalhost(originHost) && isLocalhost(reqHost) {
+		return true
+	}
+
+	// For non-localhost, compare the full host:port pair.
+	originFull := originHost
+	if originPort := parsed.Port(); originPort != "" {
+		originFull = net.JoinHostPort(originHost, originPort)
+	}
+	reqFull := reqHost
+	if reqPort != "" {
+		reqFull = net.JoinHostPort(reqHost, reqPort)
+	}
+
+	return strings.EqualFold(originFull, reqFull)
+}
+
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  4096,
 	WriteBufferSize: 4096,
-	CheckOrigin:     func(r *http.Request) bool { return true },
+	CheckOrigin:     validateOrigin,
 }
 
 func serveWs(hub *Hub, cfg *ServerConfig, w http.ResponseWriter, r *http.Request) {
@@ -146,14 +198,17 @@ func main() {
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"status":"ok","version":"` + ProtocolVersion + `"}`))
+		resp := map[string]string{"status": "ok", "version": ProtocolVersion}
+		if data, err := json.Marshal(resp); err == nil {
+			_, _ = w.Write(data)
+		}
 	})
 
 	// WebSocket endpoint — optionally behind a secret path
 	wsPath := "/ws"
 	if cfg.PrivateMode && cfg.SecretPath != "" {
 		wsPath = "/ws/" + cfg.SecretPath
-		log.Printf("Private mode: WebSocket path = %s", wsPath)
+		log.Printf("Private mode: WebSocket path enabled (path length: %d chars)", len(wsPath))
 	}
 	mux.HandleFunc(wsPath, func(w http.ResponseWriter, r *http.Request) {
 		serveWs(hub, &cfg, w, r)
@@ -163,12 +218,17 @@ func main() {
 	mux.HandleFunc("/api/config", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		fileEnabled := cfg.MaxFileMB != -1
-		maxMB := cfg.MaxFileMB
-		_, _ = w.Write([]byte(`{"version":"` + ProtocolVersion + `","minVersion":"` + cfg.MinVersion + `","fileTransfer":` +
-			strconv.FormatBool(fileEnabled) + `,"maxFileMB":` + strconv.Itoa(maxMB) +
-			`,"mobileExpirySecs":` + strconv.Itoa(cfg.MobileExpiry) +
-			`,"sessionMaxAgeDays":` + strconv.Itoa(cfg.SessionMaxAge) + `}`))
+		resp := map[string]interface{}{
+			"version":          ProtocolVersion,
+			"minVersion":       cfg.MinVersion,
+			"fileTransfer":     cfg.MaxFileMB != -1,
+			"maxFileMB":        cfg.MaxFileMB,
+			"mobileExpirySecs": cfg.MobileExpiry,
+			"sessionMaxAgeDays": cfg.SessionMaxAge,
+		}
+		if data, err := json.Marshal(resp); err == nil {
+			_, _ = w.Write(data)
+		}
 	})
 
 	// Serve mobile web static files
@@ -184,8 +244,35 @@ func main() {
 		})
 	}
 
-	log.Printf("Fluentia relay server v%s starting on :%s", ProtocolVersion, cfg.Port)
-	if err := http.ListenAndServe(":"+cfg.Port, mux); err != nil {
-		log.Fatal(err)
+	srv := &http.Server{
+		Addr:    ":" + cfg.Port,
+		Handler: mux,
+	}
+
+	// Graceful shutdown on SIGINT/SIGTERM
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+
+	errCh := make(chan error, 1)
+	go func() {
+		log.Printf("Fluentia relay server v%s starting on :%s", ProtocolVersion, cfg.Port)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			errCh <- err
+		}
+	}()
+
+	select {
+	case err := <-errCh:
+		log.Fatalf("ListenAndServe error: %v", err)
+	case sig := <-stop:
+		log.Printf("Received signal %v, shutting down gracefully...", sig)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		if err := srv.Shutdown(ctx); err != nil {
+			log.Fatalf("Server shutdown error: %v", err)
+		}
+		log.Println("Server stopped")
 	}
 }

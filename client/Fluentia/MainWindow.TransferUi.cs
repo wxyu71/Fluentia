@@ -462,6 +462,7 @@ public partial class MainWindow
                 }
                 catch
                 {
+                    // Safe to ignore: clipboard operations may fail if another process holds the clipboard
                 }
             });
         }

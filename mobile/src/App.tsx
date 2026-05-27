@@ -45,7 +45,7 @@ function loadHistory(): HistoryEntry[] {
     }
     const raw = localStorage.getItem(HISTORY_KEY);
     return raw ? JSON.parse(raw) : [];
-  } catch { return []; }
+  } catch { /* Corrupted JSON in localStorage — fall back to empty history */ return []; }
 }
 
 function saveHistory(entries: HistoryEntry[]) {
@@ -56,7 +56,7 @@ function loadSettings(): AppSettings {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
     return raw ? JSON.parse(raw) : { autoSaveHistory: false, regexFilterEnabled: false, regexFilterMarkdown: '' };
-  } catch { return { autoSaveHistory: false, regexFilterEnabled: false, regexFilterMarkdown: '' }; }
+  } catch { /* Corrupted settings JSON — fall back to defaults */ return { autoSaveHistory: false, regexFilterEnabled: false, regexFilterMarkdown: '' }; }
 }
 
 function saveSettings(s: AppSettings) {
@@ -73,6 +73,7 @@ function loadStoredConnection(): ConnectionInfo | null {
     const info = JSON.parse(raw) as ConnectionInfo;
     return info.s && info.t && info.k ? info : null;
   } catch {
+    // Invalid or missing stored connection data.
     return null;
   }
 }

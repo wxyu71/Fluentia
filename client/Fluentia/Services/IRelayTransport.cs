@@ -17,7 +17,7 @@ public interface IRelayTransport : IDisposable
     RelayTransportKind TransportKind { get; }
     bool IsConnected { get; }
 
-    Task ConnectAsync(string endpoint);
-    Task SendAsync(WsMessage msg);
+    Task ConnectAsync(string endpoint, CancellationToken cancellationToken = default);
+    Task SendAsync(WsMessage msg, CancellationToken cancellationToken = default);
     void Disconnect();
 }
