@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -84,13 +85,13 @@ func TestMessageOmitEmpty(t *testing.T) {
 
 	jsonStr := string(data)
 	// Should not contain empty optional fields
-	if contains(jsonStr, `"token"`) {
+	if strings.Contains(jsonStr, `"token"`) {
 		t.Error("empty token should be omitted")
 	}
-	if contains(jsonStr, `"payload"`) {
+	if strings.Contains(jsonStr, `"payload"`) {
 		t.Error("empty payload should be omitted")
 	}
-	if contains(jsonStr, `"error"`) {
+	if strings.Contains(jsonStr, `"error"`) {
 		t.Error("empty error should be omitted")
 	}
 }
@@ -138,17 +139,4 @@ func TestMessageConstants(t *testing.T) {
 
 func intPtr(i int) *int {
 	return &i
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsSubstring(s, substr))
-}
-
-func containsSubstring(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }
