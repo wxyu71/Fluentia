@@ -1,10 +1,10 @@
-﻿using Fluentia.Services;
+using Fluentia.Services;
 using Xunit;
 
 namespace Fluentia.Tests;
 
 /// <summary>
-/// Tests for diff batching and suffix optimization in MainWindow.
+/// Tests for diff batching and prefix-only diff logic in MainWindow.
 /// These test the pure logic extracted from FlushBufferedDiff and ApplyDiffToBuffer.
 /// </summary>
 public class DiffBatchTests
@@ -18,11 +18,10 @@ public class DiffBatchTests
         return current[..prefixLength] + (insertText ?? string.Empty);
     }
 
-    // === FlushBufferedDiff logic (with suffix optimization) ===
+    // === FlushBufferedDiff logic (prefix-only) ===
     // Replicates the logic from MainWindow.FlushBufferedDiff
     private static (int backspace, string insert) ComputeFlushDiff(string oldText, string nextText)
     {
-        // Prefix optimization
         var prefix = 0;
         var limit = Math.Min(oldText.Length, nextText.Length);
         while (prefix < limit && oldText[prefix] == nextText[prefix])
@@ -30,93 +29,15 @@ public class DiffBatchTests
             prefix++;
         }
 
-        // Suffix optimization
-        var suffix = 0;
-        var oldEnd = oldText.Length - 1;
-        var newEnd = nextText.Length - 1;
-        while (suffix < limit - prefix &&
-               oldEnd - suffix >= prefix &&
-               newEnd - suffix >= prefix &&
-               oldText[oldEnd - suffix] == nextText[newEnd - suffix])
-        {
-            suffix++;
-        }
-
-        // Surrogate pair safety
-        if (suffix > 0)
-        {
-            var suffixStart = oldText.Length - suffix;
-            if (suffixStart > 0 && suffixStart < oldText.Length &&
-                char.IsLowSurrogate(oldText[suffixStart]))
-            {
-                suffix--;
-            }
-        }
-
-        var backspace = oldText.Length - prefix - suffix;
-        var insertLength = nextText.Length - prefix - suffix;
-        var insert = insertLength > 0 ? nextText.Substring(prefix, insertLength) : string.Empty;
+        var backspace = oldText.Length - prefix;
+        var insert = nextText[prefix..];
         return (backspace, insert);
     }
 
-    // === Suffix optimization tests ===
+    // === Prefix-only diff tests ===
 
     [Fact]
-    public void SuffixOptimization_BeginningEdit_ReducesBackspace()
-    {
-        // old: "AAAA", new: "BAAA" → prefix=0, suffix=3
-        var (backspace, insert) = ComputeFlushDiff("AAAA", "BAAA");
-        Assert.Equal(1, backspace);
-        Assert.Equal("B", insert);
-    }
-
-    [Fact]
-    public void SuffixOptimization_NoCommonSuffix_FullBackspace()
-    {
-        // old: "ABC", new: "XYZ" → prefix=0, suffix=0
-        var (backspace, insert) = ComputeFlushDiff("ABC", "XYZ");
-        Assert.Equal(3, backspace);
-        Assert.Equal("XYZ", insert);
-    }
-
-    [Fact]
-    public void SuffixOptimization_EmptyTarget_DeleteAll()
-    {
-        // old: "AAAA", new: "" → prefix=0, suffix=0
-        var (backspace, insert) = ComputeFlushDiff("AAAA", "");
-        Assert.Equal(4, backspace);
-        Assert.Equal("", insert);
-    }
-
-    [Fact]
-    public void SuffixOptimization_AppendAtEnd_NoSuffixNeeded()
-    {
-        // old: "hello", new: "hello world" → prefix=5, suffix=0
-        var (backspace, insert) = ComputeFlushDiff("hello", "hello world");
-        Assert.Equal(0, backspace);
-        Assert.Equal(" world", insert);
-    }
-
-    [Fact]
-    public void SuffixOptimization_MiddleEdit()
-    {
-        // old: "hello world", new: "hello earth" → prefix=6, suffix=0
-        var (backspace, insert) = ComputeFlushDiff("hello world", "hello earth");
-        Assert.Equal(5, backspace);
-        Assert.Equal("earth", insert);
-    }
-
-    [Fact]
-    public void SuffixOptimization_SingleCharChangeAtStart()
-    {
-        // old: "aaaa", new: "baaa" → prefix=0, suffix=3
-        var (backspace, insert) = ComputeFlushDiff("aaaa", "baaa");
-        Assert.Equal(1, backspace);
-        Assert.Equal("b", insert);
-    }
-
-    [Fact]
-    public void SuffixOptimization_IdenticalText()
+    public void FlushDiff_IdenticalText()
     {
         var (backspace, insert) = ComputeFlushDiff("hello", "hello");
         Assert.Equal(0, backspace);
@@ -124,7 +45,61 @@ public class DiffBatchTests
     }
 
     [Fact]
-    public void SuffixOptimization_CompletelyDifferent()
+    public void FlushDiff_AppendAtEnd()
+    {
+        // old: "hello", new: "hello world" → prefix=5
+        var (backspace, insert) = ComputeFlushDiff("hello", "hello world");
+        Assert.Equal(0, backspace);
+        Assert.Equal(" world", insert);
+    }
+
+    [Fact]
+    public void FlushDiff_MiddleEdit()
+    {
+        // old: "hello world", new: "hello earth" → prefix=6
+        var (backspace, insert) = ComputeFlushDiff("hello world", "hello earth");
+        Assert.Equal(5, backspace);
+        Assert.Equal("earth", insert);
+    }
+
+    [Fact]
+    public void FlushDiff_BeginningEdit_FullBackspace()
+    {
+        // old: "AAAA", new: "BAAA" → prefix=0, backspace=4
+        // Prefix-only correctly backspaces the entire old text and re-inserts.
+        var (backspace, insert) = ComputeFlushDiff("AAAA", "BAAA");
+        Assert.Equal(4, backspace);
+        Assert.Equal("BAAA", insert);
+    }
+
+    [Fact]
+    public void FlushDiff_RepeatedPattern_NoOffByOne()
+    {
+        // Regression test: "ABAB" → "BAB" must delete all 4 chars and insert "BAB".
+        // Suffix optimization would incorrectly match "ABA" and produce "ABA".
+        var (backspace, insert) = ComputeFlushDiff("ABAB", "BAB");
+        Assert.Equal(4, backspace);
+        Assert.Equal("BAB", insert);
+    }
+
+    [Fact]
+    public void FlushDiff_CompletelyDifferent()
+    {
+        var (backspace, insert) = ComputeFlushDiff("ABC", "XYZ");
+        Assert.Equal(3, backspace);
+        Assert.Equal("XYZ", insert);
+    }
+
+    [Fact]
+    public void FlushDiff_EmptyTarget_DeleteAll()
+    {
+        var (backspace, insert) = ComputeFlushDiff("AAAA", "");
+        Assert.Equal(4, backspace);
+        Assert.Equal("", insert);
+    }
+
+    [Fact]
+    public void FlushDiff_EmptyOld_InsertAll()
     {
         var (backspace, insert) = ComputeFlushDiff("", "world");
         Assert.Equal(0, backspace);
@@ -132,34 +107,34 @@ public class DiffBatchTests
     }
 
     [Fact]
-    public void SuffixOptimization_LongText_BeginningEdit()
+    public void FlushDiff_SingleCharChangeAtStart()
     {
-        // Simulate 200-char text, change first char
+        // old: "aaaa", new: "baaa" → prefix=0, backspace=4
+        var (backspace, insert) = ComputeFlushDiff("aaaa", "baaa");
+        Assert.Equal(4, backspace);
+        Assert.Equal("baaa", insert);
+    }
+
+    [Fact]
+    public void FlushDiff_SingleCharChangeAtEnd()
+    {
+        // old: "hello", new: "hellp" → prefix=4
+        var (backspace, insert) = ComputeFlushDiff("hello", "hellp");
+        Assert.Equal(1, backspace);
+        Assert.Equal("p", insert);
+    }
+
+    [Fact]
+    public void FlushDiff_LongText_BeginningEdit()
+    {
+        // 200-char text, change first char
         var old = new string('A', 200);
         var newStr = "B" + new string('A', 199);
 
         var (backspace, insert) = ComputeFlushDiff(old, newStr);
 
-        // prefix=0, suffix=199, backspace=1, insert="B"
-        Assert.Equal(1, backspace);
-        Assert.Equal("B", insert);
-    }
-
-    [Fact]
-    public void SuffixOptimization_LongText_MultipleBeginningEdits()
-    {
-        // Simulate: "AAAA...A" (200) → "BAAA...A" → "BCAA...A"
-        var old = new string('A', 200);
-        var mid = "B" + new string('A', 199);
-        var final = "BC" + new string('A', 198);
-
-        var (bs1, ins1) = ComputeFlushDiff(old, mid);
-        Assert.Equal(1, bs1);
-        Assert.Equal("B", ins1);
-
-        var (bs2, ins2) = ComputeFlushDiff(mid, final);
-        Assert.Equal(1, bs2);
-        Assert.Equal("C", ins2);
+        Assert.Equal(200, backspace);
+        Assert.Equal(newStr, insert);
     }
 
     // === ApplyDiffToBuffer tests ===

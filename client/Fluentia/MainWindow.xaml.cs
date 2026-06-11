@@ -215,7 +215,7 @@ public partial class MainWindow : Window
         NetworkChange.NetworkAddressChanged += NetworkAddressChanged;
 
         // Check for updates in the background
-        _ = CheckForUpdatesAsync();
+        _ = AutoCheckForUpdatesAsync();
     }
 
     private void SetupRoomManagerEvents()
@@ -582,7 +582,13 @@ public partial class MainWindow : Window
             return;
         }
 
-        // Prefix optimization: find longest common prefix
+        // Prefix-only optimization: find longest common prefix, then
+        // backspace everything after it and insert the new remainder.
+        // We intentionally do NOT use suffix matching — it is incorrect
+        // when strings contain repeated patterns (e.g. "ABAB"→"BAB"
+        // would match suffix "ABA" and produce wrong results).
+        // The mobile diff engine also uses prefix-only, so both sides
+        // are consistent.
         var prefix = 0;
         var limit = Math.Min(_appliedInputBuffer.Length, nextText.Length);
         while (prefix < limit && _appliedInputBuffer[prefix] == nextText[prefix])
@@ -590,34 +596,8 @@ public partial class MainWindow : Window
             prefix++;
         }
 
-        // Suffix optimization: find longest common suffix (after prefix)
-        // This reduces backspace count for beginning-of-text edits.
-        // Example: "AAAA" → "BAAA": prefix=0, suffix=3, backspace=1, insert="B"
-        var suffix = 0;
-        var oldEnd = _appliedInputBuffer.Length - 1;
-        var newEnd = nextText.Length - 1;
-        while (suffix < limit - prefix &&
-               oldEnd - suffix >= prefix &&
-               newEnd - suffix >= prefix &&
-               _appliedInputBuffer[oldEnd - suffix] == nextText[newEnd - suffix])
-        {
-            suffix++;
-        }
-
-        // Ensure we don't split a surrogate pair at the suffix boundary
-        if (suffix > 0)
-        {
-            var suffixStart = _appliedInputBuffer.Length - suffix;
-            if (suffixStart > 0 && suffixStart < _appliedInputBuffer.Length &&
-                char.IsLowSurrogate(_appliedInputBuffer[suffixStart]))
-            {
-                suffix--;
-            }
-        }
-
-        var backspace = _appliedInputBuffer.Length - prefix - suffix;
-        var insertLength = nextText.Length - prefix - suffix;
-        var insert = insertLength > 0 ? nextText.Substring(prefix, insertLength) : string.Empty;
+        var backspace = _appliedInputBuffer.Length - prefix;
+        var insert = nextText[prefix..];
         TextInjector.ApplyDiff(backspace, insert);
         _appliedInputBuffer = nextText;
     }
@@ -1224,6 +1204,9 @@ public partial class MainWindow : Window
         CloseBehaviorBodyText.Text = L("CloseBehaviorBody");
         StartupTitleText.Text = L("StartupTitle");
         StartupBodyText.Text = L("StartupBody");
+        UpdateTitleText.Text = L("UpdateTitle");
+        UpdateBodyText.Text = L("UpdateBody");
+        CheckUpdateButton.Content = L("ButtonCheckUpdate");
         LanguageTitleText.Text = L("SettingsLanguageTitle");
         LanguageBodyText.Text = L("SettingsLanguageBody");
         LanguageSystemOption.Content = L("LanguageSystem");
@@ -1243,26 +1226,38 @@ public partial class MainWindow : Window
         RefreshTransferProgressCard();
     }
 
-    private static async Task CheckForUpdatesAsync()
+    private UpdateManager? _updateManager;
+    private bool _updateCheckInProgress;
+
+    private UpdateManager GetUpdateManager()
+    {
+        _updateManager ??= new UpdateManager(new GithubSource("https://github.com/wxyu71/Fluentia", null, false));
+        return _updateManager;
+    }
+
+    /// <summary>
+    /// Automatic update check on startup. Silent on failure; only prompts if an update is ready.
+    /// </summary>
+    private async Task AutoCheckForUpdatesAsync()
     {
         try
         {
-            // Velopack update source: GitHub Releases
-            var source = new GithubSource("https://github.com/wxyu71/Fluentia", null, false);
-            var mgr = new UpdateManager(source);
+            var mgr = GetUpdateManager();
+            if (!mgr.IsInstalled)
+            {
+                return; // Not a Velopack install — silently skip
+            }
 
             var info = await mgr.CheckForUpdatesAsync();
-            if (info == null) return; // no updates available
+            if (info == null) return;
 
-            // Download the update silently
             await mgr.DownloadUpdatesAsync(info);
 
-            // Prompt user to restart
-            var result = System.Windows.MessageBox.Show(
-                $"Fluentia {info.TargetFullRelease.Version} is available. Restart to update?",
-                "Update Available",
+            var result = Dispatcher.Invoke(() => System.Windows.MessageBox.Show(
+                L("StatusUpdateReady"),
+                L("AppName"),
                 MessageBoxButton.YesNo,
-                MessageBoxImage.Information);
+                MessageBoxImage.Information));
 
             if (result == MessageBoxResult.Yes)
             {
@@ -1271,7 +1266,86 @@ public partial class MainWindow : Window
         }
         catch
         {
-            // Silently ignore update check failures (network issues, etc.)
+            // Automatic check: silently ignore failures
         }
+    }
+
+    /// <summary>
+    /// Manual update check triggered by the user. Always shows feedback.
+    /// </summary>
+    private async Task ManualCheckForUpdatesAsync()
+    {
+        if (_updateCheckInProgress) return;
+        _updateCheckInProgress = true;
+
+        try
+        {
+            UpdateManager mgr;
+            try
+            {
+                mgr = GetUpdateManager();
+            }
+            catch (Exception ex)
+            {
+                UpdateUpdateStatus(L("StatusUpdateCheckFailed", ex.Message), false);
+                return;
+            }
+
+            if (!mgr.IsInstalled)
+            {
+                UpdateUpdateStatus(L("StatusUpdateNotInstalled"), false);
+                return;
+            }
+
+            CheckUpdateButton.IsEnabled = false;
+            UpdateUpdateStatus(L("StatusCheckingUpdate"), true);
+
+            var info = await mgr.CheckForUpdatesAsync();
+            if (info == null)
+            {
+                UpdateUpdateStatus(L("StatusUpToDate"), true);
+                return;
+            }
+
+            UpdateUpdateStatus(L("StatusUpdateAvailable"), true);
+            await mgr.DownloadUpdatesAsync(info);
+
+            UpdateUpdateStatus(L("StatusUpdateReady"), true);
+
+            var result = System.Windows.MessageBox.Show(
+                L("StatusUpdateReady"),
+                L("AppName"),
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Information);
+
+            if (result == MessageBoxResult.Yes)
+            {
+                UpdateUpdateStatus(L("StatusUpdateApplied"), true);
+                mgr.ApplyUpdatesAndRestart(info);
+            }
+        }
+        catch (Exception ex)
+        {
+            UpdateUpdateStatus(L("StatusUpdateCheckFailed", ex.Message), false);
+        }
+        finally
+        {
+            _updateCheckInProgress = false;
+            CheckUpdateButton.IsEnabled = true;
+        }
+    }
+
+    private void UpdateUpdateStatus(string text, bool connected)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            UpdateStatusText.Text = text;
+            UpdateStatusText.Visibility = Visibility.Visible;
+        });
+    }
+
+    private async void CheckUpdate_Click(object sender, RoutedEventArgs e)
+    {
+        await ManualCheckForUpdatesAsync();
     }
 }

@@ -116,21 +116,6 @@ jobs:
             fluentia-win-x64.zip
             velopack-output/**/*
 
-  build-android:
-    needs: check-version
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '17'
-      - run: cd android && chmod +x gradlew && ./gradlew :app:assembleDebug
-      - uses: actions/upload-artifact@v5
-        with:
-          name: android-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
-
   build-docker:
     needs: [check-version, build-mobile, build-server]
     runs-on: ubuntu-latest
@@ -163,7 +148,7 @@ jobs:
 
   # === Create GitHub Release ===
   release:
-    needs: [check-version, build-mobile, build-server, build-client, build-android, build-docker]
+    needs: [check-version, build-mobile, build-server, build-client, build-docker]
     runs-on: ubuntu-latest
     env:
       VERSION: ${{ needs.check-version.outputs.version }}
@@ -179,11 +164,6 @@ jobs:
         with:
           name: server-binaries
           path: artifacts/server-binaries/
-      - name: Download Android APK
-        uses: actions/download-artifact@v5
-        with:
-          name: android-apk
-          path: artifacts/android/
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -193,8 +173,8 @@ jobs:
             ## Fluentia v${{ env.VERSION }}
 
             ### Downloads
-            - **Android** (`app-release.apk`): Native Android app (API 34+)
-            - **Windows Desktop** (`fluentia-win-x64.zip`): WPF client for Windows 10+
+            - **Windows Installer** (`Fluentia-Setup.exe`): Recommended — supports auto-updates
+            - **Windows Portable** (`fluentia-win-x64.zip`): Standalone, no install required
             - **Server binaries**: Pre-built Go binaries for Linux/macOS/Windows
             - **Docker**: `ghcr.io/wxyu71/fluentia:${{ env.VERSION }}`
 
@@ -207,7 +187,7 @@ jobs:
             ### Changes
             See [commit history](https://github.com/${{ github.repository }}/commits/v${{ env.VERSION }}) for details.
           files: |
-            artifacts/android/app-debug.apk
+            artifacts/client-windows/velopack-output/*Setup*.exe
             artifacts/client-windows/fluentia-win-x64.zip
             artifacts/client-windows/velopack-output/Fluentia-*-full.nupkg
             artifacts/client-windows/velopack-output/Fluentia-*-delta.nupkg

@@ -151,6 +151,16 @@ public static class LocalizationService
         ["TrayNotificationInputTargetBody"] = "Fluentia could not restore the previous target window. Bring the app you want to type into back to the foreground.",
         ["TrayNotificationInputTargetBodyInvalid"] = "The previous target window is no longer valid. Open or focus the app you want to control, then continue typing from your phone.",
         ["MessageEnterServerUrl"] = "Please enter a server URL.",
+        ["UpdateTitle"] = "App updates",
+        ["UpdateBody"] = "Fluentia checks for updates automatically on startup. You can also check manually.",
+        ["ButtonCheckUpdate"] = "Check for Updates",
+        ["StatusCheckingUpdate"] = "Checking for updates...",
+        ["StatusUpToDate"] = "You're up to date",
+        ["StatusUpdateAvailable"] = "Update available — downloading...",
+        ["StatusUpdateReady"] = "Update downloaded. Restart to apply.",
+        ["StatusUpdateNotInstalled"] = "Auto-update requires the Velopack installer version. Download it from GitHub Releases.",
+        ["StatusUpdateCheckFailed"] = "Update check failed: {0}",
+        ["StatusUpdateApplied"] = "Update applied — restarting...",
     };
 
     private static readonly IReadOnlyDictionary<string, string> Chinese = new Dictionary<string, string>
@@ -298,6 +308,16 @@ public static class LocalizationService
         ["TrayNotificationInputTargetBody"] = "Fluentia 无法恢复之前的目标窗口。请将你想输入的应用重新切回前台。",
         ["TrayNotificationInputTargetBodyInvalid"] = "之前的目标窗口已失效。请先打开或切换到你要控制的应用，再继续在手机上输入。",
         ["MessageEnterServerUrl"] = "请输入服务器地址。",
+        ["UpdateTitle"] = "应用更新",
+        ["UpdateBody"] = "Fluentia 在启动时自动检查更新，也可以手动检查。",
+        ["ButtonCheckUpdate"] = "检查更新",
+        ["StatusCheckingUpdate"] = "正在检查更新...",
+        ["StatusUpToDate"] = "已是最新版本",
+        ["StatusUpdateAvailable"] = "有可用更新 — 正在下载...",
+        ["StatusUpdateReady"] = "更新已下载，重启后生效。",
+        ["StatusUpdateNotInstalled"] = "自动更新需要通过 Velopack 安装版本。请从 GitHub Releases 下载。",
+        ["StatusUpdateCheckFailed"] = "检查更新失败：{0}",
+        ["StatusUpdateApplied"] = "更新已应用 — 正在重启...",
     };
 
     public static string CurrentLanguageSetting => _languageOverride ?? "system";

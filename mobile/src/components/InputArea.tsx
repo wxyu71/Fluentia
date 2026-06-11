@@ -184,7 +184,7 @@ export const InputArea: React.FC<InputAreaProps> = ({
 
     setText(normalized);
     textRef.current = normalized;
-    if (encryptionReady && !isComposingRef.current) {
+    if (encryptionReady) {
       sendDiff(normalized);
     }
   }, [addHistoryEntry, encryptionReady, onSendCommand, regexFilterEnabled, regexFilterMarkdown, sendDiff, sendDiffImmediate, setText]);
@@ -199,8 +199,11 @@ export const InputArea: React.FC<InputAreaProps> = ({
 
   const handleCompositionEnd = useCallback((e: React.CompositionEvent<HTMLTextAreaElement>) => {
     isComposingRef.current = false;
-    processTextValue(e.currentTarget.value, e.currentTarget);
-  }, [processTextValue]);
+    // Use immediate send to flush the diff right away — some Android
+    // browsers/voice keyboards only fire compositionEnd (not onInput),
+    // so the debounced sendDiff may not have fired yet.
+    sendDiffImmediate(e.currentTarget.value);
+  }, [sendDiffImmediate]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey && !isComposingRef.current) {
@@ -418,6 +421,7 @@ export const InputArea: React.FC<InputAreaProps> = ({
           className="glass-input"
           value={text}
           onInput={handleInput}
+          onChange={handleInput}
           onKeyDown={handleKeyDown}
           onCompositionStart={handleCompositionStart}
           onCompositionEnd={handleCompositionEnd}

@@ -29,8 +29,6 @@ jobs:
           sed -i "s/ProtocolVersion = \"[^\"]*\"/ProtocolVersion = \"$VERSION\"/" client/Fluentia/Models/Messages.cs
           sed -i 's/| `MIN_VERSION` | `[^`]*`/| `MIN_VERSION` | `'"$VERSION"'`/' README.md
           sed -i "s/\"1\.[0-9]*\.[0-9]*\"/\"$VERSION\"/" server/protocol_test.go
-          sed -i "s/versionName = \"[^\"]*\"/versionName = \"$VERSION\"/" android/app/build.gradle.kts
-          sed -i "s/const val PROTOCOL_VERSION = \"[^\"]*\"/const val PROTOCOL_VERSION = \"$VERSION\"/" android/app/src/main/java/com/fluentia/app/data/constants/AppConstants.kt
       - name: Create PR
         uses: peter-evans/create-pull-request@v7
         with:

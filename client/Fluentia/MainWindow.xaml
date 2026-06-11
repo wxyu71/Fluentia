@@ -725,6 +725,39 @@
                                         BorderBrush="{DynamicResource DividerBrush}"
                                         BorderThickness="1"
                                         CornerRadius="18"
+                                        Padding="18"
+                                        Margin="0,0,0,14">
+                                    <StackPanel>
+                                        <TextBlock x:Name="UpdateTitleText"
+                                                   Text="App updates"
+                                                   FontSize="14"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                        <TextBlock x:Name="UpdateBodyText"
+                                                   Text="Fluentia checks for updates automatically on startup. You can also check manually."
+                                                   FontSize="12"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                   Margin="0,6,0,0"
+                                                   TextWrapping="Wrap"/>
+                                        <TextBlock x:Name="UpdateStatusText"
+                                                   FontSize="12"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                   Margin="0,8,0,0"
+                                                   TextWrapping="Wrap"
+                                                   Visibility="Collapsed"/>
+                                        <Button x:Name="CheckUpdateButton"
+                                                Content="Check for Updates"
+                                                Margin="0,14,0,0"
+                                                HorizontalAlignment="Left"
+                                                Style="{StaticResource SecondaryButton}"
+                                                Click="CheckUpdate_Click"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <Border Background="{DynamicResource BgInputBrush}"
+                                        BorderBrush="{DynamicResource DividerBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="18"
                                         Padding="18">
                                     <StackPanel>
                                         <TextBlock x:Name="ReceivedFilesTitleText"
