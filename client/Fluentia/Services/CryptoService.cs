@@ -51,7 +51,7 @@ public class CryptoService : IDisposable
         if (_recvChainKey != null) { Array.Clear(_recvChainKey); _recvChainKey = null; }
         _expectedSeq = 0;
         _ratchetReady = false;
-        _highestSeenSeq = 0;
+        _highestSeenSeq = -1;
         if (_sendChainKey != null) { Array.Clear(_sendChainKey); _sendChainKey = null; }
         _sendSeq = 0;
         _sendRatchetReady = false;
@@ -66,7 +66,7 @@ public class CryptoService : IDisposable
         _recvChainKey = HKDF.DeriveKey(HashAlgorithmName.SHA512, seed, 32, salt: Encoding.UTF8.GetBytes("fluentia_v1_salt"), info: Encoding.UTF8.GetBytes("fluentia_chain_v1"));
         _expectedSeq = 0;
         _ratchetReady = true;
-        _highestSeenSeq = 0;
+        _highestSeenSeq = -1;
     }
 
     /// <summary>
