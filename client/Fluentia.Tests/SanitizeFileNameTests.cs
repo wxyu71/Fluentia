@@ -30,10 +30,10 @@ public class SanitizeFileNameTests
     [InlineData("LPT9")]
     public void RejectsReservedDeviceNames(string reserved)
     {
-        // [M10] Windows reserved names should be prefixed
+        // [M10] Windows reserved names should be replaced with safe fallback
         var result = InvokeSanitize(reserved);
         Assert.NotEqual(reserved, result);
-        Assert.StartsWith("_", result);
+        Assert.Equal("received_file", result);
     }
 
     [Theory]

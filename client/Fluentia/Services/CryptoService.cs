@@ -63,7 +63,7 @@ public class CryptoService : IDisposable
     public void InitRatchet(string seedBase64)
     {
         var seed = Convert.FromBase64String(seedBase64);
-        _recvChainKey = HKDF.Expand(HashAlgorithmName.SHA512, seed, 32, Encoding.UTF8.GetBytes("fluentia_chain_v1"));
+        _recvChainKey = HKDF.DeriveKey(HashAlgorithmName.SHA512, seed, 32, salt: Encoding.UTF8.GetBytes("fluentia_v1_salt"), info: Encoding.UTF8.GetBytes("fluentia_chain_v1"));
         _expectedSeq = 0;
         _ratchetReady = true;
         _highestSeenSeq = 0;
@@ -77,7 +77,7 @@ public class CryptoService : IDisposable
     {
         var seed = new byte[32];
         RandomNumberGenerator.Fill(seed);
-        _sendChainKey = HKDF.Expand(HashAlgorithmName.SHA512, seed, 32, Encoding.UTF8.GetBytes("fluentia_chain_v1"));
+        _sendChainKey = HKDF.DeriveKey(HashAlgorithmName.SHA512, seed, 32, salt: Encoding.UTF8.GetBytes("fluentia_v1_salt"), info: Encoding.UTF8.GetBytes("fluentia_chain_v1"));
         _sendSeq = 0;
         _sendRatchetReady = true;
         return Convert.ToBase64String(seed);
@@ -210,10 +210,7 @@ public class CryptoService : IDisposable
 
     private static byte[] Kdf(byte[] key, string label)
     {
-        var labelBytes = Encoding.UTF8.GetBytes(label);
-        var output = new byte[32];
-        HKDF.Expand(HashAlgorithmName.SHA512, key, output, labelBytes);
-        return output;
+        return HKDF.DeriveKey(HashAlgorithmName.SHA512, key, 32, salt: Encoding.UTF8.GetBytes("fluentia_kdf_salt"), info: Encoding.UTF8.GetBytes(label));
     }
 
     private static (byte[] MessageKey, byte[] NextChainKey) RatchetStep(byte[] chainKey)
