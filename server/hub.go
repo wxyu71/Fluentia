@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"log"
+	"net"
 	"strings"
 	"sync"
 	"time"
@@ -17,6 +18,15 @@ func shortToken(token string) string {
 		return token[:8]
 	}
 	return token
+}
+
+// shortCode returns the first 4 characters of a device code for safe logging.
+// [M6] Used to redact device codes in log output.
+func shortCode(code string) string {
+	if len(code) > 4 {
+		return code[:4]
+	}
+	return code
 }
 
 // sanitizeForLog strips control characters and truncates user-supplied strings
@@ -59,6 +69,7 @@ type Hub struct {
 	MaxFileMB         int
 	mu                sync.RWMutex
 	rateMu            sync.Mutex
+	writeMu           sync.Mutex // [M3] Protects concurrent file writes
 	rateCleanupCount  int // counter for periodic rate limiter cleanup
 }
 
@@ -94,13 +105,25 @@ func (h *Hub) generateDeviceCodeLocked(session *Session, pc *Client) string {
 	}
 
 	code := generateAlphanumericCode(8)
-	h.deviceCodes[code] = &DeviceCodeEntry{
+	entry := &DeviceCodeEntry{
 		Code:      code,
 		Session:   session,
 		PC:        pc,
 		CreatedAt: time.Now(),
 		ExpiresAt: session.ExpiresAt,
 	}
+	h.deviceCodes[code] = entry
+
+	// [L2] Schedule automatic cleanup when device code expires to prevent memory leak.
+	// The cleanup runs even if the mobile never joins.
+	time.AfterFunc(time.Until(session.ExpiresAt), func() {
+		h.mu.Lock()
+		defer h.mu.Unlock()
+		if cur, ok := h.deviceCodes[code]; ok && cur == entry {
+			delete(h.deviceCodes, code)
+		}
+	})
+
 	return code
 }
 
@@ -191,6 +214,23 @@ func (h *Hub) Register(c *Client) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.clients[c] = true
+}
+
+// ClientCount returns the number of currently connected clients.
+func (h *Hub) ClientCount() int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return len(h.clients)
+}
+
+// ShutdownAll sends a server_maintenance message to all connected clients.
+// [L1] Used during graceful shutdown to notify clients before disconnection.
+func (h *Hub) ShutdownAll() {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for c := range h.clients {
+		c.SendMessage(&Message{Type: MsgError, Error: "server_maintenance"})
+	}
 }
 
 func (h *Hub) Unregister(c *Client) {
@@ -526,15 +566,22 @@ func (h *Hub) handleDeviceCodeRequest(c *Client) {
 
 	code := h.generateDeviceCodeLocked(c.session, c)
 	c.SendMessage(&Message{Type: MsgDeviceCodeCreated, DeviceCode: code})
-	log.Printf("Device code %s created for session %s", code, shortToken(c.session.Token))
+	// [M6] Only log first 4 chars of device code for safety
+	log.Printf("Device code %s created for session %s", shortCode(code), shortToken(c.session.Token))
 }
 
 // handleDeviceCodeJoin: mobile submits a device code to join.
 func (h *Hub) handleDeviceCodeJoin(c *Client, msg *Message) {
-	// Rate limiting
+	// [L6] Rate limiting — extract just IP (not IP:port) so all connections from
+	// the same IP share one rate limit bucket.
 	ip := ""
 	if c.conn != nil {
-		ip = c.conn.RemoteAddr().String()
+		host, _, err := net.SplitHostPort(c.conn.RemoteAddr().String())
+		if err == nil {
+			ip = host
+		} else {
+			ip = c.conn.RemoteAddr().String()
+		}
 	}
 	if h.CheckDeviceCodeRateLimit(ip) {
 		c.SendMessage(&Message{Type: MsgError, Error: "too many attempts, try again later"})
@@ -631,7 +678,7 @@ func (h *Hub) handleDeviceCodeConfirm(c *Client, msg *Message) {
 		session.PC.SendMessage(&Message{Type: MsgPeerJoined, Role: "mobile", DeviceID: mobile.deviceID})
 	}
 
-	log.Printf("Device code %s confirmed, device joined session %s", code, shortToken(session.Token))
+	log.Printf("Device code %s confirmed, device joined session %s", shortCode(code), shortToken(session.Token))
 }
 
 // handleDeviceCodeReject: PC rejects the device code join.

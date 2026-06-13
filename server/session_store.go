@@ -90,10 +90,14 @@ func (h *Hub) snapshotSessions() []persistedSession {
 
 // writeSessionsSnapshot persists the snapshot to disk.
 // This performs file I/O and should be called WITHOUT holding h.mu.
+// [M3] Uses writeMu to prevent concurrent file corruption.
 func (h *Hub) writeSessionsSnapshot(snapshot []persistedSession) {
 	if strings.TrimSpace(h.SessionStorePath) == "" {
 		return
 	}
+
+	h.writeMu.Lock()
+	defer h.writeMu.Unlock()
 
 	if err := os.MkdirAll(filepath.Dir(h.SessionStorePath), 0o755); err != nil {
 		log.Printf("failed to create session store directory: %v", err)
@@ -114,11 +118,13 @@ func (h *Hub) writeSessionsSnapshot(snapshot []persistedSession) {
 
 	if err := os.Rename(tempPath, h.SessionStorePath); err != nil {
 		log.Printf("failed to replace persisted sessions: %v", err)
+		// [M3] Clean up temp file on rename failure
+		os.Remove(tempPath)
 	}
 }
 
-// saveSessionsLocked builds a snapshot under lock and writes it synchronously.
-// Kept for backward compatibility with tests; prefer snapshotSessions + writeSessionsSnapshot.
-func (h *Hub) saveSessionsLocked() {
+// saveSessionsSnapshot builds a snapshot under lock and writes it synchronously.
+// [L3] Renamed from saveSessionsLocked to better describe its behavior.
+func (h *Hub) saveSessionsSnapshot() {
 	h.writeSessionsSnapshot(h.snapshotSessions())
 }

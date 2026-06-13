@@ -162,7 +162,7 @@ func TestStress_ConcurrentSessionPersistence(t *testing.T) {
 				CreatedAt: time.Now(),
 				ExpiresAt: time.Now().Add(7 * 24 * time.Hour),
 			}
-			hub.saveSessionsLocked()
+			hub.saveSessionsSnapshot()
 			hub.mu.Unlock()
 		}(i)
 	}

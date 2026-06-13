@@ -26,6 +26,13 @@ func dial(t *testing.T, ts *httptest.Server) *websocket.Conn {
 // newTestServer starts an httptest server with a Hub.
 func newTestServer() (*Hub, *httptest.Server) {
 	hub := NewHub(1)
+	// Set srvGlobals so tests work with the new origin validation.
+	// In tests, websocket dialer doesn't send Origin header, so AllowEmptyOrigin must be true.
+	if srvGlobals == nil {
+		srvGlobals = &ServerGlobals{
+			AllowEmptyOrigin: true,
+		}
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 		serveWs(hub, &ServerConfig{}, w, r)

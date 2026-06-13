@@ -136,7 +136,7 @@ func TestInit_SessionStorePathEmpty_NoFileOperations(t *testing.T) {
 	hub.SessionStorePath = ""
 
 	// Should not panic on save
-	hub.saveSessionsLocked()
+	hub.saveSessionsSnapshot()
 
 	// Should not panic on load
 	if err := hub.LoadPersistedSessions(); err != nil {
