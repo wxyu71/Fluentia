@@ -105,20 +105,21 @@ public class CryptoServiceSecurityTests : IDisposable
         var seed = sender.InitSendRatchet();
         receiver.InitRatchet(seed);
 
-        // Generate messages up to MaxSeqGap + 1
-        for (int i = 0; i < CryptoService.MaxSeqGap; i++)
+        // First, decrypt one message to establish highestSeenSeq = 0
+        var (p0, n0, s0) = sender.EncryptRatcheted("msg 0");
+        receiver.DecryptRatcheted(p0, n0, s0);
+
+        // Now send MaxSeqGap more messages without decrypting (creating a gap)
+        for (int i = 1; i <= CryptoService.MaxSeqGap; i++)
         {
             sender.EncryptRatcheted($"msg {i}");
         }
-        // This next one creates seq = MaxSeqGap, which receiver hasn't seen seq 0..MaxSeqGap-1
+        // This next one creates seq = MaxSeqGap + 1, gap from 0 is MaxSeqGap + 1
         var (payload, nonce, seq) = sender.EncryptRatcheted("over the gap");
 
-        // The gap from receiver's perspective (highestSeenSeq=0) to seq=MaxSeqGap is exactly MaxSeqGap
-        // which should be accepted (equal to limit). But MaxSeqGap+1 should fail.
-        // Actually seq here would be MaxSeqGap (0-indexed), gap = MaxSeqGap - 0 = MaxSeqGap
-        // This should be accepted since gap <= MaxSeqGap
-        var decrypted = receiver.DecryptRatcheted(payload, nonce, seq);
-        Assert.Equal("over the gap", decrypted);
+        // Gap = (MaxSeqGap + 1) - 0 = MaxSeqGap + 1 > MaxSeqGap → should reject
+        Assert.Throws<InvalidOperationException>(() =>
+            receiver.DecryptRatcheted(payload, nonce, seq));
     }
 
     [Fact]
