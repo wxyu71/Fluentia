@@ -1,4 +1,4 @@
-namespace Fluentia.Tests;
+﻿namespace Fluentia.Tests;
 
 /// <summary>
 /// Tests for file transfer security addressing code review findings:

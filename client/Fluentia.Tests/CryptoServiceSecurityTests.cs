@@ -1,4 +1,4 @@
-using Fluentia.Services;
+﻿using Fluentia.Services;
 using Sodium;
 
 namespace Fluentia.Tests;
