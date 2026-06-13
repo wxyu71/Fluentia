@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 
 // Replicate sanitizeFileName logic from useWebSocket.ts for unit testing
 function sanitizeFileName(fileName: string): string {
-  return fileName.replace(/[\/\\]/g, '_').replace(/^\.+/, '');
+  return fileName.replace(/[/\\]/g, '_').replace(/^\.+/, '');
 }
 
 describe('sanitizeFileName', () => {

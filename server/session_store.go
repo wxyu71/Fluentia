@@ -119,7 +119,7 @@ func (h *Hub) writeSessionsSnapshot(snapshot []persistedSession) {
 	if err := os.Rename(tempPath, h.SessionStorePath); err != nil {
 		log.Printf("failed to replace persisted sessions: %v", err)
 		// [M3] Clean up temp file on rename failure
-		os.Remove(tempPath)
+		_ = os.Remove(tempPath)
 	}
 }
 

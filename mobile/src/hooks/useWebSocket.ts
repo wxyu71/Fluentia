@@ -38,7 +38,7 @@ function validateInputCommand(data: any): data is InputCommand {
 }
 
 function sanitizeFileName(fileName: string): string {
-  return fileName.replace(/[\/\\]/g, '_').replace(/^\.+/, '');
+  return fileName.replace(/[/\\]/g, '_').replace(/^\.+/, '');
 }
 
 function buildSessionKey(info: ConnectionInfo): string {
