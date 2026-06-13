@@ -73,7 +73,15 @@ public partial class MainWindow
 
     private bool IsLaunchAtStartupEnabled()
     {
-        using var key = Registry.CurrentUser.OpenSubKey(StartupRegistryPath);
-        return key?.GetValue(StartupRegistryValue) is string existing && !string.IsNullOrWhiteSpace(existing);
+        try
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(StartupRegistryPath);
+            return key?.GetValue(StartupRegistryValue) is string existing && !string.IsNullOrWhiteSpace(existing);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"IsLaunchAtStartupEnabled failed: {ex.Message}");
+            return false;
+        }
     }
 }

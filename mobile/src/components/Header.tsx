@@ -13,7 +13,7 @@ interface HeaderProps {
   wsDisconnected?: boolean;
 }
 
-export const Header: React.FC<HeaderProps> = ({ connectionState, peerConnected, encryptionReady, pendingStatus, bleTransportReady, wsDisconnected }) => {
+export const Header: React.FC<HeaderProps> = React.memo(({ connectionState, peerConnected, encryptionReady, pendingStatus, bleTransportReady, wsDisconnected }) => {
   const bleOnly = wsDisconnected && bleTransportReady && encryptionReady;
 
   const statusText = (): string => {
@@ -90,4 +90,4 @@ export const Header: React.FC<HeaderProps> = ({ connectionState, peerConnected, 
       </div>
     </header>
   );
-};
+});

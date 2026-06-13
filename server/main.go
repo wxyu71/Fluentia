@@ -17,6 +17,16 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+// srvGlobals is set once in main() before any HTTP requests are served.
+var srvGlobals *ServerGlobals
+
+// ServerGlobals holds runtime configuration needed by HTTP handlers.
+type ServerGlobals struct {
+	AllowEmptyOrigin bool
+	TrustedProxies   []*net.IPNet
+	MaxConnections   int
+}
+
 // ServerConfig holds all environment-driven settings.
 type ServerConfig struct {
 	Port             string
@@ -30,6 +40,11 @@ type ServerConfig struct {
 	SessionMaxAge    int
 	PrivateMode      bool
 	IPWhitelist      bool
+	AllowEmptyOrigin bool     // [M1] Allow empty Origin header (dev/localhost mode)
+	TrustedProxies   []string // [M2] CIDRs of trusted reverse proxies
+	MaxConnections   int      // [M4] Max concurrent WebSocket connections (0 = unlimited)
+	TLSCertFile      string   // [L5] TLS certificate file path
+	TLSKeyFile       string   // [L5] TLS key file path
 }
 
 func loadConfig() ServerConfig {
@@ -46,6 +61,18 @@ func loadConfig() ServerConfig {
 	cfg.SecretPath = os.Getenv("SECRET_PATH")
 	cfg.PrivateMode = envBool("PRIVATE_MODE", false)
 	cfg.IPWhitelist = envBool("IP_WHITELIST", false)
+	cfg.AllowEmptyOrigin = envBool("ALLOW_EMPTY_ORIGIN", false)
+	cfg.MaxConnections = envInt("MAX_CONNECTIONS", 0)
+	cfg.TLSCertFile = os.Getenv("TLS_CERT_FILE")
+	cfg.TLSKeyFile = os.Getenv("TLS_KEY_FILE")
+
+	if tp := os.Getenv("TRUSTED_PROXIES"); tp != "" {
+		for _, cidr := range strings.Split(tp, ",") {
+			if t := strings.TrimSpace(cidr); t != "" {
+				cfg.TrustedProxies = append(cfg.TrustedProxies, t)
+			}
+		}
+	}
 
 	if ips := os.Getenv("ALLOWED_IPS"); ips != "" {
 		for _, ip := range strings.Split(ips, ",") {
@@ -83,7 +110,7 @@ func envBool(key string, fallback bool) bool {
 
 // isLocalhost returns true if the host (without port) is a loopback address.
 func isLocalhost(host string) bool {
-	return host == "localhost" || host == "127.0.0.1" || host == "::1" || host == "0.0.0.0"
+	return host == "localhost" || host == "127.0.0.1" || host == "::1"
 }
 
 // validateOrigin checks that the WebSocket Origin header matches the request Host
@@ -92,8 +119,11 @@ func isLocalhost(host string) bool {
 func validateOrigin(r *http.Request) bool {
 	origin := r.Header.Get("Origin")
 	if origin == "" {
-		// Non-browser clients (CLI tools, native apps) typically omit Origin.
-		return true
+		// [M1] Only allow empty origin when explicitly configured (dev/localhost mode).
+		if srvGlobals != nil && srvGlobals.AllowEmptyOrigin {
+			return true
+		}
+		return false
 	}
 
 	parsed, err := url.Parse(origin)
@@ -136,9 +166,21 @@ var upgrader = websocket.Upgrader{
 func serveWs(hub *Hub, cfg *ServerConfig, w http.ResponseWriter, r *http.Request) {
 	// IP whitelist enforcement
 	if cfg.IPWhitelist && len(cfg.AllowedIPs) > 0 {
-		clientIP := extractIP(r)
+		var trustedProxies []*net.IPNet
+		if srvGlobals != nil {
+			trustedProxies = srvGlobals.TrustedProxies
+		}
+		clientIP := extractIP(r, trustedProxies)
 		if !isAllowed(clientIP, cfg.AllowedIPs) {
 			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+	}
+
+	// [M4] Enforce max connections
+	if srvGlobals != nil && srvGlobals.MaxConnections > 0 {
+		if hub.ClientCount() >= srvGlobals.MaxConnections {
+			http.Error(w, "server is at capacity", http.StatusServiceUnavailable)
 			return
 		}
 	}
@@ -156,16 +198,34 @@ func serveWs(hub *Hub, cfg *ServerConfig, w http.ResponseWriter, r *http.Request
 	go client.ReadPump()
 }
 
-func extractIP(r *http.Request) string {
-	// Check X-Real-IP / X-Forwarded-For for proxied setups
-	if ip := r.Header.Get("X-Real-IP"); ip != "" {
-		return ip
+// extractIP returns the client IP, trusting proxy headers only from trusted proxies.
+// [M2] If trustedProxies is non-nil and non-empty, proxy headers are only parsed
+// when the direct connection (RemoteAddr) is from a trusted proxy.
+func extractIP(r *http.Request, trustedProxies []*net.IPNet) string {
+	directIP, _, _ := net.SplitHostPort(r.RemoteAddr)
+
+	isTrusted := len(trustedProxies) == 0 // if no trusted proxies configured, trust all (backward compat)
+	if !isTrusted {
+		parsed := net.ParseIP(directIP)
+		for _, cidr := range trustedProxies {
+			if cidr.Contains(parsed) {
+				isTrusted = true
+				break
+			}
+		}
 	}
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		return strings.TrimSpace(strings.Split(xff, ",")[0])
+
+	if isTrusted {
+		// Check X-Real-IP / X-Forwarded-For for proxied setups
+		if ip := r.Header.Get("X-Real-IP"); ip != "" {
+			return ip
+		}
+		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+			return strings.TrimSpace(strings.Split(xff, ",")[0])
+		}
 	}
-	host, _, _ := net.SplitHostPort(r.RemoteAddr)
-	return host
+
+	return directIP
 }
 
 func isAllowed(ip string, allowed []string) bool {
@@ -190,6 +250,32 @@ func main() {
 	hub.SessionStorePath = cfg.SessionStorePath
 	if err := hub.LoadPersistedSessions(); err != nil {
 		log.Printf("Failed to load persisted sessions: %v", err)
+	}
+
+	// [M2] Parse trusted proxy CIDRs once at startup
+	var trustedCIDRs []*net.IPNet
+	for _, cidr := range cfg.TrustedProxies {
+		_, ipNet, err := net.ParseCIDR(cidr)
+		if err != nil {
+			log.Fatalf("Invalid TRUSTED_PROXIES entry %q: %v", cidr, err)
+		}
+		trustedCIDRs = append(trustedCIDRs, ipNet)
+	}
+
+	srvGlobals = &ServerGlobals{
+		AllowEmptyOrigin: cfg.AllowEmptyOrigin,
+		TrustedProxies:   trustedCIDRs,
+		MaxConnections:   cfg.MaxConnections,
+	}
+
+	// [M4] Log connection limit
+	if cfg.MaxConnections > 0 {
+		log.Printf("Max connections: %d", cfg.MaxConnections)
+	}
+
+	// [L5] Warn if running without TLS
+	if cfg.TLSCertFile == "" || cfg.TLSKeyFile == "" {
+		log.Printf("WARNING: No TLS configured. Consider setting TLS_CERT_FILE and TLS_KEY_FILE for production use.")
 	}
 
 	mux := http.NewServeMux()
@@ -256,8 +342,16 @@ func main() {
 	errCh := make(chan error, 1)
 	go func() {
 		log.Printf("Fluentia relay server v%s starting on :%s", ProtocolVersion, cfg.Port)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			errCh <- err
+		// [L5] Use TLS if configured
+		if cfg.TLSCertFile != "" && cfg.TLSKeyFile != "" {
+			log.Printf("TLS enabled with cert=%s key=%s", cfg.TLSCertFile, cfg.TLSKeyFile)
+			if err := srv.ListenAndServeTLS(cfg.TLSCertFile, cfg.TLSKeyFile); err != nil && err != http.ErrServerClosed {
+				errCh <- err
+			}
+		} else {
+			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				errCh <- err
+			}
 		}
 	}()
 
@@ -266,6 +360,10 @@ func main() {
 		log.Fatalf("ListenAndServe error: %v", err)
 	case sig := <-stop:
 		log.Printf("Received signal %v, shutting down gracefully...", sig)
+
+		// [L1] Send maintenance message to all connected clients before shutting down
+		hub.ShutdownAll()
+		log.Println("Sent maintenance notifications to connected clients")
 
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()

@@ -13,6 +13,8 @@ public class CryptoService : IDisposable
     private byte[]? _recvChainKey;
     private int _expectedSeq;
     private bool _ratchetReady;
+    private int _highestSeenSeq;
+    public const int MaxSeqGap = 1000;
 
     // Send ratchet (PC → mobile) — backward security
     private byte[]? _sendChainKey;
@@ -25,7 +27,7 @@ public class CryptoService : IDisposable
     }
 
     public string PublicKeyBase64 => Convert.ToBase64String(_keyPair.PublicKey);
-    public string PrivateKeyBase64 => Convert.ToBase64String(_keyPair.PrivateKey);
+    public byte[] ExportPrivateKeyBytes() => (byte[])_keyPair.PrivateKey.Clone();
     public bool IsReady => _peerPublicKey != null;
     public bool RatchetReady => _ratchetReady;
     public bool SendRatchetReady => _sendRatchetReady;
@@ -49,6 +51,7 @@ public class CryptoService : IDisposable
         if (_recvChainKey != null) { Array.Clear(_recvChainKey); _recvChainKey = null; }
         _expectedSeq = 0;
         _ratchetReady = false;
+        _highestSeenSeq = -1;
         if (_sendChainKey != null) { Array.Clear(_sendChainKey); _sendChainKey = null; }
         _sendSeq = 0;
         _sendRatchetReady = false;
@@ -60,9 +63,10 @@ public class CryptoService : IDisposable
     public void InitRatchet(string seedBase64)
     {
         var seed = Convert.FromBase64String(seedBase64);
-        _recvChainKey = Kdf(seed, "fluentia_chain_v1");
+        _recvChainKey = HKDF.DeriveKey(HashAlgorithmName.SHA512, seed, 32, salt: Encoding.UTF8.GetBytes("fluentia_v1_salt"), info: Encoding.UTF8.GetBytes("fluentia_chain_v1"));
         _expectedSeq = 0;
         _ratchetReady = true;
+        _highestSeenSeq = -1;
     }
 
     /// <summary>
@@ -73,7 +77,7 @@ public class CryptoService : IDisposable
     {
         var seed = new byte[32];
         RandomNumberGenerator.Fill(seed);
-        _sendChainKey = Kdf(seed, "fluentia_chain_v1");
+        _sendChainKey = HKDF.DeriveKey(HashAlgorithmName.SHA512, seed, 32, salt: Encoding.UTF8.GetBytes("fluentia_v1_salt"), info: Encoding.UTF8.GetBytes("fluentia_chain_v1"));
         _sendSeq = 0;
         _sendRatchetReady = true;
         return Convert.ToBase64String(seed);
@@ -140,6 +144,12 @@ public class CryptoService : IDisposable
         if (_recvChainKey == null)
             throw new InvalidOperationException("Ratchet not initialized");
 
+        if (seq <= _highestSeenSeq)
+            throw new InvalidOperationException($"Replay detected: seq {seq} <= highest seen {_highestSeenSeq}");
+
+        if (seq - _highestSeenSeq > MaxSeqGap)
+            throw new InvalidOperationException($"Sequence gap too large: {seq - _highestSeenSeq} > {MaxSeqGap}");
+
         while (_expectedSeq < seq)
         {
             var (_, next) = RatchetStep(_recvChainKey);
@@ -150,6 +160,7 @@ public class CryptoService : IDisposable
         var (msgKey, nextChain) = RatchetStep(_recvChainKey);
         _recvChainKey = nextChain;
         _expectedSeq++;
+        _highestSeenSeq = Math.Max(_highestSeenSeq, seq);
 
         var decrypted = SecretBox.Open(
             Convert.FromBase64String(payloadBase64),
@@ -175,6 +186,12 @@ public class CryptoService : IDisposable
         var privateKey = _keyPair.PrivateKey;
         _keyPair = PublicKeyBox.GenerateKeyPair();
         Array.Clear(privateKey);
+        GC.SuppressFinalize(this);
+    }
+
+    ~CryptoService()
+    {
+        Dispose();
     }
 
     public string CreateBleVerificationCode(string remotePublicKeyBase64)
@@ -193,12 +210,7 @@ public class CryptoService : IDisposable
 
     private static byte[] Kdf(byte[] key, string label)
     {
-        var labelBytes = Encoding.UTF8.GetBytes(label);
-        var input = new byte[key.Length + labelBytes.Length];
-        Buffer.BlockCopy(key, 0, input, 0, key.Length);
-        Buffer.BlockCopy(labelBytes, 0, input, key.Length, labelBytes.Length);
-        var hash = SHA512.HashData(input);
-        return hash[..32];
+        return HKDF.DeriveKey(HashAlgorithmName.SHA512, key, 32, salt: Encoding.UTF8.GetBytes("fluentia_kdf_salt"), info: Encoding.UTF8.GetBytes(label));
     }
 
     private static (byte[] MessageKey, byte[] NextChainKey) RatchetStep(byte[] chainKey)

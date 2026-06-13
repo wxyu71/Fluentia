@@ -71,12 +71,15 @@ export class BleTransport implements TransportConnection {
       throw new Error('BleTransport: not open');
     }
 
-    const envelope: BleEnvelope = {
-      type: 'encrypted',
-      ...JSON.parse(data),
-    };
-
-    return this.writeEnvelope(envelope);
+    try {
+      const envelope: BleEnvelope = {
+        type: 'encrypted',
+        ...JSON.parse(data),
+      };
+      return this.writeEnvelope(envelope);
+    } catch {
+      return false;
+    }
   }
 
   close(_code?: number, _reason?: string): void {

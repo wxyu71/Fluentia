@@ -14,6 +14,42 @@ const SETTINGS_KEY = 'fluentia_settings';
 const CONN_KEY = 'fluentia_conn';
 const APP_VERSION = __APP_VERSION__;
 
+const appContainerStyle: React.CSSProperties = {
+  height: '100%',
+  display: 'flex',
+  flexDirection: 'column',
+  position: 'relative',
+  zIndex: 1,
+};
+
+const tabContentStyle: React.CSSProperties = {
+  flex: 1,
+  overflow: 'hidden',
+};
+
+const tabBarWrapperStyle: React.CSSProperties = {
+  padding: '12px 20px 20px',
+  paddingBottom: 'max(20px, env(safe-area-inset-bottom))',
+};
+
+const errorBannerStyle: React.CSSProperties = {
+  margin: '0 20px 12px',
+  padding: '12px 16px',
+  background: 'rgba(255, 69, 58, 0.12)',
+  border: '0.5px solid rgba(255, 69, 58, 0.25)',
+  borderRadius: 14,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 12,
+};
+
+const errorContentStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'flex-start',
+  gap: 8,
+};
+
 function resolveThemeColor(): string {
   const cssColor = getComputedStyle(document.documentElement).getPropertyValue('--bg-primary').trim();
   if (cssColor) {
@@ -400,13 +436,7 @@ export const App: React.FC = () => {
 
   return (
     <div
-      style={{
-        height: '100%',
-        display: 'flex',
-        flexDirection: 'column',
-        position: 'relative',
-        zIndex: 1,
-      }}
+      style={appContainerStyle}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
@@ -431,18 +461,8 @@ export const App: React.FC = () => {
 
       {/* Error banner */}
       {(connectionState === 'preempted' || lastError) && (
-        <div style={{
-          margin: '0 20px 12px',
-          padding: '12px 16px',
-          background: 'rgba(255, 69, 58, 0.12)',
-          border: '0.5px solid rgba(255, 69, 58, 0.25)',
-          borderRadius: 14,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: 12,
-        }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+        <div style={errorBannerStyle}>
+          <div style={errorContentStyle}>
             <WarningIcon size={16} color="var(--danger)" />
             <div>
               <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--danger)' }}>
@@ -471,7 +491,7 @@ export const App: React.FC = () => {
       )}
 
       {/* Main Content — swipeable pages */}
-      <div style={{ flex: 1, overflow: 'hidden' }}>
+      <div style={tabContentStyle}>
         {showFullScanner ? (
           <QRScanner onScan={handleScan} deviceId={deviceId} />
         ) : (
@@ -532,10 +552,12 @@ export const App: React.FC = () => {
 
       {/* Tab Bar — only show when connected */}
       {!showFullScanner && (
-        <div style={{ padding: '12px 20px 20px', paddingBottom: 'max(20px, env(safe-area-inset-bottom))' }}>
-          <div className="tab-bar">
+        <div style={tabBarWrapperStyle}>
+          <div className="tab-bar" role="tablist">
             <button
               className={`tab-item ${activeTab === 'input' ? 'active' : ''}`}
+              role="tab"
+              aria-selected={activeTab === 'input'}
               onClick={() => setActiveTab('input')}
             >
               <KeyboardIcon size={18} />
@@ -543,6 +565,8 @@ export const App: React.FC = () => {
             </button>
             <button
               className={`tab-item ${activeTab === 'history' ? 'active' : ''}`}
+              role="tab"
+              aria-selected={activeTab === 'history'}
               onClick={() => setActiveTab('history')}
             >
               <HistoryIcon size={18} />

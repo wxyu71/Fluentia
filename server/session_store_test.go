@@ -29,7 +29,7 @@ func TestSaveAndLoadSessions(t *testing.T) {
 	}
 
 	// Save
-	h.saveSessionsLocked()
+	h.saveSessionsSnapshot()
 
 	// Verify file exists
 	if _, err := os.Stat(storePath); os.IsNotExist(err) {
@@ -102,14 +102,14 @@ func TestLoadPersistedSessions_EmptyPath(t *testing.T) {
 	}
 }
 
-func TestSaveSessionsLocked_EmptyPath(t *testing.T) {
+func TestSaveSessionsSnapshot_EmptyPath(t *testing.T) {
 	h := newTestHub()
 	h.SessionStorePath = ""
 	// Should not panic
-	h.saveSessionsLocked()
+	h.saveSessionsSnapshot()
 }
 
-func TestSaveSessionsLocked_CreatesDirectory(t *testing.T) {
+func TestSaveSessionsSnapshot_CreatesDirectory(t *testing.T) {
 	dir := t.TempDir()
 	storePath := filepath.Join(dir, "subdir", "sessions.json")
 
@@ -123,7 +123,7 @@ func TestSaveSessionsLocked_CreatesDirectory(t *testing.T) {
 	}
 	h.sessions[session.Token] = session
 
-	h.saveSessionsLocked()
+	h.saveSessionsSnapshot()
 
 	if _, err := os.Stat(storePath); os.IsNotExist(err) {
 		t.Fatal("session file not created in nested directory")

@@ -8,6 +8,8 @@ namespace Fluentia.Services;
 /// </summary>
 public static class TextInjector
 {
+    public const int DefaultMaxLength = 10000;
+
     [DllImport("user32.dll", SetLastError = true)]
     private static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
 
@@ -46,13 +48,19 @@ public static class TextInjector
         uint sent = SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<INPUT>());
         if (sent != (uint)inputs.Length)
         {
-            _ = Marshal.GetLastWin32Error();
+            var error = Marshal.GetLastWin32Error();
+            System.Diagnostics.Debug.WriteLine($"SendInput failed: sent {sent}/{inputs.Length}, Win32 error={error}");
         }
     }
 
-    public static void TypeText(string text)
+    public static bool TypeText(string text, int maxLength = DefaultMaxLength)
     {
-        if (string.IsNullOrEmpty(text)) return;
+        if (string.IsNullOrEmpty(text)) return true;
+
+        if (text.Length > maxLength)
+        {
+            return false;
+        }
 
         var list = new List<INPUT>();
         foreach (char c in text)
@@ -77,6 +85,7 @@ public static class TextInjector
         }
 
         Inject(list.ToArray());
+        return true;
     }
 
     public static void SendBackspace(int count)

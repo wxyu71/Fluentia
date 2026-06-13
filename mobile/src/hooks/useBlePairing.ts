@@ -75,6 +75,12 @@ export function useBlePairing(
   const onAuthorizePublicKeyRef = useRef(onAuthorizePublicKey);
   useEffect(() => { onAuthorizePublicKeyRef.current = onAuthorizePublicKey; }, [onAuthorizePublicKey]);
 
+  // Store handleNotify in a ref so addEventListener/removeEventListener use the same reference
+  const handleNotifyRef = useRef<(event: Event) => void>(() => undefined);
+
+  // Store gattserverdisconnected handler reference for cleanup
+  const gattDisconnectHandlerRef = useRef<(() => void) | null>(null);
+
   const isSupported = useMemo(() => typeof navigator !== 'undefined' && 'bluetooth' in navigator, []);
 
   const clearAuthTimeout = useCallback(() => {
@@ -111,8 +117,18 @@ export function useBlePairing(
   const disconnect = useCallback(async () => {
     clearAuthTimeout();
     try {
-      notifyCharacteristicRef.current?.removeEventListener('characteristicvaluechanged', () => undefined);
+      if (notifyCharacteristicRef.current && handleNotifyRef.current) {
+        notifyCharacteristicRef.current.removeEventListener('characteristicvaluechanged', handleNotifyRef.current);
+      }
     } catch { /* already disconnected */ }
+
+    // Remove gattserverdisconnected handler
+    if (deviceRef.current && gattDisconnectHandlerRef.current) {
+      try {
+        deviceRef.current.removeEventListener('gattserverdisconnected', gattDisconnectHandlerRef.current);
+      } catch { /* ignore */ }
+      gattDisconnectHandlerRef.current = null;
+    }
 
     if (serverRef.current?.connected) {
       serverRef.current.disconnect();
@@ -199,6 +215,9 @@ export function useBlePairing(
     }
   }, [onConnectionInfo]);
 
+  // Store handleNotify in ref so we can use it for both add and remove
+  handleNotifyRef.current = handleNotify;
+
   const requestPairing = useCallback(async () => {
     if (!isSupported) {
       setError('This browser does not support Web Bluetooth.');
@@ -221,7 +240,9 @@ export function useBlePairing(
       });
 
       deviceRef.current = device;
-      device.addEventListener('gattserverdisconnected', () => {
+
+      // Store disconnected handler in ref for proper cleanup
+      const onGattDisconnected = () => {
         setIsTransportReady(false);
         setIsBleChannelReady(false);
         setStatus('BLE reconnecting...');
@@ -240,7 +261,7 @@ export function useBlePairing(
               notifyCharacteristicRef.current = notifyChar;
               writeCharacteristicRef.current = writeChar;
               await notifyChar.startNotifications();
-              notifyChar.addEventListener('characteristicvaluechanged', handleNotify);
+              notifyChar.addEventListener('characteristicvaluechanged', handleNotifyRef.current);
               await writeBleEnvelope(writeChar, {
                 type: 'notify_ready',
                 publicKey: handshakeRef.current.publicKey,
@@ -254,7 +275,9 @@ export function useBlePairing(
           }
           setStatus('BLE reconnect failed');
         })();
-      });
+      };
+      gattDisconnectHandlerRef.current = onGattDisconnected;
+      device.addEventListener('gattserverdisconnected', onGattDisconnected);
       setDeviceName(device.name ?? 'Fluentia nearby PC');
       setStatus('Connecting over BLE');
 
@@ -276,7 +299,7 @@ export function useBlePairing(
       writeCharacteristicRef.current = writeCharacteristic;
 
       await notifyCharacteristic.startNotifications();
-      notifyCharacteristic.addEventListener('characteristicvaluechanged', handleNotify);
+      notifyCharacteristic.addEventListener('characteristicvaluechanged', handleNotifyRef.current);
       await writeBleEnvelope(writeCharacteristic, {
         type: 'notify_ready',
         publicKey: handshakeRef.current.publicKey,
@@ -302,6 +325,7 @@ export function useBlePairing(
     } finally {
       setIsConnecting(false);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authorizedPublicKey, clearAuthTimeout, disconnect, handleNotify, isSupported, onAuthorizePublicKey, sendClientHelloIfAuthorized]);
 
   const bleConsecutiveFailuresRef = useRef(0);

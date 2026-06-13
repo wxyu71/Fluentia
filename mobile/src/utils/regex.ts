@@ -34,10 +34,10 @@ export const REGEX_SKILL_TEMPLATE = [
 const CODE_BLOCK_PATTERN = /```(?:regex|regexp)?\s*\n([\s\S]*?)```/gi;
 const COMMENT_PATTERN = /^(#|\/\/)/;
 
-function parseRule(line: string): RegexFilterRule {
+function parseRule(line: string): RegexFilterRule | null {
   const trimmed = line.trim();
   if (!trimmed) {
-    throw new Error('Regex line is empty.');
+    return null;
   }
 
   let source = trimmed;
@@ -51,11 +51,25 @@ function parseRule(line: string): RegexFilterRule {
     flags = uniqueFlags || 'g';
   }
 
-  return {
-    source,
-    flags,
-    regex: new RegExp(source, flags),
-  };
+  // Complexity check: reject overly long patterns or nested quantifiers (ReDoS)
+  if (source.length > 100) {
+    return null;
+  }
+
+  // Detect nested quantifiers like (a+)+ which cause catastrophic backtracking
+  if (/\([^)]*[+*][^)]*\)[+*]/.test(source)) {
+    return null;
+  }
+
+  try {
+    return {
+      source,
+      flags,
+      regex: new RegExp(source, flags),
+    };
+  } catch {
+    return null;
+  }
 }
 
 export function parseRegexMarkdown(markdown: string): RegexParseResult {
@@ -78,8 +92,10 @@ export function parseRegexMarkdown(markdown: string): RegexParseResult {
       }
 
       const rule = parseRule(line);
-      rules.push(rule);
-      normalizedLines.push(line);
+      if (rule) {
+        rules.push(rule);
+        normalizedLines.push(line);
+      }
     }
 
     if (normalizedLines.length > 0) {

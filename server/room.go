@@ -28,7 +28,7 @@ func NewSession(pc *Client, maxAge time.Duration) *Session {
 }
 
 func generateToken() string {
-	b := make([]byte, 8) // 8 bytes = 16 hex chars (64-bit entropy, sufficient for sessions)
+	b := make([]byte, 16) // [M5] 16 bytes = 32 hex chars (128-bit entropy)
 	if _, err := rand.Read(b); err != nil {
 		panic(err)
 	}
