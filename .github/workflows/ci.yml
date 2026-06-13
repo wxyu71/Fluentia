@@ -104,7 +104,8 @@ jobs:
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '8.0'
-      - run: dotnet format client/Fluentia.sln --verify-no-changes --no-restore
+      - run: dotnet restore client/Fluentia.sln
+      - run: dotnet format client/Fluentia.sln --verify-no-changes
 
   # === Stage 2: Test ===
   test-go:
@@ -125,6 +126,7 @@ jobs:
         with:
           name: go-coverage
           path: server/coverage.out
+          retention-days: 1
 
   test-mobile:
     needs: [changes, lint-mobile]
@@ -187,6 +189,7 @@ jobs:
         with:
           name: mobile-dist
           path: mobile/dist/
+          retention-days: 1
 
   build-client:
     needs: [changes, test-client]
@@ -202,6 +205,7 @@ jobs:
         with:
           name: fluentia-win-x64
           path: publish/
+          retention-days: 1
 
   # === Stage 4: Security ===
   security:

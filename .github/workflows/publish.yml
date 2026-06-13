@@ -67,10 +67,11 @@ jobs:
           cache-dependency-path: mobile/package-lock.json
       - run: npm ci
       - run: npm run build
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: mobile-dist
           path: mobile/dist/
+          retention-days: 1
 
   build-server:
     needs: check-version
@@ -88,10 +89,11 @@ jobs:
           CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -o ../fluentia-server-darwin-amd64 .
           CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o ../fluentia-server-darwin-arm64 .
           CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o ../fluentia-server-windows-amd64.exe .
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: server-binaries
           path: fluentia-server-*
+          retention-days: 1
 
   build-client:
     needs: check-version
@@ -109,12 +111,13 @@ jobs:
       - run: dotnet tool install --global vpk
       - run: vpk pack --packId Fluentia --packVersion $env:VERSION --packDir publish/win-x64 --outputDir velopack-output -e Fluentia.exe --icon client/Fluentia/fluentia.ico
         shell: pwsh
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: client-windows
           path: |
             fluentia-win-x64.zip
             velopack-output/**/*
+          retention-days: 1
 
   build-docker:
     needs: [check-version, build-mobile, build-server]
@@ -123,11 +126,11 @@ jobs:
       VERSION: ${{ needs.check-version.outputs.version }}
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v7
         with:
           name: mobile-dist
           path: server/static/
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v7
         with:
           name: server-binaries
           path: server/
@@ -155,12 +158,12 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Download Windows client
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v7
         with:
           name: client-windows
           path: artifacts/client-windows/
       - name: Download server binaries
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v7
         with:
           name: server-binaries
           path: artifacts/server-binaries/
