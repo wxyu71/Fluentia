@@ -402,12 +402,30 @@ func TestMaxConnections_ConcurrentRequests(t *testing.T) {
 	ts := httptest.NewServer(mux)
 	defer ts.Close()
 
+	// First, create 5 actual WebSocket connections to fill the capacity
+	var conns []*websocket.Conn
+	for i := 0; i < 5; i++ {
+		ws := dial(t, ts)
+		conns = append(conns, ws)
+	}
+	defer func() {
+		for _, ws := range conns {
+			ws.Close()
+		}
+	}()
+
+	// Wait for all registrations to complete
+	// The hub should now have 5 clients
+	if hub.ClientCount() < 5 {
+		t.Fatalf("expected at least 5 clients, got %d", hub.ClientCount())
+	}
+
+	// Now try to connect more clients via HTTP - these should be rejected with 503
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	rejected := 0
 
-	// Try to connect 10 clients concurrently
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 5; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -425,9 +443,9 @@ func TestMaxConnections_ConcurrentRequests(t *testing.T) {
 	}
 	wg.Wait()
 
-	// At least some should be rejected
-	if rejected == 0 {
-		t.Error("expected at least some connections to be rejected")
+	// All overflow connections should be rejected
+	if rejected != 5 {
+		t.Errorf("expected 5 rejected connections, got %d", rejected)
 	}
 }
 

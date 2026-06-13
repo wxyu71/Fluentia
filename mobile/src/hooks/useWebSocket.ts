@@ -29,6 +29,7 @@ const HEARTBEAT_INTERVAL_MS = 3000;
 const HEARTBEAT_TIMEOUT_MS = 2500;
 const OFFLINE_GRACE_MS = 10000;
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function validateInputCommand(data: any): data is InputCommand {
   return (
     typeof data === 'object' &&
@@ -546,7 +547,6 @@ export function useWebSocket(
 
   const handleMessage = useCallback((msg: WsMessage) => {
     const {
-      clearHeartbeatTimeout,
       clearConnectTimeout,
       closeSocket,
       persistCryptoState,

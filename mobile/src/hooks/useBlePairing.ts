@@ -325,6 +325,7 @@ export function useBlePairing(
     } finally {
       setIsConnecting(false);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authorizedPublicKey, clearAuthTimeout, disconnect, handleNotify, isSupported, onAuthorizePublicKey, sendClientHelloIfAuthorized]);
 
   const bleConsecutiveFailuresRef = useRef(0);
