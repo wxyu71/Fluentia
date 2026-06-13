@@ -21,6 +21,12 @@ public sealed record VersionRequirementResult(bool IsCompatible, string? Message
 /// </summary>
 public class RoomManager : IDisposable
 {
+    private async void FireAndForget(Task t, string ctx)
+    {
+        try { await t; }
+        catch (Exception ex) { OnError?.Invoke($"{ctx}: {ex.Message}"); }
+    }
+
     private static readonly System.Net.Http.HttpClient _httpClient = new() { Timeout = TimeSpan.FromSeconds(5) };
 
     private readonly IRelayTransport _transport;
@@ -99,7 +105,7 @@ public class RoomManager : IDisposable
         return new PersistedDesktopSession(
             _currentToken,
             _crypto.PublicKeyBase64,
-            _crypto.PrivateKeyBase64,
+            Convert.ToBase64String(_crypto.ExportPrivateKeyBytes()),
             _trustedSessionEstablished);
     }
 
@@ -140,8 +146,9 @@ public class RoomManager : IDisposable
                 msg = new WsMessage { Type = MsgTypes.Encrypted, Payload = payload, Nonce = nonce };
             }
         }
-        catch
+        catch (Exception ex)
         {
+            OnError?.Invoke($"Encryption error: {ex.Message}");
             return false;
         }
 
@@ -165,9 +172,9 @@ public class RoomManager : IDisposable
                     await fallback.SendAsync(msg, cancellationToken);
                     return true;
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // Both failed
+                    OnError?.Invoke($"SendToMobile fallback failed: {ex.Message}");
                 }
             }
             return false;
@@ -238,16 +245,16 @@ public class RoomManager : IDisposable
             if (_currentToken != null)
             {
                 _rejoinPending = true;
-                _ = _transport.SendAsync(new WsMessage
+                FireAndForget(_transport.SendAsync(new WsMessage
                 {
                     Type = MsgTypes.RejoinSession,
                     Token = _currentToken,
                     Version = MsgTypes.ProtocolVersion,
-                });
+                }), "SendAsync");
             }
             else
             {
-                _ = _transport.SendAsync(new WsMessage { Type = MsgTypes.CreateSession, Version = MsgTypes.ProtocolVersion });
+                FireAndForget(_transport.SendAsync(new WsMessage { Type = MsgTypes.CreateSession, Version = MsgTypes.ProtocolVersion }), "SendAsync");
             }
         };
 
@@ -275,7 +282,7 @@ public class RoomManager : IDisposable
         }
         OnStatusChanged?.Invoke("Connecting...");
         // Fetch server config (non-blocking — best effort)
-        _ = FetchServerConfigAsync(serverUrl);
+        _ = FetchServerConfigAsync(serverUrl); // intentional fire-and-forget for config fetch
         await _transport.ConnectAsync(serverUrl, cancellationToken);
     }
 
@@ -299,7 +306,7 @@ public class RoomManager : IDisposable
             if (doc.RootElement.TryGetProperty("maxFileMB", out var mbEl))
                 _maxFileMB = mbEl.GetInt32();
         }
-        catch { /* best-effort; use defaults */ }
+        catch (Exception ex) { OnError?.Invoke($"FetchServerConfig: {ex.Message}"); }
     }
 
     public async Task RefreshSession(CancellationToken cancellationToken = default)
@@ -314,15 +321,15 @@ public class RoomManager : IDisposable
         }
     }
 
-    public async Task RequestDeviceCode()
+    public async Task RequestDeviceCode(CancellationToken cancellationToken = default)
     {
         if (_transport.IsConnected)
         {
-            await _transport.SendAsync(new WsMessage { Type = MsgTypes.DeviceCodeRequest });
+            await _transport.SendAsync(new WsMessage { Type = MsgTypes.DeviceCodeRequest }, cancellationToken);
         }
     }
 
-    public async Task ConfirmDeviceCode(string code)
+    public async Task ConfirmDeviceCode(string code, CancellationToken cancellationToken = default)
     {
         if (_transport.IsConnected)
         {
@@ -331,15 +338,15 @@ public class RoomManager : IDisposable
                 Type = MsgTypes.DeviceCodeConfirm,
                 DeviceCode = code,
                 PublicKey = _crypto.PublicKeyBase64,
-            });
+            }, cancellationToken);
         }
     }
 
-    public async Task RejectDeviceCode(string code)
+    public async Task RejectDeviceCode(string code, CancellationToken cancellationToken = default)
     {
         if (_transport.IsConnected)
         {
-            await _transport.SendAsync(new WsMessage { Type = MsgTypes.DeviceCodeReject, DeviceCode = code });
+            await _transport.SendAsync(new WsMessage { Type = MsgTypes.DeviceCodeReject, DeviceCode = code }, cancellationToken);
         }
     }
 
@@ -448,7 +455,7 @@ public class RoomManager : IDisposable
                     _encryptionConfirmed = false;
                     _trustedSessionEstablished = false;
                     _sessionExpiresAtUtc = null;
-                    _ = _transport.SendAsync(new WsMessage { Type = MsgTypes.CreateSession, Version = MsgTypes.ProtocolVersion });
+                    FireAndForget(_transport.SendAsync(new WsMessage { Type = MsgTypes.CreateSession, Version = MsgTypes.ProtocolVersion }), "SendAsync");
                     break;
                 }
                 OnError?.Invoke(msg.Error ?? "Unknown error");
@@ -466,11 +473,11 @@ public class RoomManager : IDisposable
         OnStatusChanged?.Invoke("Key exchange complete");
 
         // Send our public key back as confirmation
-        _ = _transport.SendAsync(new WsMessage
+        FireAndForget(_transport.SendAsync(new WsMessage
         {
             Type = MsgTypes.KeyExchange,
             PublicKey = _crypto.PublicKeyBase64,
-        });
+        }), "SendAsync");
     }
 
     private void HandleEncrypted(WsMessage msg)
@@ -507,12 +514,12 @@ public class RoomManager : IDisposable
                     var initCmd = System.Text.Json.JsonSerializer.Serialize(
                         new { type = "pc_ratchet_init", seed = pcSeed });
                     var (payload, nonce) = _crypto.Encrypt(initCmd);
-                    _ = _transport.SendAsync(new WsMessage
+                    FireAndForget(_transport.SendAsync(new WsMessage
                     {
                         Type = MsgTypes.Encrypted,
                         Payload = payload,
                         Nonce = nonce,
-                    });
+                    }), "SendAsync");
                     return;
                 }
 

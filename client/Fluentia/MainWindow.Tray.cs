@@ -260,9 +260,13 @@ public partial class MainWindow
         _commandQueueCts?.Cancel();
         _commandQueueCts?.Dispose();
         _sessionTimer?.Stop();
+        _sessionTimer = null;
         _disconnectTimer?.Stop();
+        _disconnectTimer = null;
         _receivedFilesRevealTimer?.Stop();
+        _receivedFilesRevealTimer = null;
         _trayCreationRetryTimer?.Stop();
+        _trayCreationRetryTimer = null;
 
         if (_winEventHook != IntPtr.Zero)
         {

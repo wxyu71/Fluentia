@@ -1,4 +1,4 @@
-﻿using Fluentia.Services;
+using Fluentia.Services;
 using Sodium;
 
 namespace Fluentia.Tests;
@@ -10,7 +10,7 @@ public class CryptoServiceTests
     {
         var svc = new CryptoService();
         Assert.NotNull(svc.PublicKeyBase64);
-        Assert.NotNull(svc.PrivateKeyBase64);
+        Assert.NotNull(Convert.ToBase64String(svc.ExportPrivateKeyBytes()));
         Assert.False(svc.IsReady);
     }
 
@@ -127,13 +127,13 @@ public class CryptoServiceTests
     {
         var original = new CryptoService();
         var pub = original.PublicKeyBase64;
-        var priv = original.PrivateKeyBase64;
+        var priv = Convert.ToBase64String(original.ExportPrivateKeyBytes());
 
         var imported = new CryptoService();
         imported.ImportKeyPair(pub, priv);
 
         Assert.Equal(pub, imported.PublicKeyBase64);
-        Assert.Equal(priv, imported.PrivateKeyBase64);
+        Assert.Equal(priv, Convert.ToBase64String(imported.ExportPrivateKeyBytes()));
     }
 
     [Fact]

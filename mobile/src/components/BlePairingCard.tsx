@@ -15,7 +15,7 @@ interface BlePairingCardProps {
   onHide: () => void;
 }
 
-export const BlePairingCard: React.FC<BlePairingCardProps> = ({
+export const BlePairingCard: React.FC<BlePairingCardProps> = React.memo(({
   isSupported,
   isAvailable,
   isConnecting,
@@ -124,4 +124,4 @@ export const BlePairingCard: React.FC<BlePairingCardProps> = ({
       </div>
     </div>
   );
-};
+});

@@ -58,7 +58,7 @@ function formatPercent(file: TransferFileProgress): number {
   return Math.max(0, Math.min(100, Math.round((file.transferredBytes / file.totalBytes) * 100)));
 }
 
-export const TransferStatusCard: React.FC<TransferStatusCardProps> = ({
+export const TransferStatusCard: React.FC<TransferStatusCardProps> = React.memo(({
   batch,
   onPauseToggle,
   onCancel,
@@ -161,4 +161,4 @@ export const TransferStatusCard: React.FC<TransferStatusCardProps> = ({
       </div>
     </div>
   );
-};
+});

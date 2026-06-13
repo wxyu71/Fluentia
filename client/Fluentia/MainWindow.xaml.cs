@@ -220,7 +220,7 @@ public partial class MainWindow : Window
 
     private void SetupRoomManagerEvents()
     {
-        _roomManager.OnServerConnectionChanged += (connected) => Dispatcher.Invoke(() =>
+        _roomManager.OnServerConnectionChanged += (connected) => Dispatcher.BeginInvoke(() =>
         {
             _serverConnected = connected;
             if (!connected)
@@ -234,7 +234,7 @@ public partial class MainWindow : Window
             RefreshVisualState();
         });
 
-        _roomManager.OnSessionCreated += (token) => Dispatcher.Invoke(() =>
+        _roomManager.OnSessionCreated += (token) => Dispatcher.BeginInvoke(() =>
         {
             _persistedSessionLost = false;
             _deviceCode = null;
@@ -252,7 +252,7 @@ public partial class MainWindow : Window
             _ = _roomManager.RequestDeviceCode();
         });
 
-        _roomManager.OnDeviceCodeCreated += (code) => Dispatcher.Invoke(() =>
+        _roomManager.OnDeviceCodeCreated += (code) => Dispatcher.BeginInvoke(() =>
         {
             if (_mobileConnected || _handshakePending || _roomManager.EncryptionReady)
             {
@@ -264,7 +264,7 @@ public partial class MainWindow : Window
             RefreshVisualState();
         });
 
-        _roomManager.OnDeviceCodePending += (code, verifyId, userAgent) => Dispatcher.Invoke(() =>
+        _roomManager.OnDeviceCodePending += (code, verifyId, userAgent) => Dispatcher.BeginInvoke(() =>
         {
             RememberExternalForegroundWindow(GetForegroundWindow());
             Show();
@@ -282,7 +282,7 @@ public partial class MainWindow : Window
             }
         });
 
-        _roomManager.OnMobileConnected += (deviceId) => Dispatcher.Invoke(() =>
+        _roomManager.OnMobileConnected += (deviceId) => Dispatcher.BeginInvoke(() =>
         {
             _mobileConnected = true;
             _handshakePending = true;
@@ -297,7 +297,7 @@ public partial class MainWindow : Window
             RefreshVisualState();
         });
 
-        _roomManager.OnMobileDisconnected += () => Dispatcher.Invoke(() =>
+        _roomManager.OnMobileDisconnected += () => Dispatcher.BeginInvoke(() =>
         {
             _mobileConnected = false;
             _handshakePending = false;
@@ -328,7 +328,7 @@ public partial class MainWindow : Window
             RefreshVisualState();
         });
 
-        _roomManager.OnEncryptionReady += () => Dispatcher.Invoke(() =>
+        _roomManager.OnEncryptionReady += () => Dispatcher.BeginInvoke(() =>
         {
             _mobileConnected = true;
             _handshakePending = false;
@@ -351,7 +351,7 @@ public partial class MainWindow : Window
             }
         });
 
-        _roomManager.OnSessionRecovered += () => Dispatcher.Invoke(() =>
+        _roomManager.OnSessionRecovered += () => Dispatcher.BeginInvoke(() =>
         {
             _qrVisible = true;
 
@@ -393,12 +393,12 @@ public partial class MainWindow : Window
             _cmdChannel.Writer.TryWrite(cmd);
         };
 
-        _roomManager.OnStatusChanged += (status) => Dispatcher.Invoke(() =>
+        _roomManager.OnStatusChanged += (status) => Dispatcher.BeginInvoke(() =>
         {
             if (_devMode) AppendLog(status);
         });
 
-        _roomManager.OnError += (error) => Dispatcher.Invoke(() =>
+        _roomManager.OnError += (error) => Dispatcher.BeginInvoke(() =>
         {
             _handshakePending = false;
             SetStatus(L("StatusErrorFormat", error), false);
@@ -406,7 +406,7 @@ public partial class MainWindow : Window
             if (_devMode) AppendLog($"Error: {error}");
         });
 
-        _roomManager.OnVersionIncompatible += (error) => Dispatcher.Invoke(() =>
+        _roomManager.OnVersionIncompatible += (error) => Dispatcher.BeginInvoke(() =>
         {
             _mobileConnected = false;
             _handshakePending = false;
@@ -628,7 +628,7 @@ public partial class MainWindow : Window
             case "clipboard":
                 if (!string.IsNullOrEmpty(cmd.Text))
                 {
-                    Dispatcher.Invoke(() =>
+                    Dispatcher.BeginInvoke(() =>
                     {
                         try { Clipboard.SetText(cmd.Text); }
                         catch { /* Safe to ignore: clipboard operations may fail if another process holds the clipboard */ }
@@ -637,7 +637,7 @@ public partial class MainWindow : Window
                 break;
 
             case "regex_config":
-                Dispatcher.Invoke(() =>
+                Dispatcher.BeginInvoke(() =>
                 {
                     if (!RegexRuleImportService.TryImport(cmd.Text ?? string.Empty, out var result, out var error))
                     {
@@ -660,6 +660,16 @@ public partial class MainWindow : Window
             case "file_start":
                 if (!string.IsNullOrEmpty(cmd.TransferId))
                 {
+                    // Reject files exceeding server-configured max size
+                    if (_roomManager.MaxFileMB > 0 && cmd.FileSize > (long)_roomManager.MaxFileMB * 1024 * 1024)
+                    {
+                        if (_devMode)
+                        {
+                            _ = Dispatcher.BeginInvoke(() => AppendLog($"Rejected file_start: {cmd.FileName} ({cmd.FileSize} bytes) exceeds MaxFileMB={_roomManager.MaxFileMB}"));
+                        }
+                        break;
+                    }
+
                     CancelPendingReceivedFilesReveal();
                     _fileTransfers[cmd.TransferId] = new IncomingFileTransferBuffer { Header = cmd };
                     _ = Dispatcher.BeginInvoke(() =>
@@ -801,16 +811,23 @@ public partial class MainWindow : Window
 
     private void ApplyStartupRegistration(bool enabled)
     {
-        using var key = Registry.CurrentUser.CreateSubKey(StartupRegistryPath);
-        if (key == null) return;
+        try
+        {
+            using var key = Registry.CurrentUser.CreateSubKey(StartupRegistryPath);
+            if (key == null) return;
 
-        if (enabled)
-        {
-            key.SetValue(StartupRegistryValue, GetStartupCommand());
+            if (enabled)
+            {
+                key.SetValue(StartupRegistryValue, GetStartupCommand());
+            }
+            else
+            {
+                key.DeleteValue(StartupRegistryValue, false);
+            }
         }
-        else
+        catch (Exception ex)
         {
-            key.DeleteValue(StartupRegistryValue, false);
+            System.Diagnostics.Debug.WriteLine($"ApplyStartupRegistration failed: {ex.Message}");
         }
     }
 
@@ -891,7 +908,10 @@ public partial class MainWindow : Window
     private void SetStatus(string text, bool connected)
     {
         StatusText.Text = text;
-        StatusIndicator.Fill = new SolidColorBrush(GetThemeColor(connected ? "Success" : "Danger"));
+        var color = GetThemeColor(connected ? "Success" : "Danger");
+        var brush = new SolidColorBrush(color);
+        brush.Freeze();
+        StatusIndicator.Fill = brush;
     }
 
     private void AppendLog(string text)
@@ -1337,7 +1357,7 @@ public partial class MainWindow : Window
 
     private void UpdateUpdateStatus(string text, bool connected)
     {
-        Dispatcher.Invoke(() =>
+        Dispatcher.BeginInvoke(() =>
         {
             UpdateStatusText.Text = text;
             UpdateStatusText.Visibility = Visibility.Visible;

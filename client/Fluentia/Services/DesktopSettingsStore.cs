@@ -165,9 +165,9 @@ public sealed class DesktopSettingsStore
                 persistedSessionLost = true;
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // TODO: consider logging this error — session restore failure may cause data loss
+            System.Diagnostics.Debug.WriteLine($"DesktopSettingsStore.Load failed: {ex.Message}");
         }
 
         return new DesktopSettingsLoadResult(
@@ -215,9 +215,9 @@ public sealed class DesktopSettingsStore
 
             File.WriteAllText(_sessionBackupFile, DesktopSessionProtector.Protect(request.PersistedSession));
         }
-        catch
+        catch (Exception ex)
         {
-            // TODO: consider logging this error — session backup failure may cause data loss
+            System.Diagnostics.Debug.WriteLine($"DesktopSettingsStore.Save failed: {ex.Message}");
         }
     }
 }

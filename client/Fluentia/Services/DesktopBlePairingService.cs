@@ -88,8 +88,8 @@ public sealed class DesktopBlePairingService : IDisposable
         {
             CharacteristicProperties = GattCharacteristicProperties.Notify,
             UserDescription = "Fluentia BLE notifications",
-            ReadProtectionLevel = GattProtectionLevel.Plain,
-            WriteProtectionLevel = GattProtectionLevel.Plain,
+            ReadProtectionLevel = GattProtectionLevel.EncryptionRequired,
+            WriteProtectionLevel = GattProtectionLevel.EncryptionRequired,
         };
 
         var notifyResult = await _serviceProvider.Service.CreateCharacteristicAsync(NotifyCharacteristicUuid, notifyParameters);
@@ -105,8 +105,8 @@ public sealed class DesktopBlePairingService : IDisposable
         {
             CharacteristicProperties = GattCharacteristicProperties.Write | GattCharacteristicProperties.WriteWithoutResponse,
             UserDescription = "Fluentia BLE pairing channel",
-            ReadProtectionLevel = GattProtectionLevel.Plain,
-            WriteProtectionLevel = GattProtectionLevel.Plain,
+            ReadProtectionLevel = GattProtectionLevel.EncryptionRequired,
+            WriteProtectionLevel = GattProtectionLevel.EncryptionRequired,
         };
 
         var writeResult = await _serviceProvider.Service.CreateCharacteristicAsync(WriteCharacteristicUuid, writeParameters);

@@ -533,6 +533,26 @@ public partial class MainWindow
         }
 
         var result = builder.ToString().Trim().TrimStart('.');
+
+        // Strip path traversal sequences
+        result = result.Replace("..", "");
+
+        // Reject reserved Windows device names
+        if (!string.IsNullOrEmpty(result))
+        {
+            var nameWithoutExt = Path.GetFileNameWithoutExtension(result).ToUpperInvariant();
+            var reservedNames = new HashSet<string>(StringComparer.Ordinal)
+            {
+                "CON", "PRN", "AUX", "NUL",
+                "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+                "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"
+            };
+            if (reservedNames.Contains(nameWithoutExt))
+            {
+                result = "received_file";
+            }
+        }
+
         return string.IsNullOrEmpty(result) ? "received_file" : result;
     }
 

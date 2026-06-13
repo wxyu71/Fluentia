@@ -11,7 +11,13 @@ class BrowserWebSocketTransport implements TransportConnection {
   constructor(url: string) {
     this.socket = new WebSocket(url);
     this.socket.onopen = () => this.onopen?.();
-    this.socket.onmessage = (event) => this.onmessage?.({ data: typeof event.data === 'string' ? event.data : '' });
+    this.socket.onmessage = (event) => {
+      if (typeof event.data !== 'string') {
+        console.warn('[WebSocketTransport] Received non-string message, ignoring');
+        return;
+      }
+      this.onmessage?.({ data: event.data });
+    };
     this.socket.onclose = () => this.onclose?.();
     this.socket.onerror = () => this.onerror?.();
   }

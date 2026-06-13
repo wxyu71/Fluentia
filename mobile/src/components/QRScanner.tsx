@@ -219,6 +219,8 @@ const ManualConnect: React.FC<{ onConnect: (info: ConnectionInfo) => void }> = (
   const wsRef = useRef<WebSocket | null>(null);
   const handoffPendingRef = useRef(false);
   const inputRefs = useRef<(HTMLInputElement | null)[]>(Array(8).fill(null));
+  const onConnectRef = useRef(onConnect);
+  onConnectRef.current = onConnect;
 
   const getCode = useCallback(() => chars.join(''), [chars]);
 
@@ -266,7 +268,8 @@ const ManualConnect: React.FC<{ onConnect: (info: ConnectionInfo) => void }> = (
 
     ws.onmessage = (e) => {
       try {
-        const msg = JSON.parse(e.data as string);
+        if (typeof e.data !== 'string') return;
+        const msg = JSON.parse(e.data);
         if (msg.type === 'device_code_pending' && msg.verifyId) {
           setVerifyId(msg.verifyId);
           setStatus('Waiting for approval on your PC');
@@ -277,7 +280,7 @@ const ManualConnect: React.FC<{ onConnect: (info: ConnectionInfo) => void }> = (
           }
           handoffPendingRef.current = true;
           const info: ConnectionInfo = { s: wsUrl, t: msg.token, k: msg.publicKey || '' };
-          onConnect(info);
+          onConnectRef.current(info);
         } else if (msg.type === 'error') {
           if (timeoutRef.current !== null) {
             window.clearTimeout(timeoutRef.current);
@@ -313,7 +316,7 @@ const ManualConnect: React.FC<{ onConnect: (info: ConnectionInfo) => void }> = (
       }
       wsRef.current = null;
     };
-  }, [onConnect, waiting]);
+  }, [waiting]);
 
   const handleKeyDown = useCallback((idx: number, e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Backspace') {

@@ -18,10 +18,12 @@ public class WebSocketService : IRelayTransport
     private const int MaxReconnectDelayMs = 5000;
     private static readonly TimeSpan HeartbeatInterval = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan HeartbeatTimeout = TimeSpan.FromSeconds(10);
-    private DateTime _lastServerActivityUtc = DateTime.UtcNow;
+    private long _lastServerActivityUtcTicks = DateTime.UtcNow.Ticks;
     private int _disconnectHandled;
     private CancellationTokenSource? _reconnectCts;
     private Task? _reconnectLoopTask;
+    private Task? _receiveTask;
+    private Task? _heartbeatTask;
 
     public event Action<WsMessage>? OnMessage;
     public event Action? OnConnected;
@@ -29,6 +31,12 @@ public class WebSocketService : IRelayTransport
 
     public RelayTransportKind TransportKind => RelayTransportKind.WebSocket;
     public bool IsConnected => _webSocket?.State == WebSocketState.Open;
+
+    private DateTime LastServerActivityUtc
+    {
+        get => new DateTime(Volatile.Read(ref _lastServerActivityUtcTicks), DateTimeKind.Utc);
+        set => Volatile.Write(ref _lastServerActivityUtcTicks, value.Ticks);
+    }
 
     public async Task ConnectAsync(string serverUrl, CancellationToken cancellationToken = default)
     {
@@ -48,15 +56,15 @@ public class WebSocketService : IRelayTransport
             _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             _webSocket = new ClientWebSocket();
             _webSocket.Options.KeepAliveInterval = TimeSpan.FromSeconds(15);
-            _lastServerActivityUtc = DateTime.UtcNow;
+            LastServerActivityUtc = DateTime.UtcNow;
 
             await _webSocket.ConnectAsync(new Uri(serverUrl), _cts.Token);
             _reconnectAttempts = 0;
             _disconnectHandled = 0;
-            _lastServerActivityUtc = DateTime.UtcNow;
+            LastServerActivityUtc = DateTime.UtcNow;
             OnConnected?.Invoke();
-            _ = Task.Run(() => ReceiveLoop(_cts.Token));
-            _ = Task.Run(() => HeartbeatLoop(_cts.Token));
+            _receiveTask = Task.Run(() => ReceiveLoop(_cts.Token));
+            _heartbeatTask = Task.Run(() => HeartbeatLoop(_cts.Token));
             return true;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested || _intentionalClose)
@@ -193,7 +201,7 @@ public class WebSocketService : IRelayTransport
                     var msg = WsMessage.Deserialize(json);
                     if (msg != null)
                     {
-                        _lastServerActivityUtc = DateTime.UtcNow;
+                        LastServerActivityUtc = DateTime.UtcNow;
                         if (msg.Type == MsgTypes.Pong)
                         {
                             continue;
@@ -229,7 +237,7 @@ public class WebSocketService : IRelayTransport
                     return;
                 }
 
-                if (DateTime.UtcNow - _lastServerActivityUtc > HeartbeatTimeout)
+                if (DateTime.UtcNow - LastServerActivityUtc > HeartbeatTimeout)
                 {
                     try
                     {
@@ -258,11 +266,11 @@ public class WebSocketService : IRelayTransport
 
     public async Task SendAsync(WsMessage msg, CancellationToken cancellationToken = default)
     {
-        if (_webSocket?.State != WebSocketState.Open) return;
-
         await _sendLock.WaitAsync(cancellationToken);
         try
         {
+            if (_webSocket?.State != WebSocketState.Open) return;
+
             var json = msg.Serialize();
             var bytes = Encoding.UTF8.GetBytes(json);
             using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
@@ -288,14 +296,18 @@ public class WebSocketService : IRelayTransport
             {
                 if (_webSocket.State == WebSocketState.Open)
                 {
-                    // Use Abort() instead of blocking .Wait() on CloseAsync to avoid
-                    // potential deadlocks when Dispose is called from a synchronization context.
                     _webSocket.Abort();
                 }
             }
             catch { /* ignore */ }
             _webSocket.Dispose();
             _webSocket = null;
+        }
+        var tasks = new[] { _receiveTask, _heartbeatTask }.Where(t => t != null).ToArray();
+        if (tasks.Length > 0)
+        {
+            try { Task.WhenAll(tasks!).Wait(TimeSpan.FromSeconds(2)); }
+            catch { /* ignore timeout */ }
         }
         _cts?.Dispose();
         _cts = null;

@@ -22,12 +22,24 @@ const STORED_CONN_KEY = 'fluentia_conn';
 // never transmitted over the network.
 const STORED_CRYPTO_KEY = 'fluentia_crypto_session_v1';
 const FIXED_RECONNECT_DELAY_MS = 2000;
-const MAX_RECONNECT_ATTEMPTS = 300;
+const MAX_RECONNECT_ATTEMPTS = 30;
 const CONNECT_TIMEOUT_MS = 8000;
 const HANDSHAKE_TIMEOUT_MS = 12000;
-const HEARTBEAT_INTERVAL_MS = 1000;
+const HEARTBEAT_INTERVAL_MS = 3000;
 const HEARTBEAT_TIMEOUT_MS = 2500;
 const OFFLINE_GRACE_MS = 10000;
+
+function validateInputCommand(data: any): data is InputCommand {
+  return (
+    typeof data === 'object' &&
+    data !== null &&
+    typeof data.type === 'string'
+  );
+}
+
+function sanitizeFileName(fileName: string): string {
+  return fileName.replace(/[\/\\]/g, '_').replace(/^\.+/, '');
+}
 
 function buildSessionKey(info: ConnectionInfo): string {
   return `${info.s}|${info.t}|${info.k}`;
@@ -135,7 +147,7 @@ export function useWebSocket(
     handleMessage: (msg: WsMessage) => void;
     onEncryptedCommand?: (cmd: InputCommand) => void;
     deviceId: string;
-  }>(null!);
+  }>({} as any);
 
   useEffect(() => {
     bleTransportReadyRef.current = bleTransportReady ?? false;
@@ -222,7 +234,7 @@ export function useWebSocket(
     const downloadUrl = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
     anchor.href = downloadUrl;
-    anchor.download = fileName || 'fluentia-download';
+    anchor.download = sanitizeFileName(fileName) || 'fluentia-download';
     anchor.rel = 'noopener';
     anchor.style.display = 'none';
     document.body.appendChild(anchor);
@@ -649,7 +661,8 @@ export function useWebSocket(
             ? cryptoRef.current.decryptRatcheted(msg.payload, msg.nonce, msg.seq)
             : cryptoRef.current.decrypt(msg.payload, msg.nonce);
 
-          const parsed = JSON.parse(plaintext) as InputCommand;
+          const parsed = JSON.parse(plaintext);
+          if (!validateInputCommand(parsed)) break;
           if (parsed.type === 'pc_ratchet_init' && parsed.seed) {
             cryptoRef.current.initRecvRatchet(parsed.seed);
             persistCryptoState();
@@ -941,11 +954,12 @@ export function useWebSocket(
         setConnectionState('connecting');
         connectionStateRef.current = 'connecting';
         setPendingStatus('Reconnecting...');
+        const backoffDelay = Math.min(FIXED_RECONNECT_DELAY_MS * Math.pow(2, reconnectAttemptRef.current - 1), 30000);
         reconnectTimerRef.current = window.setTimeout(() => {
           if (connInfoRef.current) {
             connectWs(connInfoRef.current);
           }
-        }, FIXED_RECONNECT_DELAY_MS);
+        }, backoffDelay);
       } else {
         setConnectionState('disconnected');
         connectionStateRef.current = 'disconnected';
