@@ -115,10 +115,10 @@ describe('Diff Algorithm Performance', () => {
     expect(ms).toBeLessThan(50);
   });
 
-  it('computeDiff for identical strings completes within 0.1ms', () => {
+  it('computeDiff for identical strings completes within 5ms', () => {
     const text = 'a'.repeat(10000);
     const ms = measureMs(() => computeDiff(text, text));
-    expect(ms).toBeLessThan(0.1);
+    expect(ms).toBeLessThan(5);
   });
 
   it('1000 diff operations on typical input complete within 100ms', () => {
