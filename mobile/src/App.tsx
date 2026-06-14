@@ -132,6 +132,45 @@ export const App: React.FC = () => {
     document.title = `Fluentia v${APP_VERSION}`;
   }, []);
 
+  // Version polling: check server version every 5 minutes and on visibility change.
+  // If the server has a newer version, clear SW caches and reload automatically.
+  useEffect(() => {
+    let reloading = false;
+    const checkVersion = () => {
+      if (reloading) return;
+      try {
+        const raw = localStorage.getItem(CONN_KEY);
+        if (!raw) return;
+        const info = JSON.parse(raw) as ConnectionInfo;
+        if (!info.s) return;
+        const httpBase = info.s.replace(/\/ws.*$/, '').replace('wss://', 'https://').replace('ws://', 'http://');
+        fetch(`${httpBase}/api/config`, { cache: 'no-store' })
+          .then(r => r.json())
+          .then(config => {
+            if (config.version && config.version !== APP_VERSION) {
+              reloading = true;
+              window.caches?.keys()?.then((names: string[]) =>
+                Promise.all(names.map((n: string) => window.caches.delete(n)))
+              ).then(() => window.location.reload());
+            }
+          })
+          .catch(() => { /* silent — no connection or parse error */ });
+      } catch { /* silent */ }
+    };
+
+    const timer = setTimeout(checkVersion, 30_000);
+    const interval = setInterval(checkVersion, 5 * 60_000);
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') checkVersion();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      clearTimeout(timer);
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, []);
+
   const fetchServerConfig = useCallback((info: ConnectionInfo) => {
     const httpBase = info.s.replace(/\/ws.*$/, '').replace('wss://', 'https://').replace('ws://', 'http://');
     fetch(`${httpBase}/api/config`)
