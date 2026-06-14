@@ -328,8 +328,8 @@ func TestGracefulShutdown_EmptyHub(t *testing.T) {
 func TestServerConfig_NewFieldsHaveDefaults(t *testing.T) {
 	cfg := loadConfig()
 
-	if cfg.AllowEmptyOrigin {
-		t.Error("AllowEmptyOrigin should default to false")
+	if !cfg.AllowEmptyOrigin {
+		t.Error("AllowEmptyOrigin should default to true (mobile PWA/WebView compat)")
 	}
 	if len(cfg.TrustedProxies) != 0 {
 		t.Error("TrustedProxies should default to empty")
@@ -446,6 +446,40 @@ func TestMaxConnections_ConcurrentRequests(t *testing.T) {
 	// All overflow connections should be rejected
 	if rejected != 5 {
 		t.Errorf("expected 5 rejected connections, got %d", rejected)
+	}
+}
+
+// TestValidateOrigin_DefaultAllowsEmpty verifies that the default configuration
+// allows empty Origin headers (for mobile PWA/WebView compatibility).
+// This is a regression test for v1.7.4 where empty Origin was rejected by default,
+// causing mobile clients to fail WebSocket upgrade with 403.
+func TestValidateOrigin_DefaultAllowsEmpty(t *testing.T) {
+	old := srvGlobals
+	defer func() { srvGlobals = old }()
+
+	// Simulate default config: AllowEmptyOrigin = true
+	srvGlobals = &ServerGlobals{AllowEmptyOrigin: true}
+
+	r := httptest.NewRequest("GET", "/ws", nil)
+	r.Header.Del("Origin")
+	if !validateOrigin(r) {
+		t.Error("empty Origin should be allowed by default (AllowEmptyOrigin=true)")
+	}
+}
+
+// TestValidateOrigin_OriginVsHostMismatch_Rejected ensures that even with
+// AllowEmptyOrigin=true, a non-empty mismatched Origin is still rejected.
+func TestValidateOrigin_OriginVsHostMismatch_Rejected(t *testing.T) {
+	old := srvGlobals
+	defer func() { srvGlobals = old }()
+
+	srvGlobals = &ServerGlobals{AllowEmptyOrigin: true}
+
+	r := httptest.NewRequest("GET", "/ws", nil)
+	r.Host = "myserver.com:8080"
+	r.Header.Set("Origin", "http://evil.com:8080")
+	if validateOrigin(r) {
+		t.Error("mismatched Origin should be rejected even when AllowEmptyOrigin is true")
 	}
 }
 

@@ -61,7 +61,7 @@ func loadConfig() ServerConfig {
 	cfg.SecretPath = os.Getenv("SECRET_PATH")
 	cfg.PrivateMode = envBool("PRIVATE_MODE", false)
 	cfg.IPWhitelist = envBool("IP_WHITELIST", false)
-	cfg.AllowEmptyOrigin = envBool("ALLOW_EMPTY_ORIGIN", false)
+	cfg.AllowEmptyOrigin = envBool("ALLOW_EMPTY_ORIGIN", true)
 	cfg.MaxConnections = envInt("MAX_CONNECTIONS", 0)
 	cfg.TLSCertFile = os.Getenv("TLS_CERT_FILE")
 	cfg.TLSKeyFile = os.Getenv("TLS_KEY_FILE")
@@ -119,7 +119,8 @@ func isLocalhost(host string) bool {
 func validateOrigin(r *http.Request) bool {
 	origin := r.Header.Get("Origin")
 	if origin == "" {
-		// [M1] Only allow empty origin when explicitly configured (dev/localhost mode).
+		// [M1] Allow empty origin by default for mobile PWA/WebView compatibility.
+		// Set ALLOW_EMPTY_ORIGIN=false to reject empty Origin headers.
 		if srvGlobals != nil && srvGlobals.AllowEmptyOrigin {
 			return true
 		}

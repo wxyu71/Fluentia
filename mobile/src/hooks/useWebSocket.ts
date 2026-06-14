@@ -26,7 +26,7 @@ const MAX_RECONNECT_ATTEMPTS = 30;
 const CONNECT_TIMEOUT_MS = 8000;
 const HANDSHAKE_TIMEOUT_MS = 12000;
 const HEARTBEAT_INTERVAL_MS = 3000;
-const HEARTBEAT_TIMEOUT_MS = 2500;
+const HEARTBEAT_TIMEOUT_MS = 8000;
 const OFFLINE_GRACE_MS = 10000;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

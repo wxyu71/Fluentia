@@ -56,6 +56,29 @@ jobs:
 
           echo "Version consistent: $PKG"
 
+      - name: Verify heartbeat timing invariants
+        run: |
+          # Extract mobile heartbeat constants
+          M_INTERVAL=$(grep -oP 'HEARTBEAT_INTERVAL_MS\s*=\s*\K\d+' mobile/src/hooks/useWebSocket.ts)
+          M_TIMEOUT=$(grep -oP 'HEARTBEAT_TIMEOUT_MS\s*=\s*\K\d+' mobile/src/hooks/useWebSocket.ts)
+
+          echo "Mobile: interval=${M_INTERVAL}ms timeout=${M_TIMEOUT}ms"
+
+          if [ "$M_TIMEOUT" -le "$M_INTERVAL" ]; then
+            echo "::error::HEARTBEAT_TIMEOUT_MS ($M_TIMEOUT) must be > HEARTBEAT_INTERVAL_MS ($M_INTERVAL)"
+            echo "This causes spurious disconnections. See v1.7.4 regression."
+            exit 1
+          fi
+
+          # Timeout should be at least 2x interval to tolerate one missed pong
+          MIN_TIMEOUT=$((M_INTERVAL * 2))
+          if [ "$M_TIMEOUT" -lt "$MIN_TIMEOUT" ]; then
+            echo "::error::HEARTBEAT_TIMEOUT_MS ($M_TIMEOUT) should be >= 2 * HEARTBEAT_INTERVAL_MS ($MIN_TIMEOUT)"
+            exit 1
+          fi
+
+          echo "Heartbeat timing OK: timeout ($M_TIMEOUT) > 2 * interval ($MIN_TIMEOUT)"
+
   # === Stage 1: Lint ===
   lint-go:
     needs: [changes, check-version]
