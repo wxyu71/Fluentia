@@ -17,6 +17,7 @@ using Fluentia.Models;
 using Fluentia.Services;
 using Fluentia.Views;
 using H.NotifyIcon;
+using H.NotifyIcon.Core;
 using Microsoft.Win32;
 using Clipboard = System.Windows.Clipboard;
 using Color = System.Windows.Media.Color;
@@ -744,6 +745,7 @@ public partial class MainWindow : Window
             CancelInputTargetRecovery();
             _manualInputTargetRecoveryNotified = false;
             _inputTargetWindow = currentForeground;
+            SetStatus(L("StatusEncrypted"), true);
             return true;
         }
 
@@ -987,6 +989,10 @@ public partial class MainWindow : Window
 
         if (hwnd != IntPtr.Zero && hwnd != _windowHandle)
         {
+            if (_manualInputTargetRecoveryNotified)
+            {
+                SetStatus(L("StatusEncrypted"), true);
+            }
             CancelInputTargetRecovery();
             _manualInputTargetRecoveryNotified = false;
         }
@@ -1248,6 +1254,7 @@ public partial class MainWindow : Window
 
     private UpdateManager? _updateManager;
     private bool _updateCheckInProgress;
+    private bool _portableUpdateNotified;
 
     private UpdateManager GetUpdateManager()
     {
@@ -1257,6 +1264,7 @@ public partial class MainWindow : Window
 
     /// <summary>
     /// Automatic update check on startup. Silent on failure; only prompts if an update is ready.
+    /// For portable installs, shows a one-time tray notification.
     /// </summary>
     private async Task AutoCheckForUpdatesAsync()
     {
@@ -1265,7 +1273,29 @@ public partial class MainWindow : Window
             var mgr = GetUpdateManager();
             if (!mgr.IsInstalled)
             {
-                return; // Not a Velopack install — silently skip
+                // Portable install — show a one-time tray notification
+                if (!_portableUpdateNotified && _trayIcon != null)
+                {
+                    _portableUpdateNotified = true;
+                    try
+                    {
+                        _trayIcon.ShowNotification(
+                            L("TrayNotificationPortableUpdateTitle"),
+                            L("TrayNotificationPortableUpdateBody"),
+                            NotificationIcon.Info,
+                            null,
+                            true,
+                            false,
+                            false,
+                            false,
+                            TimeSpan.FromSeconds(8));
+                    }
+                    catch
+                    {
+                        // Tray notification failure is non-critical
+                    }
+                }
+                return;
             }
 
             var info = await mgr.CheckForUpdatesAsync();
@@ -1314,6 +1344,17 @@ public partial class MainWindow : Window
             if (!mgr.IsInstalled)
             {
                 UpdateUpdateStatus(L("StatusUpdateNotInstalled"), false);
+                try
+                {
+                    Process.Start(new ProcessStartInfo("https://github.com/wxyu71/Fluentia/releases/latest")
+                    {
+                        UseShellExecute = true
+                    });
+                }
+                catch
+                {
+                    // Browser open failure is non-critical
+                }
                 return;
             }
 

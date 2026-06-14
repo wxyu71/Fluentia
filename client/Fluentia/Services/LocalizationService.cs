@@ -158,9 +158,11 @@ public static class LocalizationService
         ["StatusUpToDate"] = "You're up to date",
         ["StatusUpdateAvailable"] = "Update available — downloading...",
         ["StatusUpdateReady"] = "Update downloaded. Restart to apply.",
-        ["StatusUpdateNotInstalled"] = "Auto-update requires the Velopack installer version. Download it from GitHub Releases.",
+        ["StatusUpdateNotInstalled"] = "Auto-update requires the installer version (Fluentia-Setup.exe). The current portable version cannot self-update.",
         ["StatusUpdateCheckFailed"] = "Update check failed: {0}",
         ["StatusUpdateApplied"] = "Update applied — restarting...",
+        ["TrayNotificationPortableUpdateTitle"] = "Auto-update unavailable",
+        ["TrayNotificationPortableUpdateBody"] = "You're running the portable version which cannot self-update. Download Fluentia-Setup.exe from GitHub Releases for auto-update support.",
     };
 
     private static readonly IReadOnlyDictionary<string, string> Chinese = new Dictionary<string, string>
@@ -315,9 +317,11 @@ public static class LocalizationService
         ["StatusUpToDate"] = "已是最新版本",
         ["StatusUpdateAvailable"] = "有可用更新 — 正在下载...",
         ["StatusUpdateReady"] = "更新已下载，重启后生效。",
-        ["StatusUpdateNotInstalled"] = "自动更新需要通过 Velopack 安装版本。请从 GitHub Releases 下载。",
+        ["StatusUpdateNotInstalled"] = "自动更新需要安装版 (Fluentia-Setup.exe)，当前便携版无法自动更新。",
         ["StatusUpdateCheckFailed"] = "检查更新失败：{0}",
         ["StatusUpdateApplied"] = "更新已应用 — 正在重启...",
+        ["TrayNotificationPortableUpdateTitle"] = "自动更新不可用",
+        ["TrayNotificationPortableUpdateBody"] = "当前运行的是便携版，无法自动更新。请从 GitHub Releases 下载 Fluentia-Setup.exe 以启用自动更新。",
     };
 
     public static string CurrentLanguageSetting => _languageOverride ?? "system";
