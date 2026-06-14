@@ -477,7 +477,11 @@ export const App: React.FC = () => {
             className="glass-btn"
             style={{ fontSize: 12, padding: '6px 14px', flexShrink: 0 }}
             onClick={() => {
-              if (loadStoredConnection()) {
+              if (lastError?.includes('Protocol mismatch')) {
+                // Version mismatch — cached JS is stale; force a full refresh
+                window.caches?.keys()?.then((names: string[]) => names.forEach((n: string) => window.caches.delete(n)));
+                window.location.reload();
+              } else if (loadStoredConnection()) {
                 retryStoredConnection();
               } else {
                 disconnect();

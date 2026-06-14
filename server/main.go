@@ -320,7 +320,10 @@ func main() {
 	// Serve mobile web static files
 	if info, err := os.Stat(cfg.StaticDir); err == nil && info.IsDir() {
 		fs := http.FileServer(http.Dir(cfg.StaticDir))
-		mux.Handle("/", fs)
+		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Cache-Control", "no-cache, must-revalidate")
+			fs.ServeHTTP(w, r)
+		})
 		log.Printf("Serving static files from %s", cfg.StaticDir)
 	} else {
 		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

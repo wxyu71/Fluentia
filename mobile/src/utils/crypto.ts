@@ -1,5 +1,7 @@
 import nacl from 'tweetnacl';
 import { encodeBase64, decodeBase64 } from 'tweetnacl-util';
+import { hmac } from '@noble/hashes/hmac.js';
+import { sha512 } from '@noble/hashes/sha2.js';
 
 export interface PersistedCryptoSession {
   publicKey: string;
@@ -8,15 +10,23 @@ export interface PersistedCryptoSession {
 }
 
 /**
- * KDF: SHA-512(key || label)[0:32]
- * Must match the C# implementation exactly.
+ * HKDF-SHA-512 (RFC 5869) — matches the C# HKDF.DeriveKey exactly.
  */
+function hkdf(key: Uint8Array, salt: Uint8Array, info: Uint8Array, length: number): Uint8Array {
+  // Extract: PRK = HMAC-SHA-512(salt, key)
+  const prk = hmac(sha512, salt, key);
+  // Expand: T(1) = HMAC-SHA-512(PRK, info || 0x01)
+  const infoWithCounter = new Uint8Array(info.length + 1);
+  infoWithCounter.set(info);
+  infoWithCounter[info.length] = 0x01;
+  return hmac(sha512, prk, infoWithCounter).slice(0, length);
+}
+
+const KDF_SALT = new TextEncoder().encode('fluentia_kdf_salt');
+const RATCHET_SALT = new TextEncoder().encode('fluentia_v1_salt');
+
 function kdf(key: Uint8Array, label: string): Uint8Array {
-  const labelBytes = new TextEncoder().encode(label);
-  const input = new Uint8Array(key.length + labelBytes.length);
-  input.set(key);
-  input.set(labelBytes, key.length);
-  return nacl.hash(input).subarray(0, 32);
+  return hkdf(key, KDF_SALT, new TextEncoder().encode(label), 32);
 }
 
 function ratchetStep(chainKey: Uint8Array): { messageKey: Uint8Array; nextChainKey: Uint8Array } {
@@ -108,7 +118,7 @@ export class CryptoService {
    */
   initRatchet(): { seed: string } {
     const seed = nacl.randomBytes(32);
-    this.sendChainKey = kdf(seed, 'fluentia_chain_v1');
+    this.sendChainKey = hkdf(seed, RATCHET_SALT, new TextEncoder().encode('fluentia_chain_v1'), 32);
     this.sendSeq = 0;
     this._ratchetReady = true;
     return { seed: encodeBase64(seed) };
@@ -180,7 +190,7 @@ export class CryptoService {
    */
   initRecvRatchet(seedBase64: string): void {
     const seed = decodeBase64(seedBase64);
-    this.recvChainKey = kdf(seed, 'fluentia_chain_v1');
+    this.recvChainKey = hkdf(seed, RATCHET_SALT, new TextEncoder().encode('fluentia_chain_v1'), 32);
     this.expectedSeq = 0;
     this._recvRatchetReady = true;
   }
