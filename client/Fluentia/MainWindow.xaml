@@ -184,7 +184,9 @@
                                                        Text="Not connected"
                                                        FontSize="13"
                                                        FontWeight="SemiBold"
-                                                       Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                                       Foreground="{DynamicResource TextPrimaryBrush}"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       MaxWidth="280"/>
                                         </StackPanel>
                                     </Border>
                                 </Grid>
