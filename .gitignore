@@ -44,4 +44,4 @@ client/Fluentia.Tests/obj/
 CLAUDE.md
 
 # specific to this project
-bump-version.ps1
+bump-version.ps1.hermes/
