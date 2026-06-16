@@ -8,6 +8,7 @@ public class CryptoService : IDisposable
 {
     private KeyPair _keyPair;
     private byte[]? _peerPublicKey;
+    private readonly object _lock = new();
 
     // Receive ratchet (mobile → PC)
     private byte[]? _recvChainKey;
@@ -62,11 +63,14 @@ public class CryptoService : IDisposable
     /// </summary>
     public void InitRatchet(string seedBase64)
     {
-        var seed = Convert.FromBase64String(seedBase64);
-        _recvChainKey = HKDF.DeriveKey(HashAlgorithmName.SHA512, seed, 32, salt: Encoding.UTF8.GetBytes("fluentia_v1_salt"), info: Encoding.UTF8.GetBytes("fluentia_chain_v1"));
-        _expectedSeq = 0;
-        _ratchetReady = true;
-        _highestSeenSeq = -1;
+        lock (_lock)
+        {
+            var seed = Convert.FromBase64String(seedBase64);
+            _recvChainKey = HKDF.DeriveKey(HashAlgorithmName.SHA512, seed, 32, salt: Encoding.UTF8.GetBytes("fluentia_v1_salt"), info: Encoding.UTF8.GetBytes("fluentia_chain_v1"));
+            _expectedSeq = 0;
+            _ratchetReady = true;
+            _highestSeenSeq = -1;
+        }
     }
 
     /// <summary>
@@ -75,12 +79,15 @@ public class CryptoService : IDisposable
     /// </summary>
     public string InitSendRatchet()
     {
-        var seed = new byte[32];
-        RandomNumberGenerator.Fill(seed);
-        _sendChainKey = HKDF.DeriveKey(HashAlgorithmName.SHA512, seed, 32, salt: Encoding.UTF8.GetBytes("fluentia_v1_salt"), info: Encoding.UTF8.GetBytes("fluentia_chain_v1"));
-        _sendSeq = 0;
-        _sendRatchetReady = true;
-        return Convert.ToBase64String(seed);
+        lock (_lock)
+        {
+            var seed = new byte[32];
+            RandomNumberGenerator.Fill(seed);
+            _sendChainKey = HKDF.DeriveKey(HashAlgorithmName.SHA512, seed, 32, salt: Encoding.UTF8.GetBytes("fluentia_v1_salt"), info: Encoding.UTF8.GetBytes("fluentia_chain_v1"));
+            _sendSeq = 0;
+            _sendRatchetReady = true;
+            return Convert.ToBase64String(seed);
+        }
     }
 
     /// <summary>
@@ -88,20 +95,29 @@ public class CryptoService : IDisposable
     /// </summary>
     public (string Payload, string Nonce, int Seq) EncryptRatcheted(string plaintext)
     {
-        if (_sendChainKey == null)
-            throw new InvalidOperationException("Send ratchet not initialized");
+        byte[]? msgKey = null;
+        lock (_lock)
+        {
+            if (_sendChainKey == null)
+                throw new InvalidOperationException("Send ratchet not initialized");
 
-        var (msgKey, nextChain) = RatchetStep(_sendChainKey);
-        _sendChainKey = nextChain;
-        var seq = _sendSeq++;
-
-        var nonce = SecretBox.GenerateNonce();
-        var messageBytes = Encoding.UTF8.GetBytes(plaintext);
-        var encrypted = SecretBox.Create(messageBytes, nonce, msgKey);
-
-        Array.Clear(msgKey, 0, msgKey.Length);
-
-        return (Convert.ToBase64String(encrypted), Convert.ToBase64String(nonce), seq);
+            var (mk, nextChain) = RatchetStep(_sendChainKey);
+            msgKey = mk;
+            _sendChainKey = nextChain;
+        }
+        try
+        {
+            var seq = Interlocked.Increment(ref _sendSeq) - 1;
+            var nonce = SecretBox.GenerateNonce();
+            var messageBytes = Encoding.UTF8.GetBytes(plaintext);
+            var encrypted = SecretBox.Create(messageBytes, nonce, msgKey);
+            return (Convert.ToBase64String(encrypted), Convert.ToBase64String(nonce), seq);
+        }
+        finally
+        {
+            if (msgKey != null)
+                Array.Clear(msgKey, 0, msgKey.Length);
+        }
     }
 
     /// <summary>
@@ -141,35 +157,44 @@ public class CryptoService : IDisposable
     /// </summary>
     public string DecryptRatcheted(string payloadBase64, string nonceBase64, int seq)
     {
-        if (_recvChainKey == null)
-            throw new InvalidOperationException("Ratchet not initialized");
-
-        if (seq <= _highestSeenSeq)
-            throw new InvalidOperationException($"Replay detected: seq {seq} <= highest seen {_highestSeenSeq}");
-
-        if (seq - _highestSeenSeq > MaxSeqGap)
-            throw new InvalidOperationException($"Sequence gap too large: {seq - _highestSeenSeq} > {MaxSeqGap}");
-
-        while (_expectedSeq < seq)
+        byte[]? msgKey = null;
+        lock (_lock)
         {
-            var (_, next) = RatchetStep(_recvChainKey);
-            _recvChainKey = next;
+            if (_recvChainKey == null)
+                throw new InvalidOperationException("Ratchet not initialized");
+
+            if (seq <= _highestSeenSeq)
+                throw new InvalidOperationException($"Replay detected: seq {seq} <= highest seen {_highestSeenSeq}");
+
+            if (seq - _highestSeenSeq > MaxSeqGap)
+                throw new InvalidOperationException($"Sequence gap too large: {seq - _highestSeenSeq} > {MaxSeqGap}");
+
+            while (_expectedSeq < seq)
+            {
+                var (_, next) = RatchetStep(_recvChainKey);
+                _recvChainKey = next;
+                _expectedSeq++;
+            }
+
+            var (mk, nextChain) = RatchetStep(_recvChainKey);
+            msgKey = mk;
+            _recvChainKey = nextChain;
             _expectedSeq++;
+            _highestSeenSeq = Math.Max(_highestSeenSeq, seq);
         }
-
-        var (msgKey, nextChain) = RatchetStep(_recvChainKey);
-        _recvChainKey = nextChain;
-        _expectedSeq++;
-        _highestSeenSeq = Math.Max(_highestSeenSeq, seq);
-
-        var decrypted = SecretBox.Open(
-            Convert.FromBase64String(payloadBase64),
-            Convert.FromBase64String(nonceBase64),
-            msgKey);
-
-        Array.Clear(msgKey, 0, msgKey.Length);
-
-        return Encoding.UTF8.GetString(decrypted);
+        try
+        {
+            var decrypted = SecretBox.Open(
+                Convert.FromBase64String(payloadBase64),
+                Convert.FromBase64String(nonceBase64),
+                msgKey);
+            return Encoding.UTF8.GetString(decrypted);
+        }
+        finally
+        {
+            if (msgKey != null)
+                Array.Clear(msgKey, 0, msgKey.Length);
+        }
     }
 
     public void Reset()

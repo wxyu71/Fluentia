@@ -186,18 +186,31 @@ public class WebSocketService : IRelayTransport
         {
             while (_webSocket?.State == WebSocketState.Open && !ct.IsCancellationRequested)
             {
-                var result = await _webSocket.ReceiveAsync(
-                    new ArraySegment<byte>(buffer), ct);
-
-                if (result.MessageType == WebSocketMessageType.Close)
+                using var messageStream = new MemoryStream();
+                WebSocketReceiveResult result;
+                do
                 {
-                    HandleDisconnect("Server closed connection");
-                    break;
+                    result = await _webSocket.ReceiveAsync(
+                        new ArraySegment<byte>(buffer), ct);
+
+                    if (result.MessageType == WebSocketMessageType.Close)
+                    {
+                        HandleDisconnect("Server closed connection");
+                        return;
+                    }
+
+                    if (result.MessageType == WebSocketMessageType.Binary)
+                    {
+                        continue; // skip binary frames
+                    }
+
+                    messageStream.Write(buffer, 0, result.Count);
                 }
+                while (!result.EndOfMessage);
 
-                if (result.MessageType == WebSocketMessageType.Text)
+                if (result.MessageType == WebSocketMessageType.Text && messageStream.Length > 0)
                 {
-                    var json = Encoding.UTF8.GetString(buffer, 0, result.Count);
+                    var json = Encoding.UTF8.GetString(messageStream.ToArray());
                     var msg = WsMessage.Deserialize(json);
                     if (msg != null)
                     {

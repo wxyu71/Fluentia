@@ -95,6 +95,7 @@ public partial class MainWindow : Window
     private string _fileSavePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
     private CancellationTokenSource? _inputTargetRecoveryCts;
     private CancellationTokenSource? _commandQueueCts;
+    private CancellationTokenSource? _focusClearCts;
     private IntPtr _inputTargetWindow;
     private IntPtr _windowHandle;
     private TransferProgressBatch? _transferProgressBatch;
@@ -348,6 +349,7 @@ public partial class MainWindow : Window
             if (_pendingClearOnReconnect)
             {
                 _pendingClearOnReconnect = false;
+                _appliedInputBuffer = string.Empty;
                 _ = _roomManager.SendToMobileAsync(JsonSerializer.Serialize(new { type = "clear" }));
             }
         });
@@ -763,6 +765,22 @@ public partial class MainWindow : Window
     {
         if (_inputTargetWindow == IntPtr.Zero) return;
 
+        // Cancel any pending focus-clear debounce
+        _focusClearCts?.Cancel();
+        _focusClearCts?.Dispose();
+        var cts = new CancellationTokenSource();
+        _focusClearCts = cts;
+
+        // Debounce: if focus returns to the same window within 300ms, abort
+        try
+        {
+            await Task.Delay(300, cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
         _inputTargetWindow = IntPtr.Zero;
         if (_devMode)
         {
@@ -968,6 +986,14 @@ public partial class MainWindow : Window
         int idObject, int idChild, uint dwEventThread, uint dwmsEventTime)
     {
         if (hwnd == _lastForegroundWindow) return;
+
+        // If focus returns to the input target window, cancel any pending debounced clear
+        if (_inputTargetWindow != IntPtr.Zero && hwnd == _inputTargetWindow)
+        {
+            _focusClearCts?.Cancel();
+            _focusClearCts?.Dispose();
+            _focusClearCts = null;
+        }
 
         _lastForegroundWindow = hwnd;
         RememberExternalForegroundWindow(hwnd);

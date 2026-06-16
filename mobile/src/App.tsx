@@ -232,7 +232,8 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     if (inputResetVersion === 0) return;
-    setInputText('');
+    // NOTE: InputArea.tsx handles text clearing with input-protection logic.
+    // Do NOT add setInputText('') here — it would bypass the unsent-content guard.
   }, [inputResetVersion]);
 
   // Fix mobile keyboard occlusion: track visualViewport height

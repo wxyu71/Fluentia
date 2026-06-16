@@ -137,7 +137,7 @@ export function useWebSocket(
     startHeartbeat: (ws: TransportConnection) => void;
     startOfflineGrace: (status?: string) => void;
     sendEncryptedPayload: (plaintext: string, messageType?: MessageType) => Promise<boolean>;
-    flushQueuedCommands: () => void;
+    flushQueuedCommands: () => Promise<void>;
     cleanup: (clearConnectionInfo?: boolean) => void;
     setBufferedInputMode: (active: boolean) => void;
     decodeBase64Chunk: (chunkData: string) => Uint8Array;
@@ -506,15 +506,19 @@ export function useWebSocket(
     }
   }, [sendViaBle, healthMonitor, bleTransport]);
 
-  const flushQueuedCommands = useCallback(() => {
+  const flushQueuedCommands = useCallback(async () => {
     if (!encryptionReadyRef.current) {
       return;
     }
 
     const remaining: InputCommand[] = [];
     for (const command of queuedCommandsRef.current) {
-      const sent = sendEncryptedPayload(JSON.stringify(command), 'input');
-      if (!sent) {
+      try {
+        const sent = await sendEncryptedPayload(JSON.stringify(command), 'input');
+        if (!sent) {
+          remaining.push(command);
+        }
+      } catch {
         remaining.push(command);
       }
     }

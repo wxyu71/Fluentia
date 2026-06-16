@@ -144,10 +144,6 @@ export const InputArea: React.FC<InputAreaProps> = ({
     setText('');
     textRef.current = '';
     lastSentRef.current = '';
-
-    if (textareaRef.current) {
-      textareaRef.current.value = '';
-    }
   }, [addHistoryEntry, onSendCommand, regexFilterEnabled, regexFilterMarkdown, sendDiffImmediate, setText]);
 
   const processTextValue = useCallback((rawValue: string, source?: HTMLTextAreaElement | null) => {
@@ -227,12 +223,17 @@ export const InputArea: React.FC<InputAreaProps> = ({
     }
     pendingDiffTextRef.current = null;
 
-    setText('');
-    textRef.current = '';
-    lastSentRef.current = '';
-    if (textareaRef.current) {
-      textareaRef.current.value = '';
+    // Only clear text if user hasn't typed unsent content.
+    // If user is actively typing (text differs from what was last sent),
+    // preserve the text but reset the sent-state so it will be re-sent.
+    // This prevents the "first character swallowed" bug where a clear
+    // command arrives while the user is typing.
+    const hasUnsentContent = textRef.current !== '' && textRef.current !== lastSentRef.current;
+    if (!hasUnsentContent) {
+      setText('');
+      textRef.current = '';
     }
+    lastSentRef.current = '';
     setResetNotice(true);
 
     const timer = window.setTimeout(() => {
@@ -421,7 +422,6 @@ export const InputArea: React.FC<InputAreaProps> = ({
           className="glass-input"
           value={text}
           onInput={handleInput}
-          onChange={handleInput}
           onKeyDown={handleKeyDown}
           onCompositionStart={handleCompositionStart}
           onCompositionEnd={handleCompositionEnd}
