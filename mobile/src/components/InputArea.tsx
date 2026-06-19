@@ -221,37 +221,31 @@ export const InputArea: React.FC<InputAreaProps> = ({
   useEffect(() => {
     if (inputResetVersion === 0) return;
 
-    // Cancel pending debounced diff — but BEFORE nulling pendingDiffTextRef,
-    // capture what was queued so we can re-send it if the guard preserves text.
+    // Cancel pending debounced diff.
     if (diffTimerRef.current !== null) {
       clearTimeout(diffTimerRef.current);
       diffTimerRef.current = null;
     }
-    const strandedDiffText = pendingDiffTextRef.current;
     pendingDiffTextRef.current = null;
 
-    // Only clear text if user hasn't typed unsent content.
-    // If user is actively typing (text differs from what was last sent),
-    // preserve the text but reset the sent-state so it will be re-sent.
-    // This prevents the "first character swallowed" bug where a clear
-    // command arrives while the user is typing.
+    // Always preserve text and force a full resync.
     //
-    // Also check strandedDiffText: if a diff was pending in the debounce
-    // timer (sendDiff queued it but the timer hadn't fired yet), the text
-    // exists on screen but was never sent to PC. We must preserve it.
-    const hasUnsentContent =
-      (textRef.current !== '' && textRef.current !== lastSentRef.current) ||
-      (strandedDiffText !== null && strandedDiffText !== '' && strandedDiffText !== lastSentRef.current);
-    if (!hasUnsentContent) {
-      setText('');
-      textRef.current = '';
-    }
+    // The "clear" message from the PC means the PC's state is out of sync
+    // — either the user switched foreground apps (focus change) or the PC
+    // dropped a diff because EnsureInputTarget() failed. In BOTH cases,
+    // preserving the mobile text and resending is correct:
+    //
+    //  • Focus change: the text goes to the new foreground window (better
+    //    UX — the user doesn't lose what they already typed).
+    //  • Diff dropped: the text is resynced so the PC finally receives it.
+    //
+    // Previous versions cleared the text when textRef === lastSentRef
+    // (i.e. the diff was "already sent" from mobile's perspective). But
+    // that's exactly the dropped-diff case: the diff was sent over the
+    // wire but never applied on the PC. Clearing destroyed the text
+    // permanently — the "first word swallowed" bug.
     lastSentRef.current = '';
 
-    // Re-send any stranded content that was in the cancelled debounce.
-    // After lastSentRef is reset to '', flushDiffToCommand computes
-    // diff('', textRef.current) = full insert, correctly delivering
-    // the stranded text to PC.
     if (textRef.current !== '') {
       flushDiffToCommand(textRef.current);
     }

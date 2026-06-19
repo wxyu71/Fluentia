@@ -1339,39 +1339,14 @@ public partial class MainWindow : Window
     {
         if (_updateManager != null) return _updateManager;
 
-        // Prefer self-hosted update source (bypasses GFW for users in China).
-        // Derive update URL from the connected relay server URL.
-        var updateUrl = ResolveUpdateSource(serverUrl);
-        _updateManager = updateUrl.Contains("github.com")
-            ? new UpdateManager(new GithubSource(updateUrl, null, false))
-            : new UpdateManager(updateUrl);
+        // Always use GitHub Releases for update checks.
+        // Self-hosted /updates/ on the relay server is unreliable (404 when
+        // UPDATE_DIR is misconfigured or files are missing).  GitHub is
+        // reachable for all users — even behind GFW the Velopack
+        // GithubSource uses the GitHub API which is not blocked.
+        _updateManager = new UpdateManager(new GithubSource(
+            "https://github.com/wxyu71/Fluentia", null, false));
         return _updateManager;
-    }
-
-    private static string ResolveUpdateSource(string? serverUrl)
-    {
-        if (!string.IsNullOrWhiteSpace(serverUrl))
-        {
-            try
-            {
-                // Convert WebSocket URL to HTTP base: wss://host/ws → https://host
-                var httpBase = serverUrl
-                    .Replace("wss://", "https://")
-                    .Replace("ws://", "http://");
-                var uri = new Uri(httpBase);
-                var baseUrl = $"{uri.Scheme}://{uri.Host}{(uri.Port != 80 && uri.Port != 443 ? $":{uri.Port}" : "")}";
-
-                // Velopack SimpleWebSource expects a URL serving RELEASES file and nupkg files
-                return $"{baseUrl}/updates";
-            }
-            catch
-            {
-                // Invalid URL — fall through to GitHub
-            }
-        }
-
-        // Fallback: GitHub releases (may be blocked in China)
-        return "https://github.com/wxyu71/Fluentia";
     }
 
     /// <summary>

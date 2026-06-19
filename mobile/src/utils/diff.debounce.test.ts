@@ -205,9 +205,9 @@ describe('Clear-during-debounce race — stranded diff protection', () => {
 
   /**
    * Simulates the FIXED clear effect from InputArea.tsx:
-   * 1. Captures strandedDiffText before nulling pendingDiffTextRef
-   * 2. Guards with both textRef and strandedDiffText
-   * 3. Re-sends stranded content after resetting lastSentRef
+   * 1. Cancels pending debounce timer
+   * 2. Always preserves text (never clears)
+   * 3. Resets lastSentRef and resends if text exists
    */
   function simulateClearEffect(opts: {
     textRef: string;
@@ -223,23 +223,13 @@ describe('Clear-during-debounce race — stranded diff protection', () => {
       clearTimeout(opts.timer);
       opts.timer = null;
     }
-    // Capture stranded text before nulling
-    const strandedDiffText = opts.pendingDiffText;
     opts.pendingDiffText = null;
 
-    // Guard: check both textRef and strandedDiffText
-    const hasUnsentContent =
-      (opts.textRef !== '' && opts.textRef !== opts.lastSentRef) ||
-      (strandedDiffText !== null && strandedDiffText !== '' && strandedDiffText !== opts.lastSentRef);
-
-    if (!hasUnsentContent) {
-      opts.setText('');
-      opts.textRef = '';
-    }
+    // Always preserve text and force full resync.
+    // Never clear text — it's always resent to the PC.
     opts.lastSentRef = '';
     opts.setLastSentRef?.('');
 
-    // Re-send stranded content
     if (opts.textRef !== '') {
       opts.flushToCommand(opts.textRef);
     }
@@ -327,7 +317,7 @@ describe('Clear-during-debounce race — stranded diff protection', () => {
     expect(text).toBe('');
   });
 
-  it('clear after diff already sent correctly clears', () => {
+  it('clear after diff already sent preserves and resends text', () => {
     const sent: Array<{ backspace: number; insert: string }> = [];
     let lastSent = '';
     let text = '';
@@ -344,7 +334,7 @@ describe('Clear-during-debounce race — stranded diff protection', () => {
     text = 'h';
     lastSent = 'h';
 
-    // Clear arrives — text matches lastSent, so no unsent content
+    // Clear arrives — text is always preserved (even when textRef === lastSentRef)
     simulateClearEffect({
       textRef: text,
       lastSentRef: lastSent,
@@ -352,11 +342,14 @@ describe('Clear-during-debounce race — stranded diff protection', () => {
       timer: null,
       flushToCommand,
       setText: (v) => { text = v; },
+      setLastSentRef: (v) => { lastSent = v; },
     });
 
-    // No additional diffs sent, text cleared
-    expect(sent.length).toBe(0);
-    expect(text).toBe('');
+    // Text is preserved and resent: after lastSent reset to '',
+    // diff('', 'h') = insert 'h'
+    expect(sent.length).toBe(1);
+    expect(sent[0]).toEqual({ backspace: 0, insert: 'h' });
+    expect(text).toBe('h');
   });
 
   it('clear preserves unsent text typed after last diff', () => {
