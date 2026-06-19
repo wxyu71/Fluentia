@@ -139,6 +139,7 @@ public partial class MainWindow : Window
     private IntPtr _lastExternalForegroundWindow;
     private bool _pendingClearOnReconnect;
     private string _appliedInputBuffer = string.Empty;
+    private string? _pendingDiffText;  // Queued diff when EnsureInputTarget() fails
     private bool _manualInputTargetRecoveryNotified;
 
     private static readonly string SettingsFile = Path.Combine(
@@ -229,6 +230,7 @@ public partial class MainWindow : Window
             {
                 _handshakePending = false;
                 _inputTargetWindow = IntPtr.Zero;
+                _pendingDiffText = null;
                 CancelOngoingTransfers();
             }
 
@@ -409,14 +411,45 @@ public partial class MainWindow : Window
             if (_devMode) AppendLog($"Error: {error}");
         });
 
-        _roomManager.OnVersionIncompatible += (error) => Dispatcher.BeginInvoke(() =>
+        _roomManager.OnVersionIncompatible += (error) => Dispatcher.BeginInvoke(async () =>
         {
             _mobileConnected = false;
             _handshakePending = false;
             _inputTargetWindow = IntPtr.Zero;
             SetStatus(error, false);
             RefreshVisualState();
-            MessageBox.Show(error, L("VersionIncompatibleTitle"), MessageBoxButton.OK, MessageBoxImage.Warning);
+
+            // Attempt auto-update when version is incompatible
+            try
+            {
+                var mgr = GetUpdateManager(ServerUrlBox?.Text?.Trim());
+                if (mgr.IsInstalled)
+                {
+                    SetStatus(L("StatusCheckingUpdate"), false);
+                    var info = await mgr.CheckForUpdatesAsync();
+                    if (info != null)
+                    {
+                        SetStatus(L("StatusUpdateAvailable"), false);
+                        await mgr.DownloadUpdatesAsync(info);
+                        var result = System.Windows.MessageBox.Show(
+                            L("StatusUpdateReady"),
+                            L("AppName"),
+                            MessageBoxButton.YesNo,
+                            MessageBoxImage.Information);
+                        if (result == MessageBoxResult.Yes)
+                        {
+                            mgr.ApplyUpdatesAndRestart(info);
+                            return;
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // Update check failed — fall through to show the error MessageBox
+            }
+
+            System.Windows.MessageBox.Show(error, L("VersionIncompatibleTitle"), MessageBoxButton.OK, MessageBoxImage.Warning);
         });
     }
 
@@ -580,8 +613,23 @@ public partial class MainWindow : Window
 
     private void FlushBufferedDiff(string nextText)
     {
+        // Flush any diff that was queued because EnsureInputTarget() previously failed.
+        // Apply it to the buffer so that subsequent diffs are computed against the
+        // correct baseline (not a stale buffer that never received the queued text).
+        if (_pendingDiffText != null)
+        {
+            var pending = _pendingDiffText;
+            _pendingDiffText = null;
+            _appliedInputBuffer = ApplyDiffToBuffer(_appliedInputBuffer, 0, pending);
+        }
+
         if (!EnsureInputTarget())
         {
+            // No valid input target yet — queue this diff for later.
+            // We store the raw nextText (the mobile's desired end state),
+            // NOT a delta. When flushed, it will be applied relative to
+            // whatever _appliedInputBuffer is at that point.
+            _pendingDiffText = nextText;
             return;
         }
 
@@ -613,10 +661,17 @@ public partial class MainWindow : Window
                 break;
 
             case "enter":
+                // Flush any queued diff before sending Enter
+                if (_pendingDiffText != null)
+                {
+                    _appliedInputBuffer = ApplyDiffToBuffer(_appliedInputBuffer, 0, _pendingDiffText);
+                    _pendingDiffText = null;
+                }
                 if (!EnsureInputTarget()) return;
                 TextInjector.SendEnter();
                 _inputTargetWindow = IntPtr.Zero;
                 _appliedInputBuffer = string.Empty;
+                _pendingDiffText = null;
                 break;
 
             case "backspace":
@@ -658,6 +713,7 @@ public partial class MainWindow : Window
             case "clear":
                 _inputTargetWindow = IntPtr.Zero;
                 _appliedInputBuffer = string.Empty;
+                _pendingDiffText = null;
                 break;
 
             case "file_start":
@@ -1282,10 +1338,43 @@ public partial class MainWindow : Window
     private bool _updateCheckInProgress;
     private bool _portableUpdateNotified;
 
-    private UpdateManager GetUpdateManager()
+    private UpdateManager GetUpdateManager(string? serverUrl = null)
     {
-        _updateManager ??= new UpdateManager(new GithubSource("https://github.com/wxyu71/Fluentia", null, false));
+        if (_updateManager != null) return _updateManager;
+
+        // Prefer self-hosted update source (bypasses GFW for users in China).
+        // Derive update URL from the connected relay server URL.
+        var updateUrl = ResolveUpdateSource(serverUrl);
+        _updateManager = updateUrl.Contains("github.com")
+            ? new UpdateManager(new GithubSource(updateUrl, null, false))
+            : new UpdateManager(updateUrl);
         return _updateManager;
+    }
+
+    private static string ResolveUpdateSource(string? serverUrl)
+    {
+        if (!string.IsNullOrWhiteSpace(serverUrl))
+        {
+            try
+            {
+                // Convert WebSocket URL to HTTP base: wss://host/ws → https://host
+                var httpBase = serverUrl
+                    .Replace("wss://", "https://")
+                    .Replace("ws://", "http://");
+                var uri = new Uri(httpBase);
+                var baseUrl = $"{uri.Scheme}://{uri.Host}{(uri.Port != 80 && uri.Port != 443 ? $":{uri.Port}" : "")}";
+
+                // Velopack SimpleWebSource expects a URL serving RELEASES file and nupkg files
+                return $"{baseUrl}/updates";
+            }
+            catch
+            {
+                // Invalid URL — fall through to GitHub
+            }
+        }
+
+        // Fallback: GitHub releases (may be blocked in China)
+        return "https://github.com/wxyu71/Fluentia";
     }
 
     /// <summary>
@@ -1296,7 +1385,7 @@ public partial class MainWindow : Window
     {
         try
         {
-            var mgr = GetUpdateManager();
+            var mgr = GetUpdateManager(ServerUrlBox?.Text?.Trim());
             if (!mgr.IsInstalled)
             {
                 // Portable install — show a one-time tray notification
@@ -1359,7 +1448,7 @@ public partial class MainWindow : Window
             UpdateManager mgr;
             try
             {
-                mgr = GetUpdateManager();
+                mgr = GetUpdateManager(ServerUrlBox?.Text?.Trim());
             }
             catch (Exception ex)
             {

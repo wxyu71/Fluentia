@@ -45,6 +45,7 @@ type ServerConfig struct {
 	MaxConnections   int      // [M4] Max concurrent WebSocket connections (0 = unlimited)
 	TLSCertFile      string   // [L5] TLS certificate file path
 	TLSKeyFile       string   // [L5] TLS key file path
+	UpdateDir        string   // Directory serving Velopack update files (RELEASES + nupkg)
 }
 
 func loadConfig() ServerConfig {
@@ -65,6 +66,7 @@ func loadConfig() ServerConfig {
 	cfg.MaxConnections = envInt("MAX_CONNECTIONS", 0)
 	cfg.TLSCertFile = os.Getenv("TLS_CERT_FILE")
 	cfg.TLSKeyFile = os.Getenv("TLS_KEY_FILE")
+	cfg.UpdateDir = os.Getenv("UPDATE_DIR")
 
 	if tp := os.Getenv("TRUSTED_PROXIES"); tp != "" {
 		for _, cidr := range strings.Split(tp, ",") {
@@ -317,6 +319,17 @@ func main() {
 			_, _ = w.Write(data)
 		}
 	})
+
+	// Serve Velopack update files (RELEASES, nupkg, Setup.exe)
+	if cfg.UpdateDir != "" {
+		if info, err := os.Stat(cfg.UpdateDir); err == nil && info.IsDir() {
+			updateFs := http.FileServer(http.Dir(cfg.UpdateDir))
+			mux.Handle("/updates/", http.StripPrefix("/updates/", updateFs))
+			log.Printf("Serving update files from %s at /updates/", cfg.UpdateDir)
+		} else {
+			log.Printf("WARNING: UPDATE_DIR=%q not found or not a directory — update serving disabled", cfg.UpdateDir)
+		}
+	}
 
 	// Serve mobile web static files
 	if info, err := os.Stat(cfg.StaticDir); err == nil && info.IsDir() {
