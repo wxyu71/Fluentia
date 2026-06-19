@@ -67,7 +67,7 @@ Version is tracked consistently across **5 files**:
 | `client/Fluentia/Fluentia.csproj` | `<Version>`, `<AssemblyVersion>`, `<FileVersion>` |
 | `client/Fluentia/Models/Messages.cs` | `ProtocolVersion` |
 
-**Current version: 1.7.7**
+**Current version: 1.7.8**
 
 CI enforces version consistency across all files. The `release.yml` workflow automates version bumping via PR.
 
@@ -89,7 +89,7 @@ Triggers on push/PR to `main`. Path-filtered to only run relevant jobs:
 
 ### 2. `release.yml` — Version Bump
 
-Manual workflow dispatch. Input: version string (e.g., `1.7.7`).
+Manual workflow dispatch. Input: version string (e.g., `1.7.8`).
 
 - Bumps version in all 5 files + README MIN_VERSION table
 - Creates PR via `peter-evans/create-pull-request`
@@ -162,7 +162,7 @@ Desktop session state is stored locally at `%AppData%/Fluentia/` and protected w
 
 Production runs as a Podman Quadlet container on the `ccbig` server:
 
-- **Image**: `ghcr.io/wxyu71/fluentia:1.7.7`
+- **Image**: `ghcr.io/wxyu71/fluentia:1.7.8`
 - **Domain**: `f.106918.xyz`
 - **Port**: `127.0.0.1:8778`
 - **Data**: `~/data/fluentia/` → `/app/data`
@@ -172,7 +172,7 @@ Production runs as a Podman Quadlet container on the `ccbig` server:
 
 ### Tag Format
 
-GHCR tags have **NO `v` prefix** (e.g., `1.7.7`, not `v1.7.7`). Renovate handles this correctly.
+GHCR tags have **NO `v` prefix** (e.g., `1.7.8`, not `v1.7.8`). Renovate handles this correctly.
 
 ## Known Pitfalls
 

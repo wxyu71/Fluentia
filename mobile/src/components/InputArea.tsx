@@ -198,8 +198,13 @@ export const InputArea: React.FC<InputAreaProps> = ({
     // Use immediate send to flush the diff right away — some Android
     // browsers/voice keyboards only fire compositionEnd (not onInput),
     // so the debounced sendDiff may not have fired yet.
-    sendDiffImmediate(e.currentTarget.value);
-  }, [sendDiffImmediate]);
+    // Also sync textRef and state so the clear-effect guard sees
+    // the composed text (prevents first-char swallow with IME input).
+    const value = e.currentTarget.value;
+    textRef.current = value;
+    setText(value);
+    sendDiffImmediate(value);
+  }, [sendDiffImmediate, setText]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey && !isComposingRef.current) {
@@ -216,11 +221,13 @@ export const InputArea: React.FC<InputAreaProps> = ({
   useEffect(() => {
     if (inputResetVersion === 0) return;
 
-    // Cancel pending debounced diff
+    // Cancel pending debounced diff — but BEFORE nulling pendingDiffTextRef,
+    // capture what was queued so we can re-send it if the guard preserves text.
     if (diffTimerRef.current !== null) {
       clearTimeout(diffTimerRef.current);
       diffTimerRef.current = null;
     }
+    const strandedDiffText = pendingDiffTextRef.current;
     pendingDiffTextRef.current = null;
 
     // Only clear text if user hasn't typed unsent content.
@@ -228,12 +235,27 @@ export const InputArea: React.FC<InputAreaProps> = ({
     // preserve the text but reset the sent-state so it will be re-sent.
     // This prevents the "first character swallowed" bug where a clear
     // command arrives while the user is typing.
-    const hasUnsentContent = textRef.current !== '' && textRef.current !== lastSentRef.current;
+    //
+    // Also check strandedDiffText: if a diff was pending in the debounce
+    // timer (sendDiff queued it but the timer hadn't fired yet), the text
+    // exists on screen but was never sent to PC. We must preserve it.
+    const hasUnsentContent =
+      (textRef.current !== '' && textRef.current !== lastSentRef.current) ||
+      (strandedDiffText !== null && strandedDiffText !== '' && strandedDiffText !== lastSentRef.current);
     if (!hasUnsentContent) {
       setText('');
       textRef.current = '';
     }
     lastSentRef.current = '';
+
+    // Re-send any stranded content that was in the cancelled debounce.
+    // After lastSentRef is reset to '', flushDiffToCommand computes
+    // diff('', textRef.current) = full insert, correctly delivering
+    // the stranded text to PC.
+    if (textRef.current !== '') {
+      flushDiffToCommand(textRef.current);
+    }
+
     setResetNotice(true);
 
     const timer = window.setTimeout(() => {
@@ -241,7 +263,7 @@ export const InputArea: React.FC<InputAreaProps> = ({
     }, 2200);
 
     return () => window.clearTimeout(timer);
-  }, [inputResetVersion, setText]);
+  }, [inputResetVersion, setText, flushDiffToCommand]);
 
   // Cleanup debounce timer on unmount
   useEffect(() => {

@@ -193,3 +193,199 @@ describe('Diff debounce — coalescing rapid keystrokes', () => {
     expect(sent[1]).toEqual({ backspace: 0, insert: ' world' });
   });
 });
+
+describe('Clear-during-debounce race — stranded diff protection', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /**
+   * Simulates the FIXED clear effect from InputArea.tsx:
+   * 1. Captures strandedDiffText before nulling pendingDiffTextRef
+   * 2. Guards with both textRef and strandedDiffText
+   * 3. Re-sends stranded content after resetting lastSentRef
+   */
+  function simulateClearEffect(opts: {
+    textRef: string;
+    lastSentRef: string;
+    pendingDiffText: string | null;
+    timer: ReturnType<typeof setTimeout> | null;
+    flushToCommand: (text: string) => void;
+    setText: (text: string) => void;
+    setLastSentRef?: (value: string) => void;
+  }) {
+    // Cancel timer (like the effect does)
+    if (opts.timer !== null) {
+      clearTimeout(opts.timer);
+      opts.timer = null;
+    }
+    // Capture stranded text before nulling
+    const strandedDiffText = opts.pendingDiffText;
+    opts.pendingDiffText = null;
+
+    // Guard: check both textRef and strandedDiffText
+    const hasUnsentContent =
+      (opts.textRef !== '' && opts.textRef !== opts.lastSentRef) ||
+      (strandedDiffText !== null && strandedDiffText !== '' && strandedDiffText !== opts.lastSentRef);
+
+    if (!hasUnsentContent) {
+      opts.setText('');
+      opts.textRef = '';
+    }
+    opts.lastSentRef = '';
+    opts.setLastSentRef?.('');
+
+    // Re-send stranded content
+    if (opts.textRef !== '') {
+      opts.flushToCommand(opts.textRef);
+    }
+
+    return { textRef: opts.textRef, lastSentRef: opts.lastSentRef };
+  }
+
+  it('clear during debounce re-sends stranded diff (the fix)', () => {
+    const sent: Array<{ backspace: number; insert: string }> = [];
+    let lastSent = '';
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let pending: string | null = null;
+    let text = '';
+
+    const flushToCommand = (targetText: string) => {
+      const diff = computeDiff(lastSent, targetText);
+      if (diff.backspace > 0 || diff.insert) {
+        sent.push(diff);
+      }
+      lastSent = targetText;
+    };
+
+    const sendDiff = (newText: string) => {
+      if (timer !== null) clearTimeout(timer);
+      pending = newText;
+      timer = setTimeout(() => {
+        timer = null;
+        const p = pending;
+        pending = null;
+        if (p === null) return;
+        flushToCommand(p);
+      }, DIFF_DEBOUNCE_MS);
+    };
+
+    // User types "h" on mobile
+    text = 'h';
+    sendDiff('h');
+
+    // Timer is pending, no diff sent yet
+    expect(sent.length).toBe(0);
+    expect(pending).toBe('h');
+
+    // Clear arrives from PC (focus change) — BEFORE timer fires
+    simulateClearEffect({
+      textRef: text,
+      lastSentRef: lastSent,
+      pendingDiffText: pending,
+      timer,
+      flushToCommand,
+      setText: (v) => { text = v; },
+    });
+
+    // After the fix: the stranded diff was re-sent immediately
+    expect(sent.length).toBe(1);
+    expect(sent[0]).toEqual({ backspace: 0, insert: 'h' });
+    // Text is preserved on screen
+    expect(text).toBe('h');
+  });
+
+  it('clear with no pending diff and no text correctly clears', () => {
+    const sent: Array<{ backspace: number; insert: string }> = [];
+    let lastSent = '';
+    let text = '';
+
+    const flushToCommand = (targetText: string) => {
+      const diff = computeDiff(lastSent, targetText);
+      if (diff.backspace > 0 || diff.insert) {
+        sent.push(diff);
+      }
+      lastSent = targetText;
+    };
+
+    // Clear arrives when user hasn't typed anything
+    simulateClearEffect({
+      textRef: text,
+      lastSentRef: lastSent,
+      pendingDiffText: null,
+      timer: null,
+      flushToCommand,
+      setText: (v) => { text = v; },
+    });
+
+    // Nothing sent, text stays empty
+    expect(sent.length).toBe(0);
+    expect(text).toBe('');
+  });
+
+  it('clear after diff already sent correctly clears', () => {
+    const sent: Array<{ backspace: number; insert: string }> = [];
+    let lastSent = '';
+    let text = '';
+
+    const flushToCommand = (targetText: string) => {
+      const diff = computeDiff(lastSent, targetText);
+      if (diff.backspace > 0 || diff.insert) {
+        sent.push(diff);
+      }
+      lastSent = targetText;
+    };
+
+    // User typed "h" and diff was already sent
+    text = 'h';
+    lastSent = 'h';
+
+    // Clear arrives — text matches lastSent, so no unsent content
+    simulateClearEffect({
+      textRef: text,
+      lastSentRef: lastSent,
+      pendingDiffText: null,
+      timer: null,
+      flushToCommand,
+      setText: (v) => { text = v; },
+    });
+
+    // No additional diffs sent, text cleared
+    expect(sent.length).toBe(0);
+    expect(text).toBe('');
+  });
+
+  it('clear preserves unsent text typed after last diff', () => {
+    const sent: Array<{ backspace: number; insert: string }> = [];
+    // Use shared state object so simulateClearEffect's lastSentRef reset is visible
+    const state = { lastSent: 'he', text: 'hel' };
+
+    const flushToCommand = (targetText: string) => {
+      const diff = computeDiff(state.lastSent, targetText);
+      if (diff.backspace > 0 || diff.insert) {
+        sent.push(diff);
+      }
+      state.lastSent = targetText;
+    };
+
+    // Clear arrives — text != lastSent, unsent content exists
+    simulateClearEffect({
+      textRef: state.text,
+      lastSentRef: state.lastSent,
+      pendingDiffText: null,
+      timer: null,
+      flushToCommand,
+      setText: (v) => { state.text = v; },
+      setLastSentRef: (v) => { state.lastSent = v; },
+    });
+
+    // Stranded text re-sent: after lastSent reset to '', diff('','hel') = insert 'hel'
+    expect(sent.length).toBe(1);
+    expect(sent[0]).toEqual({ backspace: 0, insert: 'hel' });
+    expect(state.text).toBe('hel');
+  });
+});
