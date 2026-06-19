@@ -100,8 +100,8 @@ func TestProtocolVersion(t *testing.T) {
 	if ProtocolVersion == "" {
 		t.Fatal("ProtocolVersion should not be empty")
 	}
-	if ProtocolVersion != "1.7.6" {
-		t.Errorf("expected version 1.7.4, got %s", ProtocolVersion)
+	if ProtocolVersion != "1.7.8" {
+		t.Errorf("expected version 1.7.8, got %s", ProtocolVersion)
 	}
 }
 
