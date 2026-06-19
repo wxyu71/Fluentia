@@ -139,8 +139,8 @@ public partial class MainWindow : Window
     private IntPtr _lastExternalForegroundWindow;
     private bool _pendingClearOnReconnect;
     private string _appliedInputBuffer = string.Empty;
-    private string? _pendingDiffText;  // Queued diff when EnsureInputTarget() fails
     private bool _manualInputTargetRecoveryNotified;
+    private bool _diffDroppedSinceLastSync;  // Track if we dropped a diff and need mobile resync
 
     private static readonly string SettingsFile = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
@@ -230,7 +230,6 @@ public partial class MainWindow : Window
             {
                 _handshakePending = false;
                 _inputTargetWindow = IntPtr.Zero;
-                _pendingDiffText = null;
                 CancelOngoingTransfers();
             }
 
@@ -613,25 +612,19 @@ public partial class MainWindow : Window
 
     private void FlushBufferedDiff(string nextText)
     {
-        // Flush any diff that was queued because EnsureInputTarget() previously failed.
-        // Apply it to the buffer so that subsequent diffs are computed against the
-        // correct baseline (not a stale buffer that never received the queued text).
-        if (_pendingDiffText != null)
-        {
-            var pending = _pendingDiffText;
-            _pendingDiffText = null;
-            _appliedInputBuffer = ApplyDiffToBuffer(_appliedInputBuffer, 0, pending);
-        }
-
         if (!EnsureInputTarget())
         {
-            // No valid input target yet — queue this diff for later.
-            // We store the raw nextText (the mobile's desired end state),
-            // NOT a delta. When flushed, it will be applied relative to
-            // whatever _appliedInputBuffer is at that point.
-            _pendingDiffText = nextText;
+            // Diff dropped — notify mobile to resync so its next diff is a full
+            // insert (not a delta from a state the PC never received).
+            if (!_diffDroppedSinceLastSync)
+            {
+                _diffDroppedSinceLastSync = true;
+                _ = _roomManager.SendToMobileAsync(JsonSerializer.Serialize(new { type = "clear" }));
+            }
             return;
         }
+
+        _diffDroppedSinceLastSync = false;
 
         // Prefix-only optimization: find longest common prefix, then
         // backspace everything after it and insert the new remainder.
@@ -661,17 +654,10 @@ public partial class MainWindow : Window
                 break;
 
             case "enter":
-                // Flush any queued diff before sending Enter
-                if (_pendingDiffText != null)
-                {
-                    _appliedInputBuffer = ApplyDiffToBuffer(_appliedInputBuffer, 0, _pendingDiffText);
-                    _pendingDiffText = null;
-                }
                 if (!EnsureInputTarget()) return;
                 TextInjector.SendEnter();
                 _inputTargetWindow = IntPtr.Zero;
                 _appliedInputBuffer = string.Empty;
-                _pendingDiffText = null;
                 break;
 
             case "backspace":
@@ -713,7 +699,6 @@ public partial class MainWindow : Window
             case "clear":
                 _inputTargetWindow = IntPtr.Zero;
                 _appliedInputBuffer = string.Empty;
-                _pendingDiffText = null;
                 break;
 
             case "file_start":
@@ -794,6 +779,18 @@ public partial class MainWindow : Window
 
         if (currentForeground == _windowHandle)
         {
+            // Fluentia is foreground (e.g. Hide() hasn't completed yet).
+            // If we have no input target, try the last known external window
+            // instead of dropping the diff.
+            if (_inputTargetWindow == IntPtr.Zero && _lastExternalForegroundWindow != IntPtr.Zero
+                && IsWindow(_lastExternalForegroundWindow))
+            {
+                _inputTargetWindow = _lastExternalForegroundWindow;
+                CancelInputTargetRecovery();
+                _manualInputTargetRecoveryNotified = false;
+                SetStatus(L("StatusEncrypted"), true);
+                return true;
+            }
             BeginInputTargetRecovery();
             return false;
         }
