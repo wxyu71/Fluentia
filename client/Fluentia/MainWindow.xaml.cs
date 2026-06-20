@@ -666,8 +666,14 @@ public partial class MainWindow : Window
                 if (!EnsureInputTarget()) return;
                 DebugLogger.Log($"ENTER: injecting Enter, resetting buffer from \"{TruncateForLog(_appliedInputBuffer)}\"");
                 TextInjector.SendEnter();
-                _inputTargetWindow = IntPtr.Zero;
                 _appliedInputBuffer = string.Empty;
+                // NOTE: intentionally NOT clearing _inputTargetWindow here.
+                // The user just pressed Enter — they're still in the same
+                // target window. Clearing it forces EnsureInputTarget to
+                // re-establish the target, which can fail during the brief
+                // focus transition after SendEnter, dropping the first
+                // diff batch of the next paragraph (the "first-char swallow"
+                // bug). Keeping the window handle avoids this race.
                 break;
 
             case "backspace":
