@@ -605,6 +605,7 @@ public partial class MainWindow : Window
             }
             catch (Exception ex)
             {
+                DebugLogger.Log($"DIFF LOOP: unhandled {ex.GetType().Name}: {ex.Message}");
                 if (_devMode)
                 {
                     _ = Dispatcher.BeginInvoke(() => AppendLog($"Injection error: {ex.Message}"));
@@ -622,37 +623,50 @@ public partial class MainWindow : Window
 
     private void FlushBufferedDiff(string nextText)
     {
-        if (!EnsureInputTarget())
+        try
         {
-            // Diff dropped — reset PC state and tell mobile to resync.
-            // Without resetting _appliedInputBuffer, the PC's baseline would
-            // carry stale text from a previous window, causing the mobile's
-            // resync diff to be applied on top of garbage (first-char swallow).
-            DebugLogger.Log($"FLUSH: target FAILED, dropping diff. Resetting buffer and sending clear to mobile.");
+            if (!EnsureInputTarget())
+            {
+                // Diff dropped — reset PC state and tell mobile to resync.
+                // Without resetting _appliedInputBuffer, the PC's baseline would
+                // carry stale text from a previous window, causing the mobile's
+                // resync diff to be applied on top of garbage (first-char swallow).
+                DebugLogger.Log($"FLUSH: target FAILED, dropping diff. Resetting buffer and sending clear to mobile.");
+                _appliedInputBuffer = string.Empty;
+                _ = _roomManager.SendToMobileAsync(JsonSerializer.Serialize(new { type = "clear" }));
+                return;
+            }
+
+            // Prefix-only optimization: find longest common prefix, then
+            // backspace everything after it and insert the new remainder.
+            // We intentionally do NOT use suffix matching — it is incorrect
+            // when strings contain repeated patterns (e.g. "ABAB"→"BAB"
+            // would match suffix "ABA" and produce wrong results).
+            // The mobile diff engine also uses prefix-only, so both sides
+            // are consistent.
+            var prefix = 0;
+            var limit = Math.Min(_appliedInputBuffer.Length, nextText.Length);
+            while (prefix < limit && _appliedInputBuffer[prefix] == nextText[prefix])
+            {
+                prefix++;
+            }
+
+            var backspace = _appliedInputBuffer.Length - prefix;
+            var insert = nextText[prefix..];
+            DebugLogger.Log($"FLUSH: buffer=\"{TruncateForLog(_appliedInputBuffer)}\" -> next=\"{TruncateForLog(nextText)}\", prefix={prefix}, bs={backspace}, insert=\"{TruncateForLog(insert)}\"");
+            TextInjector.ApplyDiff(backspace, insert);
+            _appliedInputBuffer = nextText;
+        }
+        catch (Exception ex)
+        {
+            // An exception here would leave _appliedInputBuffer stale, causing
+            // the next diff to compute against a wrong baseline (first-char
+            // swallow).  Reset everything and ask mobile to resync.
+            DebugLogger.Log($"FLUSH: EXCEPTION {ex.GetType().Name}: {ex.Message}. Resetting target+buffer, sending clear.");
+            _inputTargetWindow = IntPtr.Zero;
             _appliedInputBuffer = string.Empty;
             _ = _roomManager.SendToMobileAsync(JsonSerializer.Serialize(new { type = "clear" }));
-            return;
         }
-
-        // Prefix-only optimization: find longest common prefix, then
-        // backspace everything after it and insert the new remainder.
-        // We intentionally do NOT use suffix matching — it is incorrect
-        // when strings contain repeated patterns (e.g. "ABAB"→"BAB"
-        // would match suffix "ABA" and produce wrong results).
-        // The mobile diff engine also uses prefix-only, so both sides
-        // are consistent.
-        var prefix = 0;
-        var limit = Math.Min(_appliedInputBuffer.Length, nextText.Length);
-        while (prefix < limit && _appliedInputBuffer[prefix] == nextText[prefix])
-        {
-            prefix++;
-        }
-
-        var backspace = _appliedInputBuffer.Length - prefix;
-        var insert = nextText[prefix..];
-        DebugLogger.Log($"FLUSH: buffer=\"{TruncateForLog(_appliedInputBuffer)}\" -> next=\"{TruncateForLog(nextText)}\", prefix={prefix}, bs={backspace}, insert=\"{TruncateForLog(insert)}\"");
-        TextInjector.ApplyDiff(backspace, insert);
-        _appliedInputBuffer = nextText;
     }
 
     private void HandleInputCommand(InputCommand cmd)
