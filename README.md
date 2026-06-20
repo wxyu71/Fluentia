@@ -150,7 +150,7 @@ Environment variables in `docker-compose.yml`:
 | `IP_WHITELIST` | `false` | Enable IP-based access control |
 | `ALLOWED_IPS` | — | Comma-separated IPs/CIDRs |
 | `ALLOW_EMPTY_ORIGIN` | `true` | Allow WebSocket connections without Origin header (required for native desktop clients) |
-| `MIN_VERSION` | `1.7.10` | Minimum compatible client version enforced after handshake |
+| `MIN_VERSION` | `1.7.11` | Minimum compatible client version enforced after handshake |
 | `MAX_FILE_MB` | `100` | Max file size (-1=disabled, 0=unlimited) |
 | `SESSION_MAX_AGE_DAYS` | `7` | How long a session token remains reusable |
 | `SESSION_STORE_PATH` | `./data/sessions.json` | JSON file for session persistence across restarts |

@@ -140,7 +140,6 @@ public partial class MainWindow : Window
     private bool _pendingClearOnReconnect;
     private string _appliedInputBuffer = string.Empty;
     private bool _manualInputTargetRecoveryNotified;
-    private bool _diffDroppedSinceLastSync;  // Track if we dropped a diff and need mobile resync
 
     private static readonly string SettingsFile = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
@@ -614,17 +613,14 @@ public partial class MainWindow : Window
     {
         if (!EnsureInputTarget())
         {
-            // Diff dropped — notify mobile to resync so its next diff is a full
-            // insert (not a delta from a state the PC never received).
-            if (!_diffDroppedSinceLastSync)
-            {
-                _diffDroppedSinceLastSync = true;
-                _ = _roomManager.SendToMobileAsync(JsonSerializer.Serialize(new { type = "clear" }));
-            }
+            // Diff dropped — reset PC state and tell mobile to resync.
+            // Without resetting _appliedInputBuffer, the PC's baseline would
+            // carry stale text from a previous window, causing the mobile's
+            // resync diff to be applied on top of garbage (first-char swallow).
+            _appliedInputBuffer = string.Empty;
+            _ = _roomManager.SendToMobileAsync(JsonSerializer.Serialize(new { type = "clear" }));
             return;
         }
-
-        _diffDroppedSinceLastSync = false;
 
         // Prefix-only optimization: find longest common prefix, then
         // backspace everything after it and insert the new remainder.
@@ -835,6 +831,7 @@ public partial class MainWindow : Window
         }
 
         _inputTargetWindow = IntPtr.Zero;
+        _appliedInputBuffer = string.Empty;
         if (_devMode)
         {
             AppendLog("Foreground app changed, clearing mobile editor state.");
