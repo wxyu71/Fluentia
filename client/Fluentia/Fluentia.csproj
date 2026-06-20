@@ -13,10 +13,14 @@
     <AssemblyName>Fluentia</AssemblyName>
     <RootNamespace>Fluentia</RootNamespace>
     <ApplicationIcon>fluentia.ico</ApplicationIcon>
-    <Version>1.7.11</Version>
-    <AssemblyVersion>1.7.11.0</AssemblyVersion>
-    <FileVersion>1.7.11.0</FileVersion>
+    <Version>1.7.12</Version>
+    <AssemblyVersion>1.7.12.0</AssemblyVersion>
+    <FileVersion>1.7.12.0</FileVersion>
   </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Fluentia.Tests" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Sodium.Core" Version="1.4.0" />

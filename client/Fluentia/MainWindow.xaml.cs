@@ -153,6 +153,12 @@ public partial class MainWindow : Window
 
     private static string L(string key, params object[] args) => LocalizationService.Get(key, args);
 
+    private static string TruncateForLog(string? text, int maxLen = 40)
+    {
+        if (text == null) return "<null>";
+        return text.Length <= maxLen ? text : text[..maxLen] + $"…({text.Length})";
+    }
+
     public MainWindow()
     {
         InitializeComponent();
@@ -350,6 +356,7 @@ public partial class MainWindow : Window
             {
                 _pendingClearOnReconnect = false;
                 _appliedInputBuffer = string.Empty;
+                DebugLogger.Log("RECONNECT: sending pending clear to mobile");
                 _ = _roomManager.SendToMobileAsync(JsonSerializer.Serialize(new { type = "clear" }));
             }
         });
@@ -393,6 +400,7 @@ public partial class MainWindow : Window
                 return;
             }
 
+            DebugLogger.Log($"ENCRYPTED RX: type={cmd.Type}, count={cmd.Count}, text=\"{TruncateForLog(cmd.Text)}\"");
             _cmdChannel.Writer.TryWrite(cmd);
         };
 
@@ -538,6 +546,7 @@ public partial class MainWindow : Window
 
                 if (cmd.Type == "diff")
                 {
+                    DebugLogger.Log($"DIFF in: backspace={cmd.Count}, insert=\"{TruncateForLog(cmd.Text)}\", buffer=\"{TruncateForLog(_appliedInputBuffer)}\"");
                     var nextText = ApplyDiffToBuffer(_appliedInputBuffer, cmd.Count, cmd.Text);
 
                     while (true)
@@ -582,10 +591,12 @@ public partial class MainWindow : Window
                         }
                     }
 
+                    DebugLogger.Log($"DIFF batch done: nextText=\"{TruncateForLog(nextText)}\"");
                     FlushBufferedDiff(nextText);
                     continue;
                 }
 
+                DebugLogger.Log($"CMD: type={cmd.Type}" + (cmd.Type == "enter" ? "" : $", count={cmd.Count}, text=\"{TruncateForLog(cmd.Text)}\""));
                 HandleInputCommand(cmd);
             }
             catch (OperationCanceledException)
@@ -617,6 +628,7 @@ public partial class MainWindow : Window
             // Without resetting _appliedInputBuffer, the PC's baseline would
             // carry stale text from a previous window, causing the mobile's
             // resync diff to be applied on top of garbage (first-char swallow).
+            DebugLogger.Log($"FLUSH: target FAILED, dropping diff. Resetting buffer and sending clear to mobile.");
             _appliedInputBuffer = string.Empty;
             _ = _roomManager.SendToMobileAsync(JsonSerializer.Serialize(new { type = "clear" }));
             return;
@@ -638,6 +650,7 @@ public partial class MainWindow : Window
 
         var backspace = _appliedInputBuffer.Length - prefix;
         var insert = nextText[prefix..];
+        DebugLogger.Log($"FLUSH: buffer=\"{TruncateForLog(_appliedInputBuffer)}\" -> next=\"{TruncateForLog(nextText)}\", prefix={prefix}, bs={backspace}, insert=\"{TruncateForLog(insert)}\"");
         TextInjector.ApplyDiff(backspace, insert);
         _appliedInputBuffer = nextText;
     }
@@ -651,6 +664,7 @@ public partial class MainWindow : Window
 
             case "enter":
                 if (!EnsureInputTarget()) return;
+                DebugLogger.Log($"ENTER: injecting Enter, resetting buffer from \"{TruncateForLog(_appliedInputBuffer)}\"");
                 TextInjector.SendEnter();
                 _inputTargetWindow = IntPtr.Zero;
                 _appliedInputBuffer = string.Empty;
@@ -693,6 +707,7 @@ public partial class MainWindow : Window
                 break;
 
             case "clear":
+                DebugLogger.Log("CLEAR cmd from mobile: resetting inputTarget and buffer");
                 _inputTargetWindow = IntPtr.Zero;
                 _appliedInputBuffer = string.Empty;
                 break;
@@ -769,6 +784,7 @@ public partial class MainWindow : Window
 
         if (currentForeground == IntPtr.Zero)
         {
+            DebugLogger.Log("TARGET: foreground=0x0, starting recovery");
             BeginInputTargetRecovery();
             return false;
         }
@@ -785,8 +801,10 @@ public partial class MainWindow : Window
                 CancelInputTargetRecovery();
                 _manualInputTargetRecoveryNotified = false;
                 SetStatus(L("StatusEncrypted"), true);
+                DebugLogger.Log($"TARGET: Fluentia is foreground, using last external 0x{_inputTargetWindow:X}");
                 return true;
             }
+            DebugLogger.Log($"TARGET: Fluentia is foreground, no fallback. inputTarget=0x{_inputTargetWindow:X}, lastExt=0x{_lastExternalForegroundWindow:X}");
             BeginInputTargetRecovery();
             return false;
         }
@@ -797,11 +815,13 @@ public partial class MainWindow : Window
             _manualInputTargetRecoveryNotified = false;
             _inputTargetWindow = currentForeground;
             SetStatus(L("StatusEncrypted"), true);
+            DebugLogger.Log($"TARGET: first capture 0x{currentForeground:X}");
             return true;
         }
 
         if (currentForeground != _inputTargetWindow)
         {
+            DebugLogger.Log($"TARGET: focus changed 0x{_inputTargetWindow:X} -> 0x{currentForeground:X}, dropping diff");
             BeginInputTargetRecovery();
             _ = ResetMobileInputAfterFocusChangeAsync();
             return false;
@@ -827,17 +847,16 @@ public partial class MainWindow : Window
         }
         catch (OperationCanceledException)
         {
+            DebugLogger.Log("FOCUS-CLEAR: cancelled (focus returned within 300ms)");
             return;
         }
 
         _inputTargetWindow = IntPtr.Zero;
         _appliedInputBuffer = string.Empty;
-        if (_devMode)
-        {
-            AppendLog("Foreground app changed, clearing mobile editor state.");
-        }
+        DebugLogger.Log("FOCUS-CLEAR: sending clear to mobile, buffer reset");
 
         var sent = await _roomManager.SendToMobileAsync(JsonSerializer.Serialize(new { type = "clear" }));
+        DebugLogger.Log($"FOCUS-CLEAR: send result={sent}");
         if (!sent)
         {
             // Encryption not ready or transport down — queue for later
@@ -1234,6 +1253,7 @@ public partial class MainWindow : Window
         _fileSavePath = path;
         _closeToTray = CloseToTrayToggle.IsChecked == true;
         _launchAtStartup = LaunchAtStartupToggle.IsChecked == true;
+        DebugLogger.Enabled = DebugLoggingToggle.IsChecked == true;
         ApplyStartupRegistration(_launchAtStartup);
         PersistSettings();
         UpdateCloseButtonToolTip();
@@ -1306,6 +1326,8 @@ public partial class MainWindow : Window
         CloseBehaviorBodyText.Text = L("CloseBehaviorBody");
         StartupTitleText.Text = L("StartupTitle");
         StartupBodyText.Text = L("StartupBody");
+        DebugLoggingTitleText.Text = L("DebugLoggingTitle");
+        DebugLoggingBodyText.Text = L("DebugLoggingBody");
         UpdateTitleText.Text = L("UpdateTitle");
         UpdateBodyText.Text = L("UpdateBody");
         CheckUpdateButton.Content = L("ButtonCheckUpdate");

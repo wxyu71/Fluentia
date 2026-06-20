@@ -2,6 +2,7 @@ import React from 'react';
 import { EmptyIcon, ResendIcon, TrashIcon } from './Icons';
 import type { HistoryEntry, InputCommand } from '../types';
 import { REGEX_SKILL_TEMPLATE, parseRegexMarkdown } from '../utils/regex';
+import { debugLog } from '../utils/debugLog';
 
 interface HistoryProps {
   entries: HistoryEntry[];
@@ -23,6 +24,7 @@ export const History: React.FC<HistoryProps> = ({
   const [regexEnabled, setRegexEnabled] = React.useState(regexFilterEnabled);
   const [regexDraft, setRegexDraft] = React.useState(regexFilterMarkdown);
   const [regexStatus, setRegexStatus] = React.useState('');
+  const [debugEnabled, setDebugEnabled] = React.useState(debugLog.enabled);
 
   React.useEffect(() => {
     setRegexEnabled(regexFilterEnabled);
@@ -130,6 +132,47 @@ export const History: React.FC<HistoryProps> = ({
             </button>
           </div>
         </div>
+      </div>
+
+      {/* Debug logging toggle */}
+      <div className="glass glass-sm" style={{ padding: 14, display: 'grid', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 600 }}>Debug logging</div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
+              Record input sync events for troubleshooting. Zero overhead when off.
+            </div>
+          </div>
+          <button
+            className={`toggle-switch ${debugEnabled ? 'on' : ''}`}
+            onClick={() => {
+              const next = !debugEnabled;
+              debugLog.enabled = next;
+              setDebugEnabled(next);
+            }}
+          />
+        </div>
+        {debugEnabled && (
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <span style={{ fontSize: 11, color: 'var(--text-tertiary)', alignSelf: 'center', marginRight: 'auto' }}>
+              {debugLog.size} entries
+            </span>
+            <button
+              className="glass-btn"
+              style={{ fontSize: 11, padding: '4px 10px' }}
+              onClick={() => { debugLog.clear(); setDebugEnabled(debugLog.enabled); }}
+            >
+              Clear
+            </button>
+            <button
+              className="glass-btn"
+              style={{ fontSize: 11, padding: '4px 10px' }}
+              onClick={() => debugLog.download()}
+            >
+              Download
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="scroll-area" style={{ flex: 1, maxHeight: 'calc(100vh - 260px)' }}>

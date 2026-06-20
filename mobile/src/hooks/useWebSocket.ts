@@ -11,6 +11,7 @@ import type {
   TransferBatchProgress,
 } from '../types';
 import { PROTOCOL_VERSION } from '../types';
+import { debugLog } from '../utils/debugLog';
 
 const STORED_CONN_KEY = 'fluentia_conn';
 // SECURITY NOTE: The crypto session (NaCl keypair + ratchet state) is stored in
@@ -677,6 +678,7 @@ export function useWebSocket(
           } else if (parsed.type === 'ble_auth_ok') {
             onEncryptedCommand?.(parsed);
           } else if (parsed.type === 'clear') {
+            debugLog.log(`ENCRYPTED RX: clear command, incrementing inputResetVersion`);
             setInputResetVersion((version) => version + 1);
           } else if (parsed.type === 'file_start' && parsed.transferId) {
             const transferId = parsed.transferId;

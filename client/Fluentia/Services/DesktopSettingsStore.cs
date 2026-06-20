@@ -15,7 +15,8 @@ public sealed record DesktopSettingsLoadResult(
     DateTime SessionExpiresAt,
     bool PersistedSessionLost,
     bool ShouldPersistAfterLoad,
-    PersistedDesktopSession? PersistedSession);
+    PersistedDesktopSession? PersistedSession,
+    bool DebugLogging = false);
 
 public sealed record DesktopSettingsSaveRequest(
     string FileSavePath,
@@ -26,7 +27,8 @@ public sealed record DesktopSettingsSaveRequest(
     string RegexFilterMarkdown,
     DateTime SessionCreatedAt,
     DateTime SessionExpiresAt,
-    PersistedDesktopSession? PersistedSession);
+    PersistedDesktopSession? PersistedSession,
+    bool DebugLogging = false);
 
 public sealed class DesktopSettingsStore
 {
@@ -45,6 +47,7 @@ public sealed class DesktopSettingsStore
         var hadProtectedSession = false;
         var recoveredFromBackup = false;
         var persistedSessionLost = false;
+        var debugLogging = false;
         var fileSavePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
         var serverUrl = string.Empty;
         var closeToTray = true;
@@ -94,6 +97,11 @@ public sealed class DesktopSettingsStore
                 if (doc.RootElement.TryGetProperty("regexFilterMarkdown", out var regexMarkdownElement))
                 {
                     regexFilterMarkdown = regexMarkdownElement.GetString() ?? string.Empty;
+                }
+
+                if (doc.RootElement.TryGetProperty("debugLogging", out var debugLoggingElement))
+                {
+                    debugLogging = debugLoggingElement.GetBoolean();
                 }
 
                 if (doc.RootElement.TryGetProperty("sessionCreatedAtUtc", out var sessionCreatedElement) &&
@@ -181,7 +189,8 @@ public sealed class DesktopSettingsStore
             sessionExpiresAt,
             persistedSessionLost,
             migrateLegacySession || recoveredFromBackup,
-            restoredSession);
+            restoredSession,
+            debugLogging);
     }
 
     public void Save(DesktopSettingsSaveRequest request)
@@ -197,6 +206,7 @@ public sealed class DesktopSettingsStore
                 launchAtStartup = request.LaunchAtStartup,
                 language = request.Language,
                 regexFilterMarkdown = request.RegexFilterMarkdown,
+                debugLogging = request.DebugLogging,
                 protectedSession = request.PersistedSession == null ? null : DesktopSessionProtector.Protect(request.PersistedSession),
                 sessionCreatedAtUtc = request.SessionCreatedAt == default ? null : request.SessionCreatedAt.ToUniversalTime().ToString("O"),
                 sessionExpiresAtUtc = request.SessionExpiresAt == default ? null : request.SessionExpiresAt.ToUniversalTime().ToString("O"),

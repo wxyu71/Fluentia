@@ -729,6 +729,37 @@
                                         CornerRadius="18"
                                         Padding="18"
                                         Margin="0,0,0,14">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel>
+                                            <TextBlock x:Name="DebugLoggingTitleText"
+                                                       Text="Debug logging"
+                                                       FontSize="14"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                            <TextBlock x:Name="DebugLoggingBodyText"
+                                                       Text="Write detailed input synchronization logs to a file. Useful for diagnosing text input issues. Logs are saved to %APPDATA%\Fluentia\logs\debug.log"
+                                                       FontSize="12"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                                       Margin="0,6,0,0"
+                                                       TextWrapping="Wrap"/>
+                                        </StackPanel>
+                                        <CheckBox x:Name="DebugLoggingToggle"
+                                                  Grid.Column="1"
+                                                  Style="{StaticResource SwitchCheckBoxStyle}"
+                                                  VerticalAlignment="Top"/>
+                                    </Grid>
+                                </Border>
+
+                                <Border Background="{DynamicResource BgInputBrush}"
+                                        BorderBrush="{DynamicResource DividerBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="18"
+                                        Padding="18"
+                                        Margin="0,0,0,14">
                                     <StackPanel>
                                         <TextBlock x:Name="UpdateTitleText"
                                                    Text="App updates"

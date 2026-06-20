@@ -9,6 +9,7 @@ import type { FileTransferHandle } from './FileTransfer';
 import type { InputCommand, HistoryEntry, TransferBatchProgress } from '../types';
 import type { UseBlePairingResult } from '../hooks/useBlePairing';
 import { applyRegexFilters } from '../utils/regex';
+import { debugLog } from '../utils/debugLog';
 
 interface InputAreaProps {
   encryptionReady: boolean;
@@ -93,6 +94,7 @@ export const InputArea: React.FC<InputAreaProps> = ({
   // Shared helper: compute diff and send command immediately
   const flushDiffToCommand = useCallback((targetText: string) => {
     const diff = computeDiff(lastSentRef.current, targetText);
+    debugLog.log(`FLUSH: lastSent="${lastSentRef.current.slice(0,30)}" -> target="${targetText.slice(0,30)}", bs=${diff.backspace}, ins="${diff.insert?.slice(0,30) ?? ''}"`);
     if (diff.backspace > 0 || diff.insert) {
       onSendCommand({ type: 'diff', count: diff.backspace, text: diff.insert || '' });
     }
@@ -135,6 +137,7 @@ export const InputArea: React.FC<InputAreaProps> = ({
 
   const commitParagraph = useCallback((paragraphText: string) => {
     const normalized = applyRegexFilters(paragraphText.replace(/\r/g, ''), regexFilterMarkdown, regexFilterEnabled);
+    debugLog.log(`COMMIT: "${normalized.slice(0,30)}", lastSent="${lastSentRef.current.slice(0,30)}"`);
     if (normalized !== lastSentRef.current) {
       sendDiffImmediate(normalized);
     }
@@ -152,6 +155,7 @@ export const InputArea: React.FC<InputAreaProps> = ({
     if (normalized.includes('\n')) {
       const segments = normalized.split('\n');
       const completed = segments.slice(0, -1);
+      debugLog.log(`PROCESS: multiline, ${completed.length} segment(s), remainder="${(segments[segments.length - 1] ?? '').slice(0,20)}"`);
 
       for (const segment of completed) {
         if (segment !== lastSentRef.current) {
@@ -220,6 +224,7 @@ export const InputArea: React.FC<InputAreaProps> = ({
 
   useEffect(() => {
     if (inputResetVersion === 0) return;
+    debugLog.log(`CLEAR received: inputResetVersion=${inputResetVersion}, textRef="${textRef.current.slice(0,30)}", lastSent="${lastSentRef.current.slice(0,30)}"`);
 
     // Cancel pending debounced diff.
     if (diffTimerRef.current !== null) {
@@ -247,7 +252,10 @@ export const InputArea: React.FC<InputAreaProps> = ({
     lastSentRef.current = '';
 
     if (textRef.current !== '') {
+      debugLog.log(`CLEAR resync: resending "${textRef.current.slice(0,30)}" (was cleared to empty baseline)`);
       flushDiffToCommand(textRef.current);
+    } else {
+      debugLog.log('CLEAR resync: textRef empty, no resync needed');
     }
 
     setResetNotice(true);

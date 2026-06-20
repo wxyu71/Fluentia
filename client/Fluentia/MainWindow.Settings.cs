@@ -17,6 +17,7 @@ public partial class MainWindow
         _sessionCreatedAt = loaded.SessionCreatedAt;
         _sessionExpiresAt = loaded.SessionExpiresAt;
         _persistedSessionLost = loaded.PersistedSessionLost;
+        DebugLogger.Enabled = loaded.DebugLogging;
 
         if (!string.IsNullOrWhiteSpace(loaded.Language))
         {
@@ -33,6 +34,7 @@ public partial class MainWindow
         SavePathBox.Text = _fileSavePath;
         CloseToTrayToggle.IsChecked = _closeToTray;
         LaunchAtStartupToggle.IsChecked = _launchAtStartup;
+        DebugLoggingToggle.IsChecked = DebugLogger.Enabled;
         UpdateLanguageSelectorSelection();
 
         if (loaded.ShouldPersistAfterLoad)
@@ -52,7 +54,8 @@ public partial class MainWindow
             _regexFilterMarkdown,
             _sessionCreatedAt,
             _sessionExpiresAt,
-            _roomManager.ExportPersistedSession()));
+            _roomManager.ExportPersistedSession(),
+            DebugLogger.Enabled));
     }
 
     private void ShowPersistedSessionLostPrompt()
