@@ -1,7 +1,7 @@
 package main
 
 // Protocol version — all three components (server, mobile, Windows) must match.
-const ProtocolVersion = "1.7.13"
+const ProtocolVersion = "1.7.14"
 
 // Message type constants
 const (

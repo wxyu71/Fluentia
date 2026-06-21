@@ -871,9 +871,16 @@ public partial class MainWindow : Window
             return;
         }
 
-        _inputTargetWindow = IntPtr.Zero;
+        // NOTE: intentionally NOT clearing _inputTargetWindow here.
+        // Same rationale as the ENTER handler (line 684): clearing it forces
+        // EnsureInputTarget to re-establish the target during the focus
+        // transition, which can fail and drop the first diff batch (the
+        // "first-char swallow" bug).  Keeping the window handle lets
+        // EnsureInputTarget succeed immediately when the user returns to
+        // the same window.  If they switch to a DIFFERENT window,
+        // EnsureInputTarget will detect the mismatch and trigger a new clear.
         _appliedInputBuffer = string.Empty;
-        DebugLogger.Log("FOCUS-CLEAR: sending clear to mobile, buffer reset");
+        DebugLogger.Log("FOCUS-CLEAR: sending clear to mobile, buffer reset (target preserved)");
 
         var sent = await _roomManager.SendToMobileAsync(JsonSerializer.Serialize(new { type = "clear" }));
         DebugLogger.Log($"FOCUS-CLEAR: send result={sent}");

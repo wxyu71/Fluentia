@@ -67,7 +67,7 @@ Version is tracked consistently across **5 files**:
 | `client/Fluentia/Fluentia.csproj` | `<Version>`, `<AssemblyVersion>`, `<FileVersion>` |
 | `client/Fluentia/Models/Messages.cs` | `ProtocolVersion` |
 
-**Current version: 1.7.8**
+**Current version: 1.7.14**
 
 CI enforces version consistency across all files. The `release.yml` workflow automates version bumping via PR.
 
