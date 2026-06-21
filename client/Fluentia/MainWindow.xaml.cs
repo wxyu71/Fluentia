@@ -356,8 +356,8 @@ public partial class MainWindow : Window
             {
                 _pendingClearOnReconnect = false;
                 _appliedInputBuffer = string.Empty;
-                DebugLogger.Log("RECONNECT: sending pending clear to mobile");
-                _ = _roomManager.SendToMobileAsync(JsonSerializer.Serialize(new { type = "clear" }));
+                DebugLogger.Log("RECONNECT: sending pending resync to mobile");
+                _ = _roomManager.SendToMobileAsync(JsonSerializer.Serialize(new { type = "clear", reason = "resync" }));
             }
         });
 
@@ -631,9 +631,9 @@ public partial class MainWindow : Window
                 // Without resetting _appliedInputBuffer, the PC's baseline would
                 // carry stale text from a previous window, causing the mobile's
                 // resync diff to be applied on top of garbage (first-char swallow).
-                DebugLogger.Log($"FLUSH: target FAILED, dropping diff. Resetting buffer and sending clear to mobile.");
+                DebugLogger.Log($"FLUSH: target FAILED, dropping diff. Resetting buffer and sending resync to mobile.");
                 _appliedInputBuffer = string.Empty;
-                _ = _roomManager.SendToMobileAsync(JsonSerializer.Serialize(new { type = "clear" }));
+                _ = _roomManager.SendToMobileAsync(JsonSerializer.Serialize(new { type = "clear", reason = "resync" }));
                 return;
             }
 
@@ -662,10 +662,10 @@ public partial class MainWindow : Window
             // An exception here would leave _appliedInputBuffer stale, causing
             // the next diff to compute against a wrong baseline (first-char
             // swallow).  Reset everything and ask mobile to resync.
-            DebugLogger.Log($"FLUSH: EXCEPTION {ex.GetType().Name}: {ex.Message}. Resetting target+buffer, sending clear.");
+            DebugLogger.Log($"FLUSH: EXCEPTION {ex.GetType().Name}: {ex.Message}. Resetting target+buffer, sending resync.");
             _inputTargetWindow = IntPtr.Zero;
             _appliedInputBuffer = string.Empty;
-            _ = _roomManager.SendToMobileAsync(JsonSerializer.Serialize(new { type = "clear" }));
+            _ = _roomManager.SendToMobileAsync(JsonSerializer.Serialize(new { type = "clear", reason = "resync" }));
         }
     }
 
@@ -882,7 +882,7 @@ public partial class MainWindow : Window
         _appliedInputBuffer = string.Empty;
         DebugLogger.Log("FOCUS-CLEAR: sending clear to mobile, buffer reset (target preserved)");
 
-        var sent = await _roomManager.SendToMobileAsync(JsonSerializer.Serialize(new { type = "clear" }));
+        var sent = await _roomManager.SendToMobileAsync(JsonSerializer.Serialize(new { type = "clear", reason = "focus" }));
         DebugLogger.Log($"FOCUS-CLEAR: send result={sent}");
         if (!sent)
         {

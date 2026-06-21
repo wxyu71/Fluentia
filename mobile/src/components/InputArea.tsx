@@ -28,6 +28,7 @@ interface InputAreaProps {
   pendingStatus: string | null;
   onCancelPendingConnection: () => void;
   inputResetVersion: number;
+  clearResetReason: string;
   incomingTransferBatch?: TransferBatchProgress | null;
   blePairing?: UseBlePairingResult;
   bleOnly?: boolean;
@@ -50,6 +51,7 @@ export const InputArea: React.FC<InputAreaProps> = ({
   pendingStatus,
   onCancelPendingConnection,
   inputResetVersion,
+  clearResetReason,
   incomingTransferBatch = null,
   blePairing,
   bleOnly = false,
@@ -224,7 +226,7 @@ export const InputArea: React.FC<InputAreaProps> = ({
 
   useEffect(() => {
     if (inputResetVersion === 0) return;
-    debugLog.log(`CLEAR received: inputResetVersion=${inputResetVersion}, textRef="${textRef.current.slice(0,30)}", lastSent="${lastSentRef.current.slice(0,30)}"`);
+    debugLog.log(`CLEAR received: inputResetVersion=${inputResetVersion}, reason=${clearResetReason}, textRef="${textRef.current.slice(0,30)}", lastSent="${lastSentRef.current.slice(0,30)}"`);
 
     // Cancel pending debounced diff.
     if (diffTimerRef.current !== null) {
@@ -233,29 +235,23 @@ export const InputArea: React.FC<InputAreaProps> = ({
     }
     pendingDiffTextRef.current = null;
 
-    // Always preserve text and force a full resync.
-    //
-    // The "clear" message from the PC means the PC's state is out of sync
-    // — either the user switched foreground apps (focus change) or the PC
-    // dropped a diff because EnsureInputTarget() failed. In BOTH cases,
-    // preserving the mobile text and resending is correct:
-    //
-    //  • Focus change: the text goes to the new foreground window (better
-    //    UX — the user doesn't lose what they already typed).
-    //  • Diff dropped: the text is resynced so the PC finally receives it.
-    //
-    // Previous versions cleared the text when textRef === lastSentRef
-    // (i.e. the diff was "already sent" from mobile's perspective). But
-    // that's exactly the dropped-diff case: the diff was sent over the
-    // wire but never applied on the PC. Clearing destroyed the text
-    // permanently — the "first word swallowed" bug.
-    lastSentRef.current = '';
-
-    if (textRef.current !== '') {
-      debugLog.log(`CLEAR resync: resending "${textRef.current.slice(0,30)}" (was cleared to empty baseline)`);
-      flushDiffToCommand(textRef.current);
+    if (clearResetReason === 'focus') {
+      // User switched to a different window on PC — clear mobile text.
+      // The user is now in a different context; keeping stale text is confusing.
+      debugLog.log(`CLEAR focus: clearing text (was "${textRef.current.slice(0,30)}")`);
+      setText('');
+      textRef.current = '';
+      lastSentRef.current = '';
     } else {
-      debugLog.log('CLEAR resync: textRef empty, no resync needed');
+      // Diff was dropped (EnsureInputTarget failed) — preserve text and resync.
+      // The user is still in the same context; we just need to re-deliver the text.
+      lastSentRef.current = '';
+      if (textRef.current !== '') {
+        debugLog.log(`CLEAR resync: resending "${textRef.current.slice(0,30)}" (was cleared to empty baseline)`);
+        flushDiffToCommand(textRef.current);
+      } else {
+        debugLog.log('CLEAR resync: textRef empty, no resync needed');
+      }
     }
 
     setResetNotice(true);
@@ -265,7 +261,7 @@ export const InputArea: React.FC<InputAreaProps> = ({
     }, 2200);
 
     return () => window.clearTimeout(timer);
-  }, [inputResetVersion, setText, flushDiffToCommand]);
+  }, [inputResetVersion, clearResetReason, setText, flushDiffToCommand]);
 
   // Cleanup debounce timer on unmount
   useEffect(() => {

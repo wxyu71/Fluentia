@@ -206,6 +206,7 @@ export const App: React.FC = () => {
     bufferedInputActive,
     queuedCommandCount,
     inputResetVersion,
+    clearResetReason,
     incomingTransferBatch,
   } = useWebSocket(deviceId, blePairing.sendEncryptedMessage, (cmd) => {
     if (cmd.type === 'ble_auth_ok' && cmd.publicKey) {
@@ -562,6 +563,7 @@ export const App: React.FC = () => {
                 pendingStatus={pendingStatus}
                 onCancelPendingConnection={handleCancelPendingConnection}
                 inputResetVersion={inputResetVersion}
+                clearResetReason={clearResetReason}
                 incomingTransferBatch={incomingTransferBatch}
                 blePairing={blePairing}
                 bleOnly={bleOnly}

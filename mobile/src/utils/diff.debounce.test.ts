@@ -204,12 +204,13 @@ describe('Clear-during-debounce race — stranded diff protection', () => {
   });
 
   /**
-   * Simulates the FIXED clear effect from InputArea.tsx:
+   * Simulates the FIXED clear effect from InputArea.tsx (v1.7.14):
    * 1. Cancels pending debounce timer
-   * 2. Always preserves text (never clears)
-   * 3. Resets lastSentRef and resends if text exists
+   * 2. reason="focus" → clear text, reset lastSent
+   * 3. reason="resync" → preserve text, reset lastSent, resend
    */
   function simulateClearEffect(opts: {
+    reason?: string;
     textRef: string;
     lastSentRef: string;
     pendingDiffText: string | null;
@@ -225,13 +226,21 @@ describe('Clear-during-debounce race — stranded diff protection', () => {
     }
     opts.pendingDiffText = null;
 
-    // Always preserve text and force full resync.
-    // Never clear text — it's always resent to the PC.
-    opts.lastSentRef = '';
-    opts.setLastSentRef?.('');
+    const reason = opts.reason || 'focus';
 
-    if (opts.textRef !== '') {
-      opts.flushToCommand(opts.textRef);
+    if (reason === 'focus') {
+      // Focus change: clear text
+      opts.setText('');
+      opts.textRef = '';
+      opts.lastSentRef = '';
+      opts.setLastSentRef?.('');
+    } else {
+      // Resync: preserve text and resend
+      opts.lastSentRef = '';
+      opts.setLastSentRef?.('');
+      if (opts.textRef !== '') {
+        opts.flushToCommand(opts.textRef);
+      }
     }
 
     return { textRef: opts.textRef, lastSentRef: opts.lastSentRef };
@@ -272,8 +281,9 @@ describe('Clear-during-debounce race — stranded diff protection', () => {
     expect(sent.length).toBe(0);
     expect(pending).toBe('h');
 
-    // Clear arrives from PC (focus change) — BEFORE timer fires
+    // Clear arrives from PC (diff dropped, resync needed) — BEFORE timer fires
     simulateClearEffect({
+      reason: 'resync',
       textRef: text,
       lastSentRef: lastSent,
       pendingDiffText: pending,
@@ -289,6 +299,56 @@ describe('Clear-during-debounce race — stranded diff protection', () => {
     expect(text).toBe('h');
   });
 
+  it('focus clear during debounce clears text and cancels timer', () => {
+    const sent: Array<{ backspace: number; insert: string }> = [];
+    let lastSent = '';
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let pending: string | null = null;
+    let text = '';
+
+    const flushToCommand = (targetText: string) => {
+      const diff = computeDiff(lastSent, targetText);
+      if (diff.backspace > 0 || diff.insert) {
+        sent.push(diff);
+      }
+      lastSent = targetText;
+    };
+
+    const sendDiff = (newText: string) => {
+      if (timer !== null) clearTimeout(timer);
+      pending = newText;
+      timer = setTimeout(() => {
+        timer = null;
+        const p = pending;
+        pending = null;
+        if (p === null) return;
+        flushToCommand(p);
+      }, DIFF_DEBOUNCE_MS);
+    };
+
+    // User types "h" on mobile
+    text = 'h';
+    sendDiff('h');
+
+    // Timer is pending, no diff sent yet
+    expect(sent.length).toBe(0);
+
+    // Focus change clear arrives — text should be CLEARED
+    simulateClearEffect({
+      reason: 'focus',
+      textRef: text,
+      lastSentRef: lastSent,
+      pendingDiffText: pending,
+      timer,
+      flushToCommand,
+      setText: (v) => { text = v; },
+    });
+
+    // Text is cleared, no diff sent
+    expect(text).toBe('');
+    expect(sent.length).toBe(0);
+  });
+
   it('clear with no pending diff and no text correctly clears', () => {
     const sent: Array<{ backspace: number; insert: string }> = [];
     let lastSent = '';
@@ -302,8 +362,9 @@ describe('Clear-during-debounce race — stranded diff protection', () => {
       lastSent = targetText;
     };
 
-    // Clear arrives when user hasn't typed anything
+    // Clear arrives when user hasn't typed anything (resync — nothing to resend)
     simulateClearEffect({
+      reason: 'resync',
       textRef: text,
       lastSentRef: lastSent,
       pendingDiffText: null,
@@ -317,7 +378,7 @@ describe('Clear-during-debounce race — stranded diff protection', () => {
     expect(text).toBe('');
   });
 
-  it('clear after diff already sent preserves and resends text', () => {
+  it('resync clear after diff already sent preserves and resends text', () => {
     const sent: Array<{ backspace: number; insert: string }> = [];
     let lastSent = '';
     let text = '';
@@ -334,8 +395,9 @@ describe('Clear-during-debounce race — stranded diff protection', () => {
     text = 'h';
     lastSent = 'h';
 
-    // Clear arrives — text is always preserved (even when textRef === lastSentRef)
+    // Resync clear arrives — text is preserved and resent
     simulateClearEffect({
+      reason: 'resync',
       textRef: text,
       lastSentRef: lastSent,
       pendingDiffText: null,
@@ -352,7 +414,41 @@ describe('Clear-during-debounce race — stranded diff protection', () => {
     expect(text).toBe('h');
   });
 
-  it('clear preserves unsent text typed after last diff', () => {
+  it('focus clear after diff already sent clears text', () => {
+    const sent: Array<{ backspace: number; insert: string }> = [];
+    let lastSent = '';
+    let text = '';
+
+    const flushToCommand = (targetText: string) => {
+      const diff = computeDiff(lastSent, targetText);
+      if (diff.backspace > 0 || diff.insert) {
+        sent.push(diff);
+      }
+      lastSent = targetText;
+    };
+
+    // User typed "h" and diff was already sent
+    text = 'h';
+    lastSent = 'h';
+
+    // Focus change clear arrives — text should be CLEARED
+    simulateClearEffect({
+      reason: 'focus',
+      textRef: text,
+      lastSentRef: lastSent,
+      pendingDiffText: null,
+      timer: null,
+      flushToCommand,
+      setText: (v) => { text = v; },
+      setLastSentRef: (v) => { lastSent = v; },
+    });
+
+    // Text is cleared, no diff sent
+    expect(text).toBe('');
+    expect(sent.length).toBe(0);
+  });
+
+  it('resync clear preserves unsent text typed after last diff', () => {
     const sent: Array<{ backspace: number; insert: string }> = [];
     // Use shared state object so simulateClearEffect's lastSentRef reset is visible
     const state = { lastSent: 'he', text: 'hel' };
@@ -365,8 +461,9 @@ describe('Clear-during-debounce race — stranded diff protection', () => {
       state.lastSent = targetText;
     };
 
-    // Clear arrives — text != lastSent, unsent content exists
+    // Resync clear arrives — text != lastSent, unsent content exists
     simulateClearEffect({
+      reason: 'resync',
       textRef: state.text,
       lastSentRef: state.lastSent,
       pendingDiffText: null,

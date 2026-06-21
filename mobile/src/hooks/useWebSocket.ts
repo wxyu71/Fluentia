@@ -78,6 +78,7 @@ interface UseWebSocketReturn {
   bufferedInputActive: boolean;
   queuedCommandCount: number;
   inputResetVersion: number;
+  clearResetReason: string;
   incomingTransferBatch: TransferBatchProgress | null;
 }
 
@@ -97,6 +98,7 @@ export function useWebSocket(
   const [bufferedInputActive, setBufferedInputActive] = useState(false);
   const [queuedCommandCount, setQueuedCommandCount] = useState(0);
   const [inputResetVersion, setInputResetVersion] = useState(0);
+  const [clearResetReason, setClearResetReason] = useState('');
   const [incomingTransferBatch, setIncomingTransferBatch] = useState<TransferBatchProgress | null>(null);
 
   const wsRef = useRef<TransportConnection | null>(null);
@@ -678,7 +680,9 @@ export function useWebSocket(
           } else if (parsed.type === 'ble_auth_ok') {
             onEncryptedCommand?.(parsed);
           } else if (parsed.type === 'clear') {
-            debugLog.log(`ENCRYPTED RX: clear command, incrementing inputResetVersion`);
+            const reason = parsed.reason || 'focus';
+            debugLog.log(`ENCRYPTED RX: clear command (reason=${reason}), incrementing inputResetVersion`);
+            setClearResetReason(reason);
             setInputResetVersion((version) => version + 1);
           } else if (parsed.type === 'file_start' && parsed.transferId) {
             const transferId = parsed.transferId;
@@ -1155,6 +1159,7 @@ export function useWebSocket(
     bufferedInputActive,
     queuedCommandCount,
     inputResetVersion,
+    clearResetReason,
     incomingTransferBatch,
   };
 }

@@ -43,6 +43,7 @@ export interface InputCommand {
   count?: number;
   seed?: string;
   publicKey?: string;
+  reason?: string;  // clear reason: "focus" (window switch) or "resync" (diff dropped)
   // file transfer fields
   fileName?: string;
   fileSize?: number;     // total bytes
