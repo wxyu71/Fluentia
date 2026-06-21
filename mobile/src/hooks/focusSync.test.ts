@@ -3,7 +3,12 @@
  *
  * v1.7.14: Clear messages now carry a `reason` field:
  *   - "focus": user switched to a different window on PC → clear mobile text
- *   - "resync": PC dropped a diff (EnsureInputTarget failed) → preserve text, resend
+ *   - "resync": PC dropped a diff (exception during injection) → preserve text, resend
+ *
+ * v1.8.x: The desktop no longer sends "resync" on focus change (target switch).
+ * Instead, it sends "focus" immediately. This prevents the mobile from resending
+ * its full accumulated state (which includes characters already in the old target),
+ * which was causing duplicates in the new target.
  *
  * Backward compatibility: messages without `reason` default to "focus".
  */
@@ -430,40 +435,26 @@ describe('Rapid resync cascade — v1.7.15 regression', () => {
     }
   });
 
-  it('resync followed by focus clear ends the loop', () => {
-    // The debounce timer in ResetMobileInputAfterFocusChangeAsync eventually
-    // sends a "focus" clear after 300ms. The mobile should clear text.
+  it('focus clear stops the typing loop (no resync on target change)', () => {
+    // After the v1.8.x fix, the desktop sends "focus" immediately on target
+    // change instead of "resync". The mobile clears text and resets lastSentRef.
+    // No resync messages are sent from the target-change path.
     let text = '他们只能巴拉巴拉';
     const sent: Array<string> = [];
 
-    // First: several resync messages
-    for (let i = 0; i < 5; i++) {
-      simulateClearEffect({
-        reason: 'resync',
-        textRef: text,
-        lastSentRef: '',
-        pendingDiffText: null,
-        flushToCommand: (t) => sent.push(t),
-        setText: (v) => { text = v; },
-      });
-    }
-    expect(text).toBe('他们只能巴拉巴拉');
-    expect(sent.length).toBe(5);
-
-    // Then: focus clear arrives (debounce fired)
+    // Focus clear arrives immediately (no preceding resync messages)
     simulateClearEffect({
       reason: 'focus',
       textRef: text,
-      lastSentRef: '',
+      lastSentRef: '他们只能巴拉',
       pendingDiffText: null,
       flushToCommand: (t) => sent.push(t),
       setText: (v) => { text = v; },
     });
 
-    // Text should be cleared — the loop ends
+    // Text should be cleared — no resync, no duplicates
     expect(text).toBe('');
-    // No additional diff sent on focus clear
-    expect(sent.length).toBe(5);
+    expect(sent.length).toBe(0);
   });
 
   it('resync with empty text after focus clear is a no-op', () => {
@@ -659,5 +650,36 @@ describe('Rapid resync cascade — PC-side debounce behavior', () => {
       setText: (v) => { text = v; },
     });
     expect(text).toBe('');
+  });
+
+  it('focus clear prevents duplicate on target change', () => {
+    // Scenario from the bug: user types "我们发现了这个问题" on mobile.
+    // Desktop target changes → focus clear arrives → mobile clears text.
+    // User continues typing → diff starts from empty → no duplicate.
+    let text = '我们发现了这个问题';
+    let lastSent = '我们发现了这个';
+    const sent: Array<string> = [];
+
+    // Focus clear arrives (desktop detected target change)
+    simulateClearEffect({
+      reason: 'focus',
+      textRef: text,
+      lastSentRef: lastSent,
+      pendingDiffText: null,
+      flushToCommand: (t) => sent.push(t),
+      setText: (v) => { text = v; },
+    });
+
+    // Mobile text cleared, lastSentRef reset
+    expect(text).toBe('');
+    expect(sent.length).toBe(0);
+
+    // User continues typing in new context
+    text = '新的输入';
+    // Next diff should be computed against empty lastSentRef
+    // (backspace=0, insert="新的输入") — no duplicate of old text
+    const diff = { backspace: 0, insert: text };
+    expect(diff.backspace).toBe(0);
+    expect(diff.insert).toBe('新的输入');
   });
 });

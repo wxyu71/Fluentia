@@ -646,13 +646,14 @@ public partial class MainWindow : Window
         {
             if (!EnsureInputTarget())
             {
-                // Diff dropped — reset PC state and tell mobile to resync.
-                // Without resetting _appliedInputBuffer, the PC's baseline would
-                // carry stale text from a previous window, causing the mobile's
-                // resync diff to be applied on top of garbage (first-char swallow).
-                DebugLogger.Log($"FLUSH: target FAILED, dropping diff. Resetting buffer and sending resync to mobile.");
+                // Diff dropped — reset PC buffer. The focus clear is sent
+                // immediately by EnsureInputTarget when it detects a target
+                // change, so no resync is needed here. Sending a resync would
+                // cause the mobile to resend its full accumulated state
+                // (including text already in the old target), creating
+                // duplicates in the new target.
+                DebugLogger.Log("FLUSH: target FAILED, dropping diff. Resetting buffer.");
                 _appliedInputBuffer = string.Empty;
-                _ = _roomManager.SendToMobileAsync(JsonSerializer.Serialize(new { type = "clear", reason = "resync" }));
                 return;
             }
 
@@ -862,7 +863,19 @@ public partial class MainWindow : Window
         {
             DebugLogger.Log($"TARGET: focus changed 0x{_inputTargetWindow:X} -> 0x{currentForeground:X}, dropping diff");
             BeginInputTargetRecovery();
-            _ = ResetMobileInputAfterFocusChangeAsync();
+
+            // Send focus clear immediately (not debounced) and clear buffer.
+            // This prevents the mobile from resending its full accumulated state
+            // (which includes characters already injected into the OLD target),
+            // which would create duplicates in the NEW target.
+            _focusClearCts?.Cancel();
+            _focusClearCts?.Dispose();
+            _focusClearCts = null;
+            _appliedInputBuffer = string.Empty;
+            _inputTargetWindow = IntPtr.Zero;
+            DebugLogger.Log("FOCUS-CLEAR: immediate on target change, buffer+target cleared");
+            _ = _roomManager.SendToMobileAsync(JsonSerializer.Serialize(new { type = "clear", reason = "focus" }));
+
             return false;
         }
 

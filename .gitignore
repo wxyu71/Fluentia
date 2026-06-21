@@ -45,3 +45,4 @@ CLAUDE.md
 
 # specific to this project
 bump-version.ps1.hermes/
+.hermes/

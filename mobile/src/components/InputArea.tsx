@@ -238,6 +238,8 @@ export const InputArea: React.FC<InputAreaProps> = ({
     if (clearResetReason === 'focus') {
       // User switched to a different window on PC — clear mobile text.
       // The user is now in a different context; keeping stale text is confusing.
+      // Also reset lastSentRef so the mobile doesn't try to resend old state
+      // when the user starts typing in the new context (prevents duplicates).
       debugLog.log(`CLEAR focus: clearing text (was "${textRef.current.slice(0,30)}")`);
       setText('');
       textRef.current = '';
