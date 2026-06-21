@@ -13,9 +13,9 @@
     <AssemblyName>Fluentia</AssemblyName>
     <RootNamespace>Fluentia</RootNamespace>
     <ApplicationIcon>fluentia.ico</ApplicationIcon>
-    <Version>1.7.14</Version>
-    <AssemblyVersion>1.7.14.0</AssemblyVersion>
-    <FileVersion>1.7.14.0</FileVersion>
+    <Version>1.7.15</Version>
+    <AssemblyVersion>1.7.15.0</AssemblyVersion>
+    <FileVersion>1.7.15.0</FileVersion>
   </PropertyGroup>
 
   <ItemGroup>
