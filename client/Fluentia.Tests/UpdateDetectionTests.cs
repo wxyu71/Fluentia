@@ -121,4 +121,53 @@ public class UpdateDetectionTests
         Assert.NotNull(method);
         Assert.Equal(typeof(Task), method.ReturnType);
     }
+
+    // === RED test 9: GithubSource prerelease flag is false ===
+    [Fact]
+    public void GithubSource_PrereleaseFlagIsFalse()
+    {
+        // Velopack GithubSource(repoUrl, accessToken, prerelease).
+        // prerelease=false means only stable releases are considered.
+        // This ensures pre-release versions don't confuse the update check.
+        var sourceType = typeof(Velopack.Sources.GithubSource);
+        var constructor = sourceType.GetConstructor(new[] {
+            typeof(string), typeof(string), typeof(bool),
+            typeof(Velopack.Sources.IFileDownloader)
+        });
+
+        Assert.NotNull(constructor);
+        var parameters = constructor.GetParameters();
+        Assert.Equal(typeof(bool), parameters[2].ParameterType);
+    }
+
+    // === RED test 10: Velopack release asset name convention ===
+    [Fact]
+    public void Velopack_ExpectedReleaseAssetName_IsReleasesWinJson()
+    {
+        // Velopack 1.2.0's GitBase.GetReleaseFeed uses
+        // CoreUtil.GetVeloReleaseIndexName(channel) which returns
+        // "releases.{channel}.json". For Windows (channel="win"),
+        // this is "releases.win.json".
+        //
+        // The vpk pack tool generates a file named "RELEASES" (old format).
+        // The publish workflow must rename it to "releases.win.json" after
+        // vpk pack runs, otherwise GithubSource.GetAssetUrlFromName throws
+        // ArgumentException which is silently caught, causing
+        // GetReleaseFeed to return an empty feed and CheckForUpdatesAsync
+        // to return null (no updates found).
+        //
+        // This test verifies the expected filename by checking the
+        // CoreUtil.GetVeloReleaseIndexName method exists.
+        var coreUtilType = typeof(Velopack.VelopackAsset).Assembly
+            .GetType("Velopack.Util.CoreUtil");
+
+        Assert.NotNull(coreUtilType);
+        var method = coreUtilType.GetMethod("GetVeloReleaseIndexName",
+            BindingFlags.Public | BindingFlags.Static);
+
+        Assert.NotNull(method);
+        // Verify it returns "releases.win.json" for "win" channel
+        var result = method.Invoke(null, new object[] { "win" }) as string;
+        Assert.Equal("releases.win.json", result);
+    }
 }

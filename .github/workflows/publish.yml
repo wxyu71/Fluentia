@@ -109,6 +109,25 @@ jobs:
       - run: dotnet tool install --global vpk
       - run: vpk pack --packId Fluentia --packVersion $env:VERSION --packDir publish/win-x64 --outputDir velopack-output -e Fluentia.exe --icon client/Fluentia/fluentia.ico
         shell: pwsh
+      - name: Ensure releases.win.json exists for Velopack 1.2.0 GithubSource
+        run: |
+          # vpk pack generates both RELEASES (old) and releases.win.json (new).
+          # Velopack 1.2.0's GitBase.GetReleaseFeed uses GetVeloReleaseIndexName
+          # which looks for releases.win.json. Remove the old RELEASES to avoid
+          # confusion and ensure only releases.win.json is uploaded.
+          if (Test-Path velopack-output/releases.win.json) {
+            Write-Host "releases.win.json already exists — removing legacy RELEASES"
+            Remove-Item velopack-output/RELEASES -Force -ErrorAction SilentlyContinue
+          } elseif (Test-Path velopack-output/RELEASES) {
+            Write-Host "Only RELEASES found — renaming to releases.win.json"
+            Rename-Item -Path velopack-output/RELEASES -NewName releases.win.json -Force
+          } else {
+            Write-Error "Neither RELEASES nor releases.win.json found in velopack-output/"
+            exit 1
+          }
+          Write-Host "Final assets:"
+          Get-ChildItem velopack-output/ | ForEach-Object { Write-Host "  $_" }
+        shell: pwsh
       - uses: actions/upload-artifact@v5
         with:
           name: client-windows
@@ -191,7 +210,7 @@ jobs:
             artifacts/client-windows/fluentia-win-x64.zip
             artifacts/client-windows/velopack-output/Fluentia-*-full.nupkg
             artifacts/client-windows/velopack-output/Fluentia-*-delta.nupkg
-            artifacts/client-windows/velopack-output/RELEASES
+            artifacts/client-windows/velopack-output/releases.win.json
             artifacts/server-binaries/fluentia-server-linux-amd64
             artifacts/server-binaries/fluentia-server-linux-arm64
             artifacts/server-binaries/fluentia-server-darwin-amd64
