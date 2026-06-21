@@ -657,7 +657,7 @@ describe('Rapid resync cascade — PC-side debounce behavior', () => {
     // Desktop target changes → focus clear arrives → mobile clears text.
     // User continues typing → diff starts from empty → no duplicate.
     let text = '我们发现了这个问题';
-    let lastSent = '我们发现了这个';
+    const lastSent = '我们发现了这个';
     const sent: Array<string> = [];
 
     // Focus clear arrives (desktop detected target change)
