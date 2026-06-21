@@ -65,6 +65,14 @@ public partial class MainWindow
 
     private void NotifyManualInputTargetRecoveryNeeded(bool candidateInvalid)
     {
+        // Called from RestorePreviousExternalWindowAsync which runs on a thread
+        // pool continuation — dispatch to the UI thread for WPF control access.
+        if (!CheckAccess())
+        {
+            Dispatcher.BeginInvoke(() => NotifyManualInputTargetRecoveryNeeded(candidateInvalid));
+            return;
+        }
+
         _inputTargetWindow = IntPtr.Zero;
 
         if (_manualInputTargetRecoveryNotified)

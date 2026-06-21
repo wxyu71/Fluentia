@@ -1042,6 +1042,17 @@ public partial class MainWindow : Window
 
     private void SetStatus(string text, bool connected)
     {
+        // EnsureInputTarget is called from the ProcessCommandQueue background
+        // thread, but SetStatus touches WPF controls which have thread affinity.
+        // Dispatch to the UI thread when called from a non-UI thread to prevent
+        // InvalidOperationException ("调用线程无法访问此对象，因为另一个线程拥有该对象")
+        // which caused an infinite resync loop: exception → reset → retry → exception.
+        if (!CheckAccess())
+        {
+            Dispatcher.BeginInvoke(() => SetStatus(text, connected));
+            return;
+        }
+
         StatusText.Text = text;
         var color = GetThemeColor(connected ? "Success" : "Danger");
         var brush = new SolidColorBrush(color);
