@@ -133,7 +133,7 @@ public class InputCommand
 
 public static class MsgTypes
 {
-    public const string ProtocolVersion = "1.7.15";
+    public const string ProtocolVersion = "1.8.0";
     public const string CreateSession = "create_session";
     public const string SessionCreated = "session_created";
     public const string JoinSession = "join_session";

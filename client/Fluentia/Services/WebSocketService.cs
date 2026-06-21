@@ -63,6 +63,7 @@ public class WebSocketService : IRelayTransport
             _reconnectAttempts = 0;
             _disconnectHandled = 0;
             LastServerActivityUtc = DateTime.UtcNow;
+            DebugLogger.Log($"WS: connected to {serverUrl}");
             OnConnected?.Invoke();
             _receiveTask = Task.Run(() => ReceiveLoop(_cts.Token));
             _heartbeatTask = Task.Run(() => HeartbeatLoop(_cts.Token));
@@ -75,6 +76,7 @@ public class WebSocketService : IRelayTransport
         catch (Exception ex)
         {
             DisposeConnection(disposeUrl: false);
+            DebugLogger.Log($"WS: connection failed: {ex.Message}");
             if (notifyDisconnect)
             {
                 HandleDisconnect(ex.Message);
@@ -127,6 +129,7 @@ public class WebSocketService : IRelayTransport
             return;
         }
 
+        DebugLogger.Log($"WS: disconnected: {reason}");
         OnDisconnected?.Invoke(reason);
         EnsureReconnectLoop();
     }
@@ -139,6 +142,7 @@ public class WebSocketService : IRelayTransport
             {
                 _reconnectAttempts++;
                 var delayMs = GetReconnectDelayMs(_reconnectAttempts);
+                DebugLogger.Log($"WS: reconnect attempt {_reconnectAttempts} in {delayMs}ms");
                 await Task.Delay(delayMs, cancellationToken);
 
                 if (_serverUrl == null || _intentionalClose)
@@ -148,7 +152,12 @@ public class WebSocketService : IRelayTransport
 
                 if (await ConnectInternal(_serverUrl, cancellationToken, notifyDisconnect: false))
                 {
+                    DebugLogger.Log($"WS: reconnected successfully on attempt {_reconnectAttempts}");
                     return;
+                }
+                else
+                {
+                    DebugLogger.Log($"WS: reconnect attempt {_reconnectAttempts} failed");
                 }
             }
         }
@@ -253,6 +262,7 @@ public class WebSocketService : IRelayTransport
 
                 if (DateTime.UtcNow - LastServerActivityUtc > HeartbeatTimeout)
                 {
+                    DebugLogger.Log($"WS: heartbeat timeout, last activity {DateTime.UtcNow - LastServerActivityUtc} ago");
                     try
                     {
                         _webSocket.Abort();
@@ -274,6 +284,7 @@ public class WebSocketService : IRelayTransport
         }
         catch (Exception ex)
         {
+            DebugLogger.Log($"WS: heartbeat error: {ex.Message}");
             HandleDisconnect(ex.Message);
         }
     }

@@ -234,7 +234,16 @@ public partial class MainWindow : Window
             if (!connected)
             {
                 _handshakePending = false;
-                _inputTargetWindow = IntPtr.Zero;
+                // NOTE: intentionally NOT clearing _inputTargetWindow here.
+                // The server connection might drop temporarily due to network
+                // fluctuations, but the mobile might still be connected via BLE.
+                // Clearing _inputTargetWindow would cause the input target to be
+                // lost, which would require re-establishing it when the connection
+                // is restored. This can cause issues with input handling during
+                // temporary disconnections.
+                // Only clear _inputTargetWindow when the mobile disconnects
+                // (in OnMobileDisconnected) or when a new session is created
+                // (in OnSessionCreated).
                 CancelOngoingTransfers();
             }
 
@@ -425,18 +434,23 @@ public partial class MainWindow : Window
             SetStatus(error, false);
             RefreshVisualState();
 
+            DebugLogger.Log($"VERSION: incompatible version detected: {error}");
+
             // Attempt auto-update when version is incompatible
             try
             {
-                var mgr = GetUpdateManager(ServerUrlBox?.Text?.Trim());
+                var mgr = GetUpdateManager();
                 if (mgr.IsInstalled)
                 {
+                    DebugLogger.Log("VERSION: checking for updates due to version incompatibility");
                     SetStatus(L("StatusCheckingUpdate"), false);
                     var info = await mgr.CheckForUpdatesAsync();
                     if (info != null)
                     {
+                        DebugLogger.Log("VERSION: update available, downloading...");
                         SetStatus(L("StatusUpdateAvailable"), false);
                         await mgr.DownloadUpdatesAsync(info);
+                        DebugLogger.Log("VERSION: download complete, prompting user");
                         var result = System.Windows.MessageBox.Show(
                             L("StatusUpdateReady"),
                             L("AppName"),
@@ -448,10 +462,15 @@ public partial class MainWindow : Window
                             return;
                         }
                     }
+                    else
+                    {
+                        DebugLogger.Log("VERSION: no updates available despite version incompatibility");
+                    }
                 }
             }
-            catch
+            catch (Exception ex)
             {
+                DebugLogger.Log($"VERSION: auto-update check failed: {ex.Message}");
                 // Update check failed — fall through to show the error MessageBox
             }
 
@@ -1381,7 +1400,7 @@ public partial class MainWindow : Window
     private bool _updateCheckInProgress;
     private bool _portableUpdateNotified;
 
-    private UpdateManager GetUpdateManager(string? serverUrl = null)
+    private UpdateManager GetUpdateManager()
     {
         if (_updateManager != null) return _updateManager;
 
@@ -1398,63 +1417,89 @@ public partial class MainWindow : Window
     /// <summary>
     /// Automatic update check on startup. Silent on failure; only prompts if an update is ready.
     /// For portable installs, shows a one-time tray notification.
+    /// Includes retry logic for transient failures and logging for diagnostics.
     /// </summary>
     private async Task AutoCheckForUpdatesAsync()
     {
-        try
+        // Wait a bit before checking for updates to ensure the app is fully loaded
+        await Task.Delay(TimeSpan.FromSeconds(5));
+
+        const int maxRetries = 3;
+        const int baseDelayMs = 1000;
+
+        for (int attempt = 1; attempt <= maxRetries; attempt++)
         {
-            var mgr = GetUpdateManager(ServerUrlBox?.Text?.Trim());
-            if (!mgr.IsInstalled)
+            try
             {
-                // Portable install — show a one-time tray notification
-                if (!_portableUpdateNotified && _trayIcon != null)
+                var mgr = GetUpdateManager();
+                if (!mgr.IsInstalled)
                 {
-                    _portableUpdateNotified = true;
-                    try
+                    // Portable install — show a one-time tray notification
+                    if (!_portableUpdateNotified && _trayIcon != null)
                     {
-                        _trayIcon.ShowNotification(
-                            L("TrayNotificationPortableUpdateTitle"),
-                            L("TrayNotificationPortableUpdateBody"),
-                            NotificationIcon.Info,
-                            null,
-                            true,
-                            false,
-                            false,
-                            false,
-                            TimeSpan.FromSeconds(8));
+                        _portableUpdateNotified = true;
+                        try
+                        {
+                            _trayIcon.ShowNotification(
+                                L("TrayNotificationPortableUpdateTitle"),
+                                L("TrayNotificationPortableUpdateBody"),
+                                NotificationIcon.Info,
+                                null,
+                                true,
+                                false,
+                                false,
+                                false,
+                                TimeSpan.FromSeconds(8));
+                        }
+                        catch
+                        {
+                            // Tray notification failure is non-critical
+                        }
                     }
-                    catch
-                    {
-                        // Tray notification failure is non-critical
-                    }
+                    return;
                 }
-                return;
+
+                var info = await mgr.CheckForUpdatesAsync();
+                if (info == null)
+                {
+                    DebugLogger.Log($"UPDATE: check completed, no updates available (attempt {attempt})");
+                    return;
+                }
+
+                DebugLogger.Log($"UPDATE: update available, downloading...");
+                await mgr.DownloadUpdatesAsync(info);
+
+                DebugLogger.Log("UPDATE: download complete, prompting user");
+                var result = Dispatcher.Invoke(() => System.Windows.MessageBox.Show(
+                    L("StatusUpdateReady"),
+                    L("AppName"),
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Information));
+
+                if (result == MessageBoxResult.Yes)
+                {
+                    mgr.ApplyUpdatesAndRestart(info);
+                }
+                return; // Success, exit retry loop
             }
-
-            var info = await mgr.CheckForUpdatesAsync();
-            if (info == null) return;
-
-            await mgr.DownloadUpdatesAsync(info);
-
-            var result = Dispatcher.Invoke(() => System.Windows.MessageBox.Show(
-                L("StatusUpdateReady"),
-                L("AppName"),
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Information));
-
-            if (result == MessageBoxResult.Yes)
+            catch (Exception ex)
             {
-                mgr.ApplyUpdatesAndRestart(info);
+                DebugLogger.Log($"UPDATE: check failed (attempt {attempt}/{maxRetries}): {ex.Message}");
+
+                if (attempt < maxRetries)
+                {
+                    // Exponential backoff before retry
+                    var delayMs = baseDelayMs * (int)Math.Pow(2, attempt - 1);
+                    await Task.Delay(delayMs);
+                }
+                // On last attempt, log but don't show error to user (auto-check should be silent)
             }
-        }
-        catch
-        {
-            // Automatic check: silently ignore failures
         }
     }
 
     /// <summary>
     /// Manual update check triggered by the user. Always shows feedback.
+    /// Includes retry logic for transient failures and logging for diagnostics.
     /// </summary>
     private async Task ManualCheckForUpdatesAsync()
     {
@@ -1466,16 +1511,18 @@ public partial class MainWindow : Window
             UpdateManager mgr;
             try
             {
-                mgr = GetUpdateManager(ServerUrlBox?.Text?.Trim());
+                mgr = GetUpdateManager();
             }
             catch (Exception ex)
             {
+                DebugLogger.Log($"UPDATE: manual check failed to create UpdateManager: {ex.Message}");
                 UpdateUpdateStatus(L("StatusUpdateCheckFailed", ex.Message), false);
                 return;
             }
 
             if (!mgr.IsInstalled)
             {
+                DebugLogger.Log("UPDATE: manual check, not installed (portable mode)");
                 UpdateUpdateStatus(L("StatusUpdateNotInstalled"), false);
                 try
                 {
@@ -1494,33 +1541,59 @@ public partial class MainWindow : Window
             CheckUpdateButton.IsEnabled = false;
             UpdateUpdateStatus(L("StatusCheckingUpdate"), true);
 
-            var info = await mgr.CheckForUpdatesAsync();
-            if (info == null)
+            const int maxRetries = 3;
+            const int baseDelayMs = 1000;
+
+            for (int attempt = 1; attempt <= maxRetries; attempt++)
             {
-                UpdateUpdateStatus(L("StatusUpToDate"), true);
-                return;
+                try
+                {
+                    DebugLogger.Log($"UPDATE: manual check attempt {attempt}/{maxRetries}");
+                    var info = await mgr.CheckForUpdatesAsync();
+                    if (info == null)
+                    {
+                        DebugLogger.Log("UPDATE: manual check completed, up to date");
+                        UpdateUpdateStatus(L("StatusUpToDate"), true);
+                        return;
+                    }
+
+                    DebugLogger.Log("UPDATE: manual check found update, downloading...");
+                    UpdateUpdateStatus(L("StatusUpdateAvailable"), true);
+                    await mgr.DownloadUpdatesAsync(info);
+
+                    DebugLogger.Log("UPDATE: download complete");
+                    UpdateUpdateStatus(L("StatusUpdateReady"), true);
+
+                    var result = System.Windows.MessageBox.Show(
+                        L("StatusUpdateReady"),
+                        L("AppName"),
+                        MessageBoxButton.YesNo,
+                        MessageBoxImage.Information);
+
+                    if (result == MessageBoxResult.Yes)
+                    {
+                        UpdateUpdateStatus(L("StatusUpdateApplied"), true);
+                        mgr.ApplyUpdatesAndRestart(info);
+                    }
+                    return; // Success, exit retry loop
+                }
+                catch (Exception ex)
+                {
+                    DebugLogger.Log($"UPDATE: manual check attempt {attempt} failed: {ex.Message}");
+
+                    if (attempt < maxRetries)
+                    {
+                        // Exponential backoff before retry
+                        var delayMs = baseDelayMs * (int)Math.Pow(2, attempt - 1);
+                        await Task.Delay(delayMs);
+                    }
+                    else
+                    {
+                        // Last attempt failed, show error to user
+                        UpdateUpdateStatus(L("StatusUpdateCheckFailed", ex.Message), false);
+                    }
+                }
             }
-
-            UpdateUpdateStatus(L("StatusUpdateAvailable"), true);
-            await mgr.DownloadUpdatesAsync(info);
-
-            UpdateUpdateStatus(L("StatusUpdateReady"), true);
-
-            var result = System.Windows.MessageBox.Show(
-                L("StatusUpdateReady"),
-                L("AppName"),
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Information);
-
-            if (result == MessageBoxResult.Yes)
-            {
-                UpdateUpdateStatus(L("StatusUpdateApplied"), true);
-                mgr.ApplyUpdatesAndRestart(info);
-            }
-        }
-        catch (Exception ex)
-        {
-            UpdateUpdateStatus(L("StatusUpdateCheckFailed", ex.Message), false);
         }
         finally
         {
